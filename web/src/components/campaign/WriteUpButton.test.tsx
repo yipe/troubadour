@@ -31,6 +31,8 @@ async function renderViewer() {
     </VirtuosoMockContext.Provider>,
   )
   await act(async () => {})
+  fireEvent.click(screen.getByRole("button", { name: "Write-up" }))
+  await act(async () => {}) // the tab loads the campaign on mount
 }
 
 beforeEach(() => useCampaign.setState(initial, true))

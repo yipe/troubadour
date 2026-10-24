@@ -107,12 +107,11 @@ describe("History audio quality", () => {
     )
     const { rerender } = render(view(false))
     await waitFor(() => expect(screen.getByText("This session has no lines.")).toBeInTheDocument())
-    expect(screen.queryByText("Audio quality")).toBeNull()
+    expect(screen.queryByTestId("recording-quality")).toBeNull()
     expect(calls.filter((c) => c.url.endsWith("/quality"))).toHaveLength(0)
 
     rerender(view(true))
     await waitFor(() => expect(screen.getByTestId("recording-quality")).toBeInTheDocument())
-    expect(screen.getByText("Audio quality")).toBeInTheDocument()
     expect(calls.filter((c) => c.url.endsWith("/quality"))).toHaveLength(1)
   })
 })

@@ -1,5 +1,6 @@
 """The campaign vault: Obsidian markdown that Troubadour reads and writes without losing human edits."""
 
+import json
 import os
 
 import pytest
@@ -20,7 +21,7 @@ def test_mention_counts_rank_a_regular_above_a_one_off(vault, tmp_path):
     for sid, text in (("one", "Elara meets Hank. The dead man is not Hank."), ("two", "Elara goes on. Still dead.")):
         folder = sessions / sid
         folder.mkdir(parents=True)
-        (folder / "transcript.json").write_text('{"messages":[{"text":"%s"}]}' % text)
+        (folder / "transcript.json").write_text(json.dumps({"messages": [{"text": text}]}))
     (vault.root / "Sessions").mkdir()
     (vault.root / "Sessions" / "one.md").write_text("---\nsession_id: one\n---\n[[Elara]] and [[Cletus]]\n")
     counts = mention_counts(vault, sessions)

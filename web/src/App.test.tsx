@@ -19,12 +19,13 @@ describe("App", () => {
   it("marks the current tab with aria-current", () => {
     render(<App />)
     const tab = (name: string) => screen.getByRole("button", { name })
-    fireEvent.click(tab("History"))
-    expect(tab("History")).toHaveAttribute("aria-current", "page")
-    expect(tab("Setup")).not.toHaveAttribute("aria-current")
+    expect(tab("Sessions")).toHaveAttribute("aria-current", "page")
+    expect(tab("Campaign")).not.toHaveAttribute("aria-current")
     fireEvent.click(tab("Campaign"))
     expect(tab("Campaign")).toHaveAttribute("aria-current", "page")
-    expect(tab("History")).not.toHaveAttribute("aria-current")
+    expect(tab("Sessions")).not.toHaveAttribute("aria-current")
+    fireEvent.click(tab("Sessions"))
+    expect(tab("Sessions")).toHaveAttribute("aria-current", "page")
   })
 
   it("shows the server's session error as an alert", () => {

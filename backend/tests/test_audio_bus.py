@@ -40,7 +40,8 @@ def test_file_source_pause_holds_then_finishes(tmp_path):
     src.pause()
     src.start(frames.append, done.set)
     time.sleep(0.2)
-    assert frames == [] and not done.is_set()
+    assert frames == []
+    assert not done.is_set()
     src.resume()
     assert done.wait(5)
     assert frames

@@ -425,8 +425,11 @@ _OUTCOME = re.compile(
 _NOT_OPEN = re.compile(r"\b(plans to|wants to|is going to|hopes to|might|maybe|possibly|could be)\b", re.I)
 _CONTENT = re.compile(r"[A-Za-z][A-Za-z'-]{3,}")
 _STOP = frozenset(
-    "that this with from they them their there then than were been have into over after before about "
-    "session party still just only when what your into onto also back".split()
+    {
+        *("that", "this", "with", "from", "they", "them", "their", "there", "then", "than", "were", "been"),
+        *("have", "into", "over", "after", "before", "about", "session", "party", "still", "just", "only"),
+        *("when", "what", "your", "onto", "also", "back"),
+    }
 )
 
 

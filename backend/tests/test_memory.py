@@ -838,7 +838,7 @@ def test_a_long_session_is_noted_in_segments_that_all_reach_the_page(setup, monk
                 )
             if system is mem.NOTE_SYSTEM:
                 notes.append(user)
-                marks = [l[2:] for l in user.splitlines() if l.startswith("- ")]
+                marks = [line[2:] for line in user.splitlines() if line.startswith("- ")]
                 return {"title": "x", "summary": "x", "scenes": marks}
             if system is mem.TOP_SYSTEM:
                 return {"title": "The Long Road", "summary": "The party reached the line 0 marker stone.", "highlights": []}
@@ -909,7 +909,6 @@ def test_a_server_hiccup_is_tried_again(monkeypatch):
 
 def test_an_overlong_note_is_merged_not_cut(setup):
     vault, sessions, make = setup
-    sid = _session(sessions, lines=["We walk."])
     many = [f"The party reached marker stone {i}." for i in range(30)]
     merged = [f"The party reached marker stones {i} and {i + 1}." for i in range(0, 30, 2)]
 

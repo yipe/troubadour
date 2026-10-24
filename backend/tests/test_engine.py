@@ -311,10 +311,12 @@ def test_start_with_missing_mic_changes_nothing(engine, monkeypatch):
 def test_pause_holds_the_same_session(engine):
     sess = engine.live
     assert engine.pause()["status"] == "paused"
-    assert sess.paused and sess.source.paused
+    assert sess.paused
+    assert sess.source.paused
     assert engine.live is sess
     assert engine.resume()["status"] == "running"
-    assert not sess.paused and not sess.source.paused
+    assert not sess.paused
+    assert not sess.source.paused
     assert engine.live is sess
     engine.pause()
     assert engine.stop()["status"] == "stopping"
