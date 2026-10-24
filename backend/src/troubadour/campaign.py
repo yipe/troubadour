@@ -252,9 +252,7 @@ def mention_counts(vault: "Vault", sessions_dir: Path) -> dict[str, int]:
     if not needle_owner:
         return {e.name: 0 for e in entities}
     rx = re.compile(
-        r"(?<![a-z0-9])(?:"
-        + "|".join(re.escape(n) for n in sorted(needle_owner, key=len, reverse=True))
-        + r")(?![a-z0-9])"
+        r"(?<![a-z0-9])(?:" + "|".join(re.escape(n) for n in sorted(needle_owner, key=len, reverse=True)) + r")(?![a-z0-9])"
     )
     present: dict[str, set[str]] = {}
 

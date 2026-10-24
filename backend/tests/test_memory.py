@@ -801,3 +801,18 @@ def test_verify_applies_a_grounded_fix_and_ignores_an_invented_one(setup):
         "Sathrin attacked the tomb tapper first, and the tomb tapper hit back.",
         "Sathrin swung his hammer at the tomb tapper.",
     ]
+
+
+def test_a_thinking_model_gets_room_for_its_reasoning(monkeypatch):
+    sent = []
+
+    def reply(request):
+        sent.append(json.loads(request.content)["max_tokens"])
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"a": 1}'}, "finish_reason": "stop"}]})
+
+    llm = _llm_with(reply)
+    monkeypatch.setattr(mem.config, "MEMORY_REASONING", "none")
+    assert llm.json("s", "u", {}, 500) == {"a": 1}
+    monkeypatch.setattr(mem.config, "MEMORY_REASONING", "low")
+    llm.json("s", "u", {}, 500)
+    assert sent == [500, 500 + mem.REASONING_HEADROOM]

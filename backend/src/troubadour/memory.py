@@ -43,6 +43,7 @@ PART_FACTS, PART_NAMES, PART_CLAIMS, FINAL_PART_CLAIMS = 5, 8, 20, 30
 NOTE_MAX = 16  # scenes on the session page; the claim list is notes for that pass, not the page
 STORY_SO_FAR = 15  # earlier log lines shown to each later part
 PART_MOMENTS, MAX_MOMENTS = 5, 12
+REASONING_HEADROOM = 12000  # extra max_tokens for a thinking model's reasoning
 MOMENT_WORKERS = 2
 VERIFY_WORKERS = 4  # scene/moment checks at once (LM Studio --parallel 4)
 EVIDENCE_LINES, EVIDENCE_CHARS = (
@@ -103,10 +104,12 @@ class MemoryLLM:
             return False
 
     def json(self, system: str, user: str, schema: dict, max_tokens: int = 4000) -> dict:
+        thinking = config.MEMORY_REASONING not in ("", "none")
         payload = {
             "model": self.model,
             "temperature": 0,
-            "max_tokens": max_tokens,
+            # Thinking tokens count against max_tokens; without room the JSON is cut off and parses to {}.
+            "max_tokens": max_tokens + (REASONING_HEADROOM if thinking else 0),
             "reasoning_effort": config.MEMORY_REASONING,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "response_format": {"type": "json_schema", "json_schema": {"name": "out", "strict": True, "schema": schema}},
@@ -119,11 +122,15 @@ class MemoryLLM:
             r = self.client.post(f"{self.url}/chat/completions", headers=self._headers(), json=payload)
         if r.is_error:
             raise RuntimeError(f"The model server couldn't answer ({r.status_code}): {_server_error(r)}")
-        content = r.json()["choices"][0]["message"]["content"] or ""
+        choice = r.json()["choices"][0]
+        content = choice["message"]["content"] or ""
+        if choice.get("finish_reason") == "length":
+            log.warning("model reply cut off at %s tokens; that part of the job is lost", payload["max_tokens"])
         match = re.search(r"\{.*\}", content, re.S)
         try:
             out = json.loads(match.group(0)) if match else {}
         except json.JSONDecodeError:
+            log.warning("model reply was not JSON (%d chars); that part of the job is lost", len(content))
             out = {}
         return out if isinstance(out, dict) else {}
 
