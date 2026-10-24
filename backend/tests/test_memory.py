@@ -576,7 +576,7 @@ def test_an_lm_studio_error_says_why():
         "error": "Error in iterating prediction stream: Traceback ...\n  File x\nThe model has crashed without additional information. (Exit code: null)"
     }
     llm = _llm_with(lambda request: httpx.Response(400, json=body))
-    with pytest.raises(RuntimeError, match=r"LM Studio couldn't answer \(400\): The model has crashed"):
+    with pytest.raises(RuntimeError, match=r"The model server couldn't answer \(400\): The model has crashed"):
         llm.json("s", "u", {})
     llm = _llm_with(lambda request: httpx.Response(500, text="<html>oops</html>"))
     with pytest.raises(RuntimeError, match="oops"):
@@ -639,3 +639,34 @@ def test_settle_keeps_the_correction_and_drops_the_joke():
     )
     assert happened == ["Magenta was at about one hit point."]
     assert open_ == ["The eggs have about seven days."]
+
+
+def test_transcript_lines_label_gm_characters_and_unknown_voices():
+    def msg(speaker, text, character=None, pid="p"):
+        return {"t_start": 1.0, "speaker": speaker, "player_id": pid if speaker != "Voice" else None, "character": character, "text": text}
+
+    lines, cast = mem.transcript_lines(
+        [msg("Mika", "A smashed autognome."), msg("Kris", "I look.", "Auggie"), msg("Voice", "Smiley.")]
+    )
+    assert lines[0].endswith("GM Mika: A smashed autognome.")
+    assert lines[1].endswith("Auggie (played by Kris): I look.")
+    assert lines[2].endswith("Unknown voice: Smiley.")
+    assert "Mika is the GM" in cast and "Auggie is a player character, played by Kris" in cast
+
+
+def test_no_gm_is_guessed_when_two_players_have_no_character():
+    msgs = [{"t_start": 0, "speaker": s, "player_id": s, "character": None, "text": "hi"} for s in ("A", "B")]
+    lines, cast = mem.transcript_lines(msgs)
+    assert "GM" not in lines[0] and "is the GM" not in cast
+
+
+def test_gm_with_a_few_npc_tagged_lines_is_still_the_gm():
+    def msg(speaker, character, n):
+        return [{"t_start": 0, "speaker": speaker, "player_id": speaker, "character": character, "text": "x"}] * n
+
+    msgs = msg("Mika", None, 10) + msg("Mika", "Magenta", 2) + msg("Kris", "Auggie", 5) + msg("Kris", None, 1)
+    lines, cast = mem.transcript_lines(msgs)
+    assert lines[0].endswith("GM Mika: x")
+    assert "GM Mika voicing Magenta" in lines[10]
+    assert lines[-1].endswith("Auggie (played by Kris): x")  # an untagged line keeps the player's usual character
+    assert "Magenta is a player character" not in cast

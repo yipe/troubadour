@@ -38,8 +38,8 @@ log = logging.getLogger("troubadour")
 CHUNK_CHARS = 6000  # notes per extraction call; small enough for a fast, careful answer
 # Per transcript part, whatever the model returns. The last part gets more room so the ending
 # and anything still unresolved can land as their own claims.
-PART_FACTS, PART_NAMES, PART_CLAIMS, FINAL_PART_CLAIMS = 5, 8, 12, 20
-NOTE_MAX = 12  # scenes on the session page; the claim list is notes for that pass, not the page
+PART_FACTS, PART_NAMES, PART_CLAIMS, FINAL_PART_CLAIMS = 5, 8, 20, 30
+NOTE_MAX = 16  # scenes on the session page; the claim list is notes for that pass, not the page
 MAX_SUGGESTED_FACTS = 30  # per write-up: more than anyone will review
 # A passing state, not a fact ("Elara has one third-level spell slot remaining").
 FLEETING = re.compile(
@@ -180,6 +180,14 @@ Do not merge two different things because they share a word. A body, an arm, or 
 found is not a person who has been traveling with them. If you are not sure they are the same, write
 them as separate lines. "Can repair" or "offered to" is an aside, not a did, unless the transcript shows
 they did it.
+Lines are labelled with who spoke. "Auggie (played by Kris)" is a player character speaking. A player
+character's name is never the name of something the party finds: a dead or broken autognome (a kind of
+creature) is not the player character Auggie, even if the names sound alike. The GM speaks for every NPC
+and monster; a familiar belongs to the player whose character has it. Say who did a thing and who it
+happened to exactly as the transcript does; if you cannot tell, leave the person out. Keep the proper
+name of every NPC the table meets. Do not treat a word you cannot place (a place name that is not in the
+glossary and was said once) as a real place: write it as the GM said it or leave it out. Do not say
+why something happened unless someone in the transcript said why.
 fixes is "" except on retracted and corrected. Never invent anything that is not in the transcript.
 facts: up to 5 lasting things learned about someone or something, that will still be true next session,
 each a full sentence naming its subject ("Magenta is afraid of heights."); about = that name as the
@@ -226,10 +234,12 @@ NOTE_SYSTEM = """You write the session note a Dungeons & Dragons player would te
 You get a log of what the table settled, already in order, and a short list of what is still open. You do
 not have the transcript. If the log does not say it, it did not happen.
 
-scenes: 4 to 10 sentences, in order. One scene or one fight is one sentence: what changed and how it
+scenes: 6 to 14 sentences, in order. One scene or one fight is one sentence: what changed and how it
 ended. Keep two log lines separate when they are about different things, even if they share a name. A
-found body or a found object is not a person who was already with the party. Leave out travel that
-changed nothing, and leave out a detail that only explains how they reached the thing that mattered.
+found body or a found object is not a person who was already with the party. Keep the proper name of
+every named NPC the log mentions. Join two events with "then", never "leading to" or "prompting", unless
+the log itself says one caused the other. Leave out travel that changed nothing, and leave out a detail
+that only explains how they reached the thing that mattered.
 open: copy only the unresolved items. Not a plan, not a guess, not something the log already says was done.
 highlights: 3 to 6 sentences copied from scenes, the ones the players will retell. Not the scenery.
 summary: one paragraph, at most 120 words, past tense, plain, using only the scenes. End where the log ends.
@@ -444,6 +454,47 @@ def chunks(text: str, size: int) -> list[str]:
     if cur.strip():
         out.append(cur)
     return out
+
+
+def table_roles(messages: list[dict]) -> tuple[dict[str, str], str | None]:
+    """({player: their character}, GM name) from who spoke in a session.
+
+    A player's character is the one on most of their lines (more than half). The GM is the one
+    identified player with no such character: the app tags a few of the GM's lines with an NPC they
+    voiced, so "ever had a character" would wrongly make every GM line that NPC. Several or no
+    such players: we don't guess.
+    """
+    lines: dict[str, int] = collections.Counter()
+    tagged: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    for m in messages:
+        if not m.get("player_id"):
+            continue
+        lines[m["speaker"]] += 1
+        if m.get("character"):
+            tagged[m["speaker"]][m["character"]] += 1
+    characters = {p: c.most_common(1)[0][0] for p, c in tagged.items() if c.total() * 2 > lines[p]}
+    bare = sorted(lines.keys() - characters.keys())
+    return characters, bare[0] if len(bare) == 1 else None
+
+
+def transcript_lines(messages: list[dict]) -> tuple[list[str], str]:
+    """(lines, cast) for the LLM: the GM, each character with its player, and unidentified voices are
+    labelled so "Kris as Auggie" can't be read as Auggie being a thing in the scene."""
+    characters, gm = table_roles(messages)
+
+    def who(m: dict) -> str:
+        if not m.get("player_id"):
+            return "Unknown voice"
+        if m["speaker"] == gm:
+            return f"GM {gm} voicing {m['character']}" if m.get("character") else f"GM {gm}"
+        char = characters.get(m["speaker"])
+        return f"{char} (played by {m['speaker']})" if char else m["speaker"]
+
+    lines = [f"{transcript.clock(m['t_start'])} {who(m)}: {m['text']}" for m in messages]
+    cast = [f"- {gm} is the GM: they narrate and speak for every NPC and monster." if gm else ""]
+    cast += [f"- {c} is a player character, played by {p}." for p, c in sorted(characters.items())]
+    cast.append('- "Unknown voice" is a speaker the app could not identify.')
+    return lines, "\n".join(c for c in cast if c)
 
 
 def glossary_brief(vault: Vault, limit: int = 300) -> str:
@@ -680,10 +731,7 @@ class Memory:
     def _write_up(self, job: Job, record: dict) -> None:
         self.seed_known()
         s = record["session"]
-        lines = [
-            f"{transcript.clock(m['t_start'])} {m['speaker']}{' as ' + m['character'] if m.get('character') else ''}: {m['text']}"
-            for m in record["messages"]
-        ]
+        lines, cast = transcript_lines(record["messages"])
         if not lines:
             raise ValueError("That session has no lines.")
         body = "\n".join(lines)
@@ -697,7 +745,7 @@ class Memory:
         spellings: list[tuple[str, str]] = []
         hints = misspelling_hints(body, self.vault.entities())
         for i, part in enumerate(parts):
-            prompt = f"Glossary:\n{glossary_brief(self.vault)}\n\n"
+            prompt = f"Who is at the table:\n{cast}\n\nGlossary:\n{glossary_brief(self.vault)}\n\n"
             if hints:
                 prompt += f"Likely misspellings of glossary names in this transcript:\n{hints}\n\n"
             last = i == len(parts) - 1
