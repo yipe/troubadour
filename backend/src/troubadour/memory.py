@@ -216,7 +216,7 @@ order, one sentence per thing that happened.
 log: each line has text, kind, and fixes.
 kind is one of:
 - did: the table settled it. The GM narrated it, or a player did it and nobody took it back. A fight is
-  one line: who fought whom, why if someone said why, and how it ended, including anyone knocked out or
+  one line: who fought whom, who struck first, why if someone said why, and how it ended, including anyone knocked out or
   nearly killed. Not the rolls. "The party rolled initiative" is not a log line. Neither is a single
   attack, a hit or miss, damage, a saving throw, or a spell list.
 - open: still unresolved (a letter not delivered, a question left hanging). Not a plan and not a guess.
@@ -312,6 +312,8 @@ summary: one paragraph, at most 120 words, past tense, plain, using only the sce
 "(fight detail)" lines are blow-by-blow combat. Never copy them; turn each fight into one scene: who
 fought whom, why if the log says why, any standout damage (give the number), and how it ended.
 The last scene says where the session ended: where they stopped, camped or rested.
+When you shorten a scene, keep its point: who is better off and who is saddled with a debt, a burden
+or a problem stays as the log says; never turn a debt or a burden into a benefit.
 title: 2-5 words, no date.
 Answer with JSON only."""
 
@@ -1165,6 +1167,11 @@ class Memory:
         fixed = False
         with concurrent.futures.ThreadPoolExecutor(max_workers=VERIFY_WORKERS, thread_name_prefix="verify") as pool:
             for (kind, i, sentence, excerpt), out in pool.map(check, jobs):
+                if kind == "moment" and out.get("verdict") == "unsupported":
+                    # A moment is pinned to its own minute of transcript; if that minute doesn't show it, it's made up.
+                    moments[i] = None
+                    fixed = True
+                    continue
                 better = _text(out.get("sentence"), CLAIM_TEXT_MAX)
                 if out.get("verdict") != "fixed" or not better or better == sentence:
                     continue
@@ -1175,7 +1182,7 @@ class Memory:
                     scenes[i] = better
                 else:
                     moments[i] = (moments[i][0], better)
-        return scenes, moments, fixed
+        return scenes, [m for m in moments if m is not None], fixed
 
     def _session_note(self, sid: str) -> Path | None:
         """A session's existing write-up (re-running one replaces it instead of adding another)."""

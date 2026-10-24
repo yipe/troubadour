@@ -854,3 +854,15 @@ def test_a_long_session_is_noted_in_segments_that_all_reach_the_page(setup, monk
     page = next((vault.root / "Sessions").glob("*.md")).read_text()
     assert "line 0 marker" in page
     assert "line 4 marker" in page  # the last segment's scenes reach the page too
+
+
+def test_verify_drops_a_moment_its_minute_does_not_show(setup):
+    vault, sessions, make = setup
+
+    class LLM:
+        def json(self, system, user, schema, max_tokens=4000):
+            return {"verdict": "unsupported", "sentence": ""}
+
+    m = make(LLM())
+    _, moments, _ = m._verify([], [("2:04:53", "The Shadow Lord grabbed Sathrin.")], ["2:04:53 GM Mika: It grabs Sathrin."])
+    assert moments == []
