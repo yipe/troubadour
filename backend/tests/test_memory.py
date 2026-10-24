@@ -15,16 +15,20 @@ from troubadour.transcript import build
 class FakeLLM:
     """Answers by prompt type, in order; records every call."""
 
-    def __init__(self, notes=(), writeups=(), summary=None, facts=()):
-        self.notes, self.writeups, self.facts = list(notes), list(writeups), list(facts)
+    def __init__(self, notes=(), writeups=(), summary=None, facts=(), moments=()):
+        self.notes, self.writeups, self.facts, self.moments = list(notes), list(writeups), list(facts), list(moments)
         self.summary = summary or {
             "title": "The Desert Road",
             "summary": "Elara led the way.",
             "highlights": ["Elara found the cave."],
         }
         self.calls: list[str] = []
+        self.moment_calls: list[str] = []  # pass B, kept apart so calls[-1] is still the note
 
     def json(self, system, user, schema, max_tokens=4000):
+        if system is mem.MOMENTS_SYSTEM:
+            self.moment_calls.append(user)
+            return self.moments.pop(0) if self.moments else {"moments": []}
         self.calls.append(user)
         if system is mem.NOTES_SYSTEM:
             return self.notes.pop(0) if self.notes else {}
@@ -338,9 +342,7 @@ def test_the_page_is_the_recap_not_the_claim_list(setup):
     assert "8 damage" not in page
     assert "bone cactus" not in page
     assert "plans to travel" not in page
-    assert page.split("## Highlights\n", 1)[1].split("\n\n", 1)[0] == (
-        "- [[Elara]] found a dead autognome beside the wagon."
-    )
+    assert page.split("## Highlights\n", 1)[1].split("\n\n", 1)[0] == ("- [[Elara]] found a dead autognome beside the wagon.")
 
 
 def test_an_everyday_alias_does_not_eat_the_word(tmp_path):
@@ -642,31 +644,103 @@ def test_settle_keeps_the_correction_and_drops_the_joke():
 
 
 def test_transcript_lines_label_gm_characters_and_unknown_voices():
-    def msg(speaker, text, character=None, pid="p"):
-        return {"t_start": 1.0, "speaker": speaker, "player_id": pid if speaker != "Voice" else None, "character": character, "text": text}
+    players = [
+        {"id": "g", "name": "Mika", "character": "DM", "is_gm": True},
+        {"id": "k", "name": "Kris", "character": "Auggie", "is_gm": False},
+    ]
 
-    lines, cast = mem.transcript_lines(
-        [msg("Mika", "A smashed autognome."), msg("Kris", "I look.", "Auggie"), msg("Voice", "Smiley.")]
-    )
+    def msg(speaker, pid, text, character=None):
+        return {"t_start": 1.0, "speaker": speaker, "player_id": pid, "character": character, "text": text}
+
+    msgs = [
+        msg("Mika", "g", "A smashed autognome."),
+        msg("Mika", "g", "Hello.", "Magenta"),  # the GM voicing an NPC
+        msg("Kris", "k", "I look."),  # untagged line: still the player's character
+        msg("Voice", None, "Smiley."),
+    ]
+    lines, cast = mem.transcript_lines({"players": players, "messages": msgs})
     assert lines[0].endswith("GM Mika: A smashed autognome.")
-    assert lines[1].endswith("Auggie (played by Kris): I look.")
-    assert lines[2].endswith("Unknown voice: Smiley.")
-    assert "Mika is the GM" in cast and "Auggie is a player character, played by Kris" in cast
-
-
-def test_no_gm_is_guessed_when_two_players_have_no_character():
-    msgs = [{"t_start": 0, "speaker": s, "player_id": s, "character": None, "text": "hi"} for s in ("A", "B")]
-    lines, cast = mem.transcript_lines(msgs)
-    assert "GM" not in lines[0] and "is the GM" not in cast
-
-
-def test_gm_with_a_few_npc_tagged_lines_is_still_the_gm():
-    def msg(speaker, character, n):
-        return [{"t_start": 0, "speaker": speaker, "player_id": speaker, "character": character, "text": "x"}] * n
-
-    msgs = msg("Mika", None, 10) + msg("Mika", "Magenta", 2) + msg("Kris", "Auggie", 5) + msg("Kris", None, 1)
-    lines, cast = mem.transcript_lines(msgs)
-    assert lines[0].endswith("GM Mika: x")
-    assert "GM Mika voicing Magenta" in lines[10]
-    assert lines[-1].endswith("Auggie (played by Kris): x")  # an untagged line keeps the player's usual character
+    assert lines[1].endswith("GM Mika voicing Magenta: Hello.")
+    assert lines[2].endswith("Auggie (played by Kris): I look.")
+    assert lines[3].endswith("Unknown voice: Smiley.")
+    assert "Mika is the GM" in cast
+    assert "Auggie is a player character, played by Kris" in cast
+    assert "DM is a player character" not in cast
     assert "Magenta is a player character" not in cast
+
+
+def test_later_parts_see_the_story_so_far(setup, monkeypatch):
+    vault, sessions, make = setup
+    monkeypatch.setattr(mem, "TRANSCRIPT_CHUNK_CHARS", 200)
+    sid = _session(sessions, lines=[f"line {i} " * 8 for i in range(6)])
+    prompts = []
+
+    class LLM:
+        def json(self, system, user, schema, max_tokens=4000):
+            if system is not mem.WRITEUP_SYSTEM:
+                return {}
+            prompts.append(user)
+            return {"log": [{"text": f"Beat {len(prompts)} happened.", "kind": "did", "fixes": ""}]}
+
+    m = make(LLM())
+    job = m.write_up(sid)
+    while job.state in ("queued", "running"):
+        time.sleep(0.01)
+    assert job.state == "done", job.message
+    assert "Story so far" not in prompts[0]
+    assert "- Beat 1 happened." in prompts[1]
+
+
+def test_fallback_scenes_span_the_whole_session():
+    happened = [f"Beat {i}." for i in range(40)]
+    scenes, _, _ = mem._note({}, happened, [])
+    assert len(scenes) == mem.NOTE_MAX
+    assert scenes[0] == "Beat 0."
+    assert scenes[-1] == "Beat 39."
+
+
+def test_a_fight_with_an_outcome_is_kept_but_a_lone_attack_is_not():
+    assert not mem._play_by_play(
+        "Sathrin and Auggie attacked the tomb tapper, which wanted Sathrin dead; Sathrin was badly hurt."
+    )
+    assert mem._play_by_play("Auggie attacks the goblin with his club.")
+
+
+def test_moments_need_a_real_timestamp_and_a_roll_or_a_loud_table():
+    part = "12:00 GM Mika: The tomb tapper swings.\n\n12:20 Sathrin (played by Adrian): No! No!"
+    seen: set[str] = set()
+    got = mem._moments(
+        [
+            {"at": "12:00", "text": "Sathrin took 52 damage in one turn."},  # a number: kept
+            {"at": "12:20", "text": "Sathrin begged the tomb tapper for mercy."},  # loud stretch: kept
+            {"at": "12:00", "text": "Sathrin looked worried."},  # neither: dropped
+            {"at": "59:59", "text": "Elara rolled a natural 20."},  # not a line in this part: made up
+        ],
+        part,
+        [12 * 60 + 15.0],
+        seen,
+    )
+    assert got == [("12:00", "Sathrin took 52 damage in one turn."), ("12:20", "Sathrin begged the tomb tapper for mercy.")]
+
+
+def test_hot_spots_find_the_shouting():
+    calm = [{"t_start": float(t), "speaker": "A", "text": "We walk on.", "level_db": -35.0} for t in range(0, 600, 20)]
+    loud = [{"t_start": 300.0 + i, "speaker": s, "text": "No! Oh my god!", "level_db": -22.0} for i, s in enumerate("ABCD")]
+    msgs = sorted(calm + loud, key=lambda m: m["t_start"])
+    assert 290 <= mem.hot_spots(msgs, 1)[0] <= 303
+
+
+def test_write_up_page_lists_table_moments(setup):
+    vault, sessions, make = setup
+    sid = _session(sessions, lines=["The dragon bites.", "Elara drops to zero! No!", "We run."])
+    llm = FakeLLM(
+        writeups=[{"log": [{"text": "The party fled from the dragon.", "kind": "did", "fixes": ""}]}],
+        moments=[{"moments": [{"at": "00:05", "text": "Elara was knocked unconscious by the dragon."}]}],
+    )
+    m = make(llm)
+    job = m.write_up(sid)
+    while job.state in ("queued", "running"):
+        time.sleep(0.01)
+    assert job.state == "done", job.message
+    page = next((vault.root / "Sessions").glob("*.md")).read_text()
+    assert "## Table moments\n- 00:05 [[Elara]] was knocked unconscious by the dragon." in page

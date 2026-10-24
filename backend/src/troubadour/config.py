@@ -20,7 +20,8 @@ LLM_URL = env("LLM_URL", "http://127.0.0.1:1235/v1")
 LLM_MODEL = env("LLM_MODEL", "google/gemma-4-26b-a4b-qat")
 # Campaign memory (reading notes, writing up sessions) can use a bigger local model than the
 # live spelling cleanup; LM Studio loads it on first use if it isn't loaded yet.
-MEMORY_LLM_MODEL = env("MEMORY_MODEL", LLM_MODEL)
+# Graded best of 9 local models on a real 2.6 h session (27/40 vs gemma-26b 18/40; ~4.5x slower).
+MEMORY_LLM_MODEL = env("MEMORY_MODEL", "swift-qwen3.8-27b")
 # "none" suits gemma (it otherwise spends the budget thinking); gpt-oss wants "low"/"medium"/"high".
 MEMORY_REASONING = env("MEMORY_REASONING", "none")
 

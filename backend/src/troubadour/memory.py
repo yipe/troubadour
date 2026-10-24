@@ -16,6 +16,7 @@ names, types and lengths are validated before anything is written.
 """
 
 import collections
+import concurrent.futures
 import difflib
 import json
 import logging
@@ -40,6 +41,10 @@ CHUNK_CHARS = 6000  # notes per extraction call; small enough for a fast, carefu
 # and anything still unresolved can land as their own claims.
 PART_FACTS, PART_NAMES, PART_CLAIMS, FINAL_PART_CLAIMS = 5, 8, 20, 30
 NOTE_MAX = 16  # scenes on the session page; the claim list is notes for that pass, not the page
+STORY_SO_FAR = 15  # earlier log lines shown to each later part
+PART_MOMENTS, MAX_MOMENTS = 5, 12
+MOMENT_WORKERS = 2  # pass B calls at once, beside pass A; LM Studio is loaded with --parallel 4  # dice/combat brag lines per part and per page
+BRIEF_DESCRIPTION_MAX = 80  # chars of each glossary entry's description in LLM prompts
 MAX_SUGGESTED_FACTS = 30  # per write-up: more than anyone will review
 # A passing state, not a fact ("Elara has one third-level spell slot remaining").
 FLEETING = re.compile(
@@ -57,7 +62,15 @@ MAX_ITEMS = 40
 NAME_MAX, TEXT_MAX = 80, 300
 CLAIM_TEXT_MAX = 600  # one settled scene; 300 cut a finale off mid-sentence
 CLAIM_STATUS = {"happened", "open", "joke", "retracted", "corrected"}
-_KIND = {"did": "happened", "aside": "joke", "happened": "happened", "joke": "joke", "open": "open", "retracted": "retracted", "corrected": "corrected"}
+_KIND = {
+    "did": "happened",
+    "aside": "joke",
+    "happened": "happened",
+    "joke": "joke",
+    "open": "open",
+    "retracted": "retracted",
+    "corrected": "corrected",
+}
 
 
 # ------------------------------------------------------------------ LLM
@@ -168,8 +181,9 @@ order, one sentence per thing that happened.
 log: each line has text, kind, and fixes.
 kind is one of:
 - did: the table settled it. The GM narrated it, or a player did it and nobody took it back. A fight is
-  one line: who it was against and how it ended, not the rolls. "The party rolled initiative" is not a
-  log line. Neither is a single attack, a hit or miss, damage, a saving throw, or a spell list.
+  one line: who fought whom, why if someone said why, and how it ended, including anyone knocked out or
+  nearly killed. Not the rolls. "The party rolled initiative" is not a log line. Neither is a single
+  attack, a hit or miss, damage, a saving throw, or a spell list.
 - open: still unresolved (a letter not delivered, a question left hanging). Not a plan and not a guess.
 - aside: a joke, real-life talk, rules chatter, a guess, or "someone could do X" when they did not.
 - retracted: the table took an earlier line back. fixes = a short quote from that line. Do not restate
@@ -188,6 +202,8 @@ happened to exactly as the transcript does; if you cannot tell, leave the person
 name of every NPC the table meets. Do not treat a word you cannot place (a place name that is not in the
 glossary and was said once) as a real place: write it as the GM said it or leave it out. Do not say
 why something happened unless someone in the transcript said why.
+Someone new who arrives is not a known NPC unless the transcript names them as that NPC. Numbers like
+"10-02" or "9.13" may be map hexes or the in-game time; say which only if the transcript makes it clear.
 fixes is "" except on retracted and corrected. Never invent anything that is not in the transcript.
 facts: up to 5 lasting things learned about someone or something, that will still be true next session,
 each a full sentence naming its subject ("Magenta is afraid of heights."); about = that name as the
@@ -200,6 +216,19 @@ spellings: when the transcript clearly misspells a glossary name, the misspelled
 Players joke, plan, speculate and talk about real life; only what actually happens in the game counts,
 usually what the GM narrates or confirms ("They assassinate her." as a joke is not an event).
 Never invent anything that isn't in the transcript. Answer with JSON only."""
+
+MOMENTS_SCHEMA = _obj({"moments": {"type": "array", "items": _obj({"at": STR, "text": STR})}})
+
+MOMENTS_SYSTEM = """You pick out the moments a Dungeons & Dragons table will retell from a piece of a session's
+speech-to-text transcript. Lines are labelled with who spoke; the GM speaks for every NPC and monster.
+moments: up to 5, in order, each one sentence naming who did it or who it happened to:
+- a natural 20 or natural 1, a critical hit, unusually big damage in one turn (give the number), someone
+  dropped to 0 hit points or killed, a clutch save;
+- what set the table off at a listed loud moment: a twist, a disaster, a joke that landed. Say what
+  caused it, not that people laughed.
+Not ordinary hits, misses or rolls. Only what the transcript shows; jokes about what could happen are
+not moments. at = the timestamp of the line where it happened, exactly as written (e.g. 2:06:23).
+If nothing qualifies, return no moments. Answer with JSON only."""
 
 FACT_SCHEMA = _obj({"facts": STRS})
 
@@ -263,7 +292,9 @@ def passages_about(vault: Vault, sessions_dir: Path, names: list[str]) -> list[t
     needles = [n.casefold() for n in names if len(n) >= 2 and not (n.casefold() != names[0].casefold() and everyday(n))]
     if not needles:
         return []
-    rx = re.compile(r"(?<![a-z0-9])(?:" + "|".join(re.escape(n) for n in sorted(set(needles), key=len, reverse=True)) + r")(?![a-z0-9])")
+    rx = re.compile(
+        r"(?<![a-z0-9])(?:" + "|".join(re.escape(n) for n in sorted(set(needles), key=len, reverse=True)) + r")(?![a-z0-9])"
+    )
     out: list[tuple[str, str]] = []
 
     def keep(label: str, lines: list[str]) -> None:
@@ -310,6 +341,12 @@ _PLAY = re.compile(
     r")\b",
     re.I,
 )
+# How a fight or scene ended. A line with one of these is the story, even if it mentions an attack.
+_OUTCOME = re.compile(
+    r"\b(downed|knocked (?:out|unconscious)|nearly (?:killed|died|dead)|badly (?:hurt|wounded|injured)|"
+    r"gravely|killed|died|defeated|fled|retreated|surrendered|escaped|wanted \w+ dead|because)\b",
+    re.I,
+)
 _NOT_OPEN = re.compile(r"\b(plans to|wants to|is going to|hopes to|might|maybe|possibly|could be)\b", re.I)
 _CONTENT = re.compile(r"[A-Za-z][A-Za-z'-]{3,}")
 _STOP = frozenset(
@@ -319,6 +356,8 @@ _STOP = frozenset(
 
 
 def _play_by_play(text: str) -> bool:
+    if _OUTCOME.search(text):
+        return False
     return bool(_PLAY.search(text)) or bool(re.search(r"\bis present\b", text, re.I))
 
 
@@ -376,6 +415,14 @@ def _settle(claims: list[dict]) -> tuple[list[str], list[str]]:
     return happened, open_
 
 
+def _spread(items: list[str], n: int) -> list[str]:
+    """n of items, in order, evenly across the list and always ending with the last: the first n
+    would end the page partway through the session."""
+    if len(items) <= n:
+        return items
+    return [items[round(i * (len(items) - 1) / (n - 1))] for i in range(n)]
+
+
 def _lines(value, limit: int = NOTE_MAX) -> list[str]:
     out = []
     for item in value if isinstance(value, list) else []:
@@ -383,6 +430,79 @@ def _lines(value, limit: int = NOTE_MAX) -> list[str]:
             out.append(text)
         if len(out) >= limit:
             break
+    return out
+
+
+# Shouts, laughs and gasps in table talk ("No!", "oh my god", "ha ha").
+_REACTION = re.compile(
+    r"!|\b(oh my god|oh no|holy|ha(?: ?ha)+|let'?s go|amazing|wow|whoa|what the)\b",
+    re.I,
+)
+HOT_WINDOW_S, HOT_GAP_S, HOT_SPOTS = 30.0, 120.0, 10
+
+
+def hot_spots(messages: list[dict], n: int = HOT_SPOTS) -> list[float]:
+    """Start times of the n liveliest 30 s stretches, at least 2 min apart, in order.
+
+    Lively = reactions (shouts, laughs), several people talking, louder than the session's usual level,
+    many short lines. Weights tuned by eye on a real session, where the top spots were the big fight,
+    a trap going off and a tense roll.
+    """
+    levels = sorted(m["level_db"] for m in messages if m.get("level_db") is not None)
+    usual = levels[len(levels) // 2] if levels else 0.0
+    scored = []
+    j = 0
+    for i, m in enumerate(messages):
+        j = max(j, i)
+        while j < len(messages) and messages[j]["t_start"] < m["t_start"] + HOT_WINDOW_S:
+            j += 1
+        window = messages[i:j]
+        loud = [x["level_db"] - usual for x in window if x.get("level_db") is not None]
+        score = (
+            sum(bool(_REACTION.search(x["text"])) for x in window)
+            + 0.5 * len({x["speaker"] for x in window})
+            + 0.3 * (sum(loud) / len(loud) if loud else 0.0)
+            + 0.2 * len(window)
+        )
+        scored.append((score, m["t_start"]))
+    picked: list[float] = []
+    for _, t in sorted(scored, key=lambda st: -st[0]):
+        if all(abs(t - p) > HOT_GAP_S for p in picked):
+            picked.append(t)
+        if len(picked) == n:
+            break
+    return sorted(picked)
+
+
+# A brag-worthy moment names a roll, a number or a knockout; anything else is a scene, not a moment.
+_MOMENT = re.compile(
+    r"\b(nat(?:ural)? ?(?:20|1|one|twenty)|crit(?:ical)?s?|\d+ (?:points of )?damage|one[- ]shot\w*|"
+    r"dropped to 0|down(?:ed)?|unconscious|killed|died|death saves?|saving throw|save)\b",
+    re.I,
+)
+
+
+def _seconds(clock: str) -> float:
+    parts = [int(p) for p in clock.split(":")]
+    return float(sum(p * 60**i for i, p in enumerate(reversed(parts))))
+
+
+def _moments(value, part: str, loud: list[float], seen: set[str]) -> list[tuple[str, str]]:
+    """(at, text) pairs at a real line of this part. A moment is kept when it names a roll, a number or a
+    knockout, or when it falls in a stretch where the table was loud (whatever set them off counts).
+    A model's "moment" at a time that isn't in the transcript is made up."""
+    out = []
+    for m in value if isinstance(value, list) else []:
+        if not isinstance(m, dict):
+            continue
+        at, text = _text(m.get("at"), 10), _text(m.get("text"))
+        if not (re.fullmatch(r"\d{1,2}:\d{2}(?::\d{2})?", at) and re.search(rf"(?m)^{re.escape(at)} ", part)):
+            continue
+        hot = any(t <= _seconds(at) < t + HOT_WINDOW_S for t in loud)
+        if not text or not (hot or _MOMENT.search(text)) or norm(text) in seen:
+            continue
+        seen.add(norm(text))
+        out.append((at, text))
     return out
 
 
@@ -396,7 +516,7 @@ def _note(value: dict, happened: list[str], open_: list[str]) -> tuple[list[str]
     source = "\n".join([*happened, *open_])
     scenes = [s for s in _lines(value.get("scenes") if isinstance(value, dict) else None) if _grounded(s, source)]
     if not scenes:
-        scenes = happened[:NOTE_MAX]
+        scenes = _spread(happened, NOTE_MAX)
     scene_blob = "\n".join(scenes)
     highlights = [
         h
@@ -456,52 +576,36 @@ def chunks(text: str, size: int) -> list[str]:
     return out
 
 
-def table_roles(messages: list[dict]) -> tuple[dict[str, str], str | None]:
-    """({player: their character}, GM name) from who spoke in a session.
-
-    A player's character is the one on most of their lines (more than half). The GM is the one
-    identified player with no such character: the app tags a few of the GM's lines with an NPC they
-    voiced, so "ever had a character" would wrongly make every GM line that NPC. Several or no
-    such players: we don't guess.
-    """
-    lines: dict[str, int] = collections.Counter()
-    tagged: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
-    for m in messages:
-        if not m.get("player_id"):
-            continue
-        lines[m["speaker"]] += 1
-        if m.get("character"):
-            tagged[m["speaker"]][m["character"]] += 1
-    characters = {p: c.most_common(1)[0][0] for p, c in tagged.items() if c.total() * 2 > lines[p]}
-    bare = sorted(lines.keys() - characters.keys())
-    return characters, bare[0] if len(bare) == 1 else None
-
-
-def transcript_lines(messages: list[dict]) -> tuple[list[str], str]:
-    """(lines, cast) for the LLM: the GM, each character with its player, and unidentified voices are
-    labelled so "Kris as Auggie" can't be read as Auggie being a thing in the scene."""
-    characters, gm = table_roles(messages)
+def transcript_lines(record: dict) -> tuple[list[str], str]:
+    """(lines, cast) for the LLM, from the session's roster: the GM, each character with its player, and
+    unidentified voices are labelled so "Kris as Auggie" can't be read as Auggie being a thing in the
+    scene. Roster, not per-line tags: the app tags a few of the GM's lines with an NPC they voiced."""
+    roster = {p["id"]: p for p in record.get("players") or []}
+    gms = {p["name"] for p in roster.values() if p.get("is_gm")}
+    characters = {p["name"]: p["character"] for p in roster.values() if not p.get("is_gm") and p.get("character")}
 
     def who(m: dict) -> str:
         if not m.get("player_id"):
             return "Unknown voice"
-        if m["speaker"] == gm:
-            return f"GM {gm} voicing {m['character']}" if m.get("character") else f"GM {gm}"
+        if m["speaker"] in gms:
+            return f"GM {m['speaker']} voicing {m['character']}" if m.get("character") else f"GM {m['speaker']}"
         char = characters.get(m["speaker"])
         return f"{char} (played by {m['speaker']})" if char else m["speaker"]
 
-    lines = [f"{transcript.clock(m['t_start'])} {who(m)}: {m['text']}" for m in messages]
-    cast = [f"- {gm} is the GM: they narrate and speak for every NPC and monster." if gm else ""]
+    lines = [f"{transcript.clock(m['t_start'])} {who(m)}: {m['text']}" for m in record["messages"]]
+    cast = [f"- {g} is the GM: they narrate and speak for every NPC and monster." for g in sorted(gms)]
     cast += [f"- {c} is a player character, played by {p}." for p, c in sorted(characters.items())]
     cast.append('- "Unknown voice" is a speaker the app could not identify.')
-    return lines, "\n".join(c for c in cast if c)
+    return lines, "\n".join(cast)
 
 
 def glossary_brief(vault: Vault, limit: int = 300) -> str:
     rows = []
     for e in vault.entities()[:limit]:
         also = f" (also {', '.join(e.aliases)})" if e.aliases else ""
-        rows.append(f"- {e.name} [{e.type}]{also}")
+        # Who they are, so "Delara" reads as the party's companion, not a mishearing of Elara.
+        what = f": {e.description[:BRIEF_DESCRIPTION_MAX]}" if e.description else ""
+        rows.append(f"- {e.name} [{e.type}]{also}{what}")
     return "\n".join(rows) or "(empty)"
 
 
@@ -731,12 +835,13 @@ class Memory:
     def _write_up(self, job: Job, record: dict) -> None:
         self.seed_known()
         s = record["session"]
-        lines, cast = transcript_lines(record["messages"])
+        lines, cast = transcript_lines(record)
         if not lines:
             raise ValueError("That session has no lines.")
         body = "\n".join(lines)
         heard_text = norm(body)
         parts = chunks(body.replace("\n", "\n\n"), TRANSCRIPT_CHUNK_CHARS)
+        loud = hot_spots(record["messages"])
         job.total = len(parts) + 1
         self.emit(job)
         claims: list[dict] = []
@@ -744,8 +849,31 @@ class Memory:
         new_names: dict[str, tuple[str, str]] = {}
         spellings: list[tuple[str, str]] = []
         hints = misspelling_hints(body, self.vault.entities())
+
+        def find_moments(part: str) -> tuple[str, list[float], dict]:
+            # Pass B: its own call, so the log's "what changed" reading doesn't crowd out "what made the
+            # table erupt" (one combined prompt dropped the session's big fight).
+            here = [t for t in loud if re.search(rf"(?m)^{re.escape(transcript.clock(t))} ", part)]
+            mprompt = f"Who is at the table:\n{cast}\n\n"
+            if here:
+                mprompt += (
+                    "Loud moments (shouting, laughing, crosstalk) start at: "
+                    + ", ".join(transcript.clock(t) for t in here)
+                    + "\n\n"
+                )
+            return part, here, self.llm.json(MOMENTS_SYSTEM, mprompt + f"Transcript:\n{part}", MOMENTS_SCHEMA, 800)
+
+        # Pass B needs no story so far, so it runs beside pass A (LM Studio serves several predictions at once).
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=MOMENT_WORKERS, thread_name_prefix="moments")
+        pass_b = [pool.submit(find_moments, part) for part in parts]
+        pool.shutdown(wait=False)  # queued calls still run; their results are read after pass A
         for i, part in enumerate(parts):
             prompt = f"Who is at the table:\n{cast}\n\nGlossary:\n{glossary_brief(self.vault)}\n\n"
+            # The previous parts' log, so a part that starts mid-scene knows who is who (the rider
+            # who shows up is not the NPC who stayed behind) and doesn't re-log what already happened.
+            so_far = [c["text"] for c in claims if c.get("kind") in ("did", "corrected")][-STORY_SO_FAR:]
+            if so_far:
+                prompt += "Story so far (already logged; do not repeat):\n" + "\n".join(f"- {t}" for t in so_far) + "\n\n"
             if hints:
                 prompt += f"Likely misspellings of glossary names in this transcript:\n{hints}\n\n"
             last = i == len(parts) - 1
@@ -774,8 +902,14 @@ class Memory:
             job.done += 1
             job.message = f"Read part {job.done} of {len(parts)}"
             self.emit(job)
+        moments: list[tuple[str, str]] = []
+        seen_moments: set[str] = set()
+        for f in pass_b:
+            part, here, found = f.result()
+            moments += _moments(found.get("moments"), part, here, seen_moments)[:PART_MOMENTS]
 
         happened, open_ = _settle(claims)
+        moments = moments[:MAX_MOMENTS]
         settled = "\n".join(f"- {e}" for e in happened) or "- (nothing happened)"
         if open_:
             settled += "\n\nStill open:\n" + "\n".join(f"- {e}" for e in open_)
@@ -839,8 +973,13 @@ class Memory:
         linked = [link_names(t, self.vault) for t in scenes]
         open_linked = [link_names(t, self.vault) for t in open_]
         highlights = [link_names(h, self.vault) for h in highlights]
+        moments_linked = [f"{at} {link_names(t, self.vault)}" for at, t in moments]
         mentioned = sorted(
-            {e.name for e in self.vault.entities() if any(f"[[{e.name}]]" in x for x in [*linked, *open_linked, *highlights])}
+            {
+                e.name
+                for e in self.vault.entities()
+                if any(f"[[{e.name}]]" in x for x in [*linked, *open_linked, *highlights, *moments_linked])
+            }
         )
         tdir = self.vault.root / "Sessions" / "Transcripts"
         tdir.mkdir(parents=True, exist_ok=True)
@@ -854,6 +993,7 @@ class Memory:
             "## Highlights",
             *(f"- {h}" for h in highlights),
             "",
+            *(["## Table moments", *(f"- {m}" for m in moments_linked), ""] if moments_linked else []),
             "## Still open",
             *(f"- {e}" for e in open_linked),
             "",
