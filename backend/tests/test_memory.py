@@ -909,8 +909,12 @@ def test_a_server_hiccup_is_tried_again(monkeypatch):
 
 def test_an_overlong_note_is_merged_not_cut(setup):
     vault, sessions, make = setup
-    many = [f"The party reached marker stone {i}." for i in range(30)]
-    merged = [f"The party reached marker stones {i} and {i + 1}." for i in range(0, 30, 2)]
+    names = [f"Waystone{a}{b}" for a in "ABC" for b in "ABCDEFGHIJ"]
+    many = [f"The party camped beside {n} and traded near {n} market." for n in names]
+    merged = [
+        f"The party camped beside {a} and {b}, trading near {a} and {b} markets."
+        for a, b in zip(names[::2], names[1::2], strict=True)
+    ]
 
     class LLM:
         def json(self, system, user, schema, max_tokens=4000):
@@ -924,7 +928,7 @@ def test_an_overlong_note_is_merged_not_cut(setup):
 
     m = make(LLM())
     _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in many]])
-    assert scenes == merged  # every stone survives, 15 lines instead of 30
+    assert scenes == merged  # every waystone survives, 15 lines instead of 30
 
 
 def test_a_merge_that_crams_scenes_is_refused(setup):
@@ -1054,3 +1058,21 @@ def test_a_note_missing_only_its_last_lines_is_still_finished(setup):
     _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in log]])
     assert len(asked) == 2  # 3 of 20 lines (15%) were missing: still finished
     assert "WaystoneT" in scenes[-1]
+
+
+def test_a_merge_that_drops_the_ending_is_refused(setup):
+    vault, sessions, make = setup
+    places = [f"Waystone{c}" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"]
+    log = [f"The party camped beside {p} and traded near {p} market." for p in places]
+
+    class LLM:
+        def json(self, system, user, schema, max_tokens=4000):
+            if system is mem.NOTE_SYSTEM:
+                return {"title": "x", "summary": "x", "scenes": log}
+            if system is mem.MERGE_SYSTEM:
+                return {"scenes": log[:16]}  # "merged" by stopping at WaystoneP
+            return {}
+
+    m = make(LLM())
+    _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in log]])
+    assert "WaystoneZ" in scenes[-1]

@@ -1290,7 +1290,9 @@ class Memory:
                 fewer = [s for s in _lines(raw, MAX_ITEMS) if _grounded(s, "\n".join(scenes))]
                 # A merge that crams the rest of the session into one scene would be cut off at the length cap.
                 whole = all(len(s) <= CLAIM_TEXT_MAX for s in raw)
-                if whole and NOTE_MAX // 2 <= len(fewer) <= NOTE_MAX:
+                # A "merge" that returns the first scenes and drops the rest would lose the ending again.
+                keeps_end = _reached(fewer, happened) >= _reached(scenes, happened) - ENDING_LINES
+                if whole and keeps_end and NOTE_MAX // 2 <= len(fewer) <= NOTE_MAX:
                     reply["scenes"] = fewer
             details = [t for _, t in fights] + [p for p in summed.values() if p]
             return (reply, *_note(reply, happened, open_, details))
