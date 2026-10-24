@@ -6,6 +6,7 @@ Output: /tmp/writeup_compare/<model>.md (the session note) for diffing against w
 """
 
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -22,6 +23,9 @@ class _Bus:
 
 
 def main(sid: str, models: list[str]) -> None:
+    # Experiment knobs, e.g. WU_CHUNK=8000 (chars of transcript per write-up call).
+    if os.environ.get("WU_CHUNK"):
+        memory.TRANSCRIPT_CHUNK_CHARS = int(os.environ["WU_CHUNK"])
     out = Path("/tmp/writeup_compare")
     out.mkdir(exist_ok=True)
     for spec in models:
@@ -52,8 +56,8 @@ def main(sid: str, models: list[str]) -> None:
             time.sleep(1)
         print(f"{spec}: {job.state} in {time.monotonic() - t:.0f}s {job.message}")
         note = mem._session_note(sid)
-        (out / (spec.replace("/", "_") + ".md")).write_text(note.read_text() if note else job.message)
-        (out / (spec.replace("/", "_") + ".calls.json")).write_text(json.dumps(calls, indent=1))
+        (out / (spec.replace("/", "_") + os.environ.get("WU_TAG", "") + ".md")).write_text(note.read_text() if note else job.message)
+        (out / (spec.replace("/", "_") + os.environ.get("WU_TAG", "") + ".calls.json")).write_text(json.dumps(calls, indent=1))
         shutil.rmtree(work)
 
 

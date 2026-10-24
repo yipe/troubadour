@@ -43,7 +43,12 @@ PART_FACTS, PART_NAMES, PART_CLAIMS, FINAL_PART_CLAIMS = 5, 8, 20, 30
 NOTE_MAX = 16  # scenes on the session page; the claim list is notes for that pass, not the page
 STORY_SO_FAR = 15  # earlier log lines shown to each later part
 PART_MOMENTS, MAX_MOMENTS = 5, 12
-MOMENT_WORKERS = 2  # pass B calls at once, beside pass A; LM Studio is loaded with --parallel 4  # dice/combat brag lines per part and per page
+MOMENT_WORKERS = 2
+VERIFY_WORKERS = 4  # scene/moment checks at once (LM Studio --parallel 4)
+EVIDENCE_LINES, EVIDENCE_CHARS = (
+    40,
+    6000,
+)  # transcript window a scene is checked against  # pass B calls at once, beside pass A; LM Studio is loaded with --parallel 4  # dice/combat brag lines per part and per page
 BRIEF_DESCRIPTION_MAX = 80  # chars of each glossary entry's description in LLM prompts
 MAX_SUGGESTED_FACTS = 30  # per write-up: more than anyone will review
 # A passing state, not a fact ("Elara has one third-level spell slot remaining").
@@ -174,6 +179,20 @@ WRITEUP_SCHEMA = _obj(
     }
 )
 
+VERIFY_SCHEMA = _obj({"verdict": STR, "sentence": STR})
+
+VERIFY_SYSTEM = """You check one sentence from a Dungeons & Dragons session note against the transcript lines it
+came from (speech-to-text, so names and words can be misheard; the glossary has the right spellings).
+Check: who did it and who it happened to, who acted first, the order of events, numbers and counts, and
+names. verdict: "ok" if the transcript supports it; "fixed" if part of it is wrong, with sentence = the
+corrected sentence (same meaning otherwise, no longer, nothing added that the lines do not show);
+"unsupported" if these lines do not show it at all. Answer with JSON only."""
+
+RECAP_SCHEMA = _obj({"summary": STR})
+
+RECAP_SYSTEM = """You get the scenes of a Dungeons & Dragons session, in order. Write summary: one paragraph, at
+most 120 words, past tense, plain, using only these scenes. End where the last scene ends. Answer with JSON only."""
+
 WRITEUP_SYSTEM = """You turn a piece of a Dungeons & Dragons session's speech-to-text transcript into a
 plain log. You also get the campaign glossary. The transcript mishears names; spell them as the glossary
 does. Do not decide what was important. Do not write a story. Write what a careful note-taker would, in
@@ -227,7 +246,8 @@ moments: up to 5, in order, each one sentence naming who did it or who it happen
 - what set the table off at a listed loud moment: a twist, a disaster, a joke that landed. Say what
   caused it, not that people laughed.
 Not ordinary hits, misses or rolls. Only what the transcript shows; jokes about what could happen are
-not moments. at = the timestamp of the line where it happened, exactly as written (e.g. 2:06:23).
+not moments. Every listed loud moment gets one moment unless it was only crosstalk about something else.
+at = the timestamp of the line where it happened, exactly as written (e.g. 2:06:23).
 If nothing qualifies, return no moments. Answer with JSON only."""
 
 FACT_SCHEMA = _obj({"facts": STRS})
@@ -269,9 +289,13 @@ found body or a found object is not a person who was already with the party. Kee
 every named NPC the log mentions. Join two events with "then", never "leading to" or "prompting", unless
 the log itself says one caused the other. Leave out travel that changed nothing, and leave out a detail
 that only explains how they reached the thing that mattered.
-open: copy only the unresolved items. Not a plan, not a guess, not something the log already says was done.
+open: copy only the unresolved items. Not a plan, not a guess, not something the log already says was done,
+and not someone's arrival that the log goes on to describe.
 highlights: 3 to 6 sentences copied from scenes, the ones the players will retell. Not the scenery.
 summary: one paragraph, at most 120 words, past tense, plain, using only the scenes. End where the log ends.
+"(fight detail)" lines are blow-by-blow combat. Never copy them; turn each fight into one scene: who
+fought whom, why if the log says why, any standout damage (give the number), and how it ended.
+The last scene says where the session ended: where they stopped, camped or rested.
 title: 2-5 words, no date.
 Answer with JSON only."""
 
@@ -379,11 +403,13 @@ def _touches(fixes: str, text: str) -> bool:
     return bool(needle) and needle in text.casefold()
 
 
-def _settle(claims: list[dict]) -> tuple[list[str], list[str]]:
+def _settle(claims: list[dict], fights: list[tuple[int, str]] | None = None) -> tuple[list[str], list[str]]:
     """What the table left standing, then what is still open.
 
     A joke never lands. A retraction removes the earlier claim it quotes and does not itself become
     a fact. A correction replaces the claim it quotes; if nothing matches, the correction is the fact.
+    A blow-by-blow combat line is not a scene; with a fights list, it is kept there as (where it falls in
+    happened, text), so the note can still say who fought, why and how it ended.
     """
     happened: list[str] = []
     open_: list[str] = []
@@ -393,7 +419,11 @@ def _settle(claims: list[dict]) -> tuple[list[str], list[str]]:
         if status not in CLAIM_STATUS or not text:
             continue
         fixes = claim.get("fixes") if isinstance(claim.get("fixes"), str) else ""
-        if status == "joke" or _play_by_play(text):
+        if status == "joke":
+            continue
+        if _play_by_play(text):
+            if fights is not None and status == "happened":
+                fights.append((len(happened), text))
             continue
         if status == "open" and _NOT_OPEN.search(text):
             continue
@@ -506,14 +536,16 @@ def _moments(value, part: str, loud: list[float], seen: set[str]) -> list[tuple[
     return out
 
 
-def _note(value: dict, happened: list[str], open_: list[str]) -> tuple[list[str], list[str], list[str]]:
+def _note(
+    value: dict, happened: list[str], open_: list[str], fight_details: list[str] = ()
+) -> tuple[list[str], list[str], list[str]]:
     """Scenes, still-open, highlights for the page.
 
     A scene that does not use the claims' own words is dropped. A highlight that is not one of the
     scenes is dropped. If the model returns nothing usable, the page gets the claims themselves,
     capped, never the unfiltered list.
     """
-    source = "\n".join([*happened, *open_])
+    source = "\n".join([*happened, *open_, *fight_details])
     scenes = [s for s in _lines(value.get("scenes") if isinstance(value, dict) else None) if _grounded(s, source)]
     if not scenes:
         scenes = _spread(happened, NOTE_MAX)
@@ -597,6 +629,43 @@ def transcript_lines(record: dict) -> tuple[list[str], str]:
     cast += [f"- {c} is a player character, played by {p}." for p, c in sorted(characters.items())]
     cast.append('- "Unknown voice" is a speaker the app could not identify.')
     return lines, "\n".join(cast)
+
+
+def evidence(sentence: str, lines: list[str], width: int = EVIDENCE_LINES) -> str:
+    """The stretch of transcript lines that shares the most of a sentence's content words, or "".
+
+    Distinctive words (names, "mallet", "alarms") pin a scene to where it was played; the window is
+    wide enough to hold who did what first. Fewer than 3 shared words: no evidence.
+    """
+    want = _words(sentence)
+    if not want or not lines:
+        return ""
+    has = [_words(line) & want for line in lines]
+    best, best_at = 0, 0
+    for start in range(0, max(1, len(lines) - width + 1), max(1, width // 4)):
+        covered = len(set().union(*has[start : start + width]))
+        if covered > best:
+            best, best_at = covered, start
+    if best < min(3, len(want)):
+        return ""
+    return "\n".join(lines[best_at : best_at + width])[:EVIDENCE_CHARS]
+
+
+def around(at: str, lines: list[str], seconds: float = 60.0) -> str:
+    """Transcript lines within a minute either side of a timestamp like 2:04:53."""
+    try:
+        t = _seconds(at)
+    except ValueError:
+        return ""
+    near = []
+    for line in lines:
+        clock = line.split(" ", 1)[0]
+        try:
+            if abs(_seconds(clock) - t) <= seconds:
+                near.append(line)
+        except ValueError:
+            continue
+    return "\n".join(near)[:EVIDENCE_CHARS]
 
 
 def glossary_brief(vault: Vault, limit: int = 300) -> str:
@@ -908,13 +977,22 @@ class Memory:
             part, here, found = f.result()
             moments += _moments(found.get("moments"), part, here, seen_moments)[:PART_MOMENTS]
 
-        happened, open_ = _settle(claims)
+        fights: list[tuple[int, str]] = []
+        happened, open_ = _settle(claims, fights)
         moments = moments[:MAX_MOMENTS]
-        settled = "\n".join(f"- {e}" for e in happened) or "- (nothing happened)"
+        rows = [f"- {e}" for e in happened]
+        for at, text in reversed(fights):  # in place, so each fight sits between what led to it and what followed
+            rows.insert(at, f"- (fight detail) {text}")
+        settled = "\n".join(rows) or "- (nothing happened)"
         if open_:
             settled += "\n\nStill open:\n" + "\n".join(f"- {e}" for e in open_)
         summary = self.llm.json(NOTE_SYSTEM, settled, NOTE_SCHEMA)
-        scenes, open_, highlights = _note(summary, happened, open_)
+        scenes, open_, highlights = _note(summary, happened, open_, [t for _, t in fights])
+        scenes, moments, fixed = self._verify(scenes, moments, lines)
+        if fixed:  # the paragraph was written from the unchecked scenes
+            recap = self.llm.json(RECAP_SYSTEM, "\n".join(f"- {s}" for s in scenes), RECAP_SCHEMA, 600)
+            if _grounded(_text(recap.get("summary"), 2000), "\n".join(scenes)):
+                summary["summary"] = recap["summary"]
         title = _text(summary.get("title"), 60) or "Session"
         date = time.strftime("%Y-%m-%d", time.localtime(s["started_at"]))
         sid = s["id"]
@@ -990,10 +1068,12 @@ class Memory:
             "",
             link_names(_text(summary.get("summary"), 2000), self.vault),
             "",
-            "## Highlights",
-            *(f"- {h}" for h in highlights),
-            "",
-            *(["## Table moments", *(f"- {m}" for m in moments_linked), ""] if moments_linked else []),
+            # Highlights are copies of scenes; a session with table moments shows those instead of repeating itself.
+            *(
+                ["## Table moments", *(f"- {m}" for m in moments_linked), ""]
+                if moments_linked
+                else ["## Highlights", *(f"- {h}" for h in highlights), ""]
+            ),
             "## Still open",
             *(f"- {e}" for e in open_linked),
             "",
@@ -1012,6 +1092,43 @@ class Memory:
         job.note = str(path.relative_to(self.vault.root))
         job.done = job.total
         job.message = f"Wrote {path.stem}; {job.suggested} suggestions to review"
+
+    def _verify(
+        self, scenes: list[str], moments: list[tuple[str, str]], lines: list[str]
+    ) -> tuple[list[str], list[tuple[str, str]], bool]:
+        """Check each scene and moment against the transcript lines it came from; apply corrections.
+
+        The note is written from one-line log entries, never the transcript, so a wrong actor or count in
+        the log survives to the page. Each check is small and independent, so they run side by side. A
+        correction must still be grounded in its lines; "unsupported" keeps the sentence (the window
+        may simply be the wrong one), "fixed" replaces it.
+        """
+        glossary = glossary_brief(self.vault)
+        jobs = [("scene", i, s, evidence(s, lines)) for i, s in enumerate(scenes)]
+        jobs += [("moment", i, t, around(at, lines)) for i, (at, t) in enumerate(moments)]
+
+        def check(job):
+            _, _, sentence, excerpt = job
+            if not excerpt:
+                return job, {}
+            user = f"Glossary:\n{glossary}\n\nTranscript lines:\n{excerpt}\n\nSentence: {sentence}"
+            return job, self.llm.json(VERIFY_SYSTEM, user, VERIFY_SCHEMA, 400)
+
+        scenes, moments = list(scenes), list(moments)
+        fixed = False
+        with concurrent.futures.ThreadPoolExecutor(max_workers=VERIFY_WORKERS, thread_name_prefix="verify") as pool:
+            for (kind, i, sentence, excerpt), out in pool.map(check, jobs):
+                better = _text(out.get("sentence"), CLAIM_TEXT_MAX)
+                if out.get("verdict") != "fixed" or not better or better == sentence:
+                    continue
+                if not _grounded(better, f"{excerpt}\n{sentence}"):
+                    continue
+                fixed = True
+                if kind == "scene":
+                    scenes[i] = better
+                else:
+                    moments[i] = (moments[i][0], better)
+        return scenes, moments, fixed
 
     def _session_note(self, sid: str) -> Path | None:
         """A session's existing write-up (re-running one replaces it instead of adding another)."""

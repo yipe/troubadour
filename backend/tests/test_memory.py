@@ -744,3 +744,60 @@ def test_write_up_page_lists_table_moments(setup):
     assert job.state == "done", job.message
     page = next((vault.root / "Sessions").glob("*.md")).read_text()
     assert "## Table moments\n- 00:05 [[Elara]] was knocked unconscious by the dragon." in page
+    assert "## Highlights" not in page  # the moments take its place; highlights only repeat the scenes
+
+
+def test_fight_blows_reach_the_note_in_place_but_not_the_page():
+    fights: list[tuple[int, str]] = []
+    claims = [
+        {"text": "A tomb tapper rose from the dune.", "kind": "did", "fixes": ""},
+        {"text": "Sathrin attacked the tomb tapper with his hammer.", "kind": "did", "fixes": ""},
+        {"text": "The tomb tapper gave Elara a sending stone.", "kind": "did", "fixes": ""},
+    ]
+    happened, _ = mem._settle(claims, fights)
+    assert happened == ["A tomb tapper rose from the dune.", "The tomb tapper gave Elara a sending stone."]
+    assert fights == [(1, "Sathrin attacked the tomb tapper with his hammer.")]
+    scene = "Sathrin attacked the tomb tapper with his hammer and was badly hurt."
+    scenes, _, _ = mem._note({"scenes": [scene]}, happened, [], [t for _, t in fights])
+    assert scenes == [scene]  # grounded in the fight details
+
+
+def test_evidence_finds_where_a_scene_was_played():
+    lines = [f"0:{i:02d} GM Mika: The road goes on." for i in range(60)]
+    lines[45] = "0:45 GM Mika: The tomb tapper wants its mallet."
+    lines[47] = "0:47 Elara (played by Theo): I help it lift the mallet. Smiley pats me."
+    window = mem.evidence("Elara helped Smiley lift the tomb tapper's mallet.", lines, width=8)
+    assert "0:45" in window
+    assert "0:47" in window
+    assert mem.evidence("Kessia sang to the dragon.", lines, width=8) == ""
+
+
+def test_around_takes_a_minute_either_side():
+    lines = ["1:00 GM: a", "2:30 GM: b", "3:00 GM: c", "5:00 GM: d"]
+    assert mem.around("2:40", lines) == "2:30 GM: b\n3:00 GM: c"
+
+
+def test_verify_applies_a_grounded_fix_and_ignores_an_invented_one(setup):
+    vault, sessions, make = setup
+    lines = [
+        "1:57:30 GM Mika: Sathrin swings his hammer at the tomb tapper first.",
+        "1:57:40 GM Mika: The tomb tapper hits back.",
+    ]
+
+    class LLM:
+        def json(self, system, user, schema, max_tokens=4000):
+            if "attacked the party" in user:
+                return {"verdict": "fixed", "sentence": "Sathrin attacked the tomb tapper first, and the tomb tapper hit back."}
+            return {"verdict": "fixed", "sentence": "A purple dragon ate everyone at the wedding."}  # nothing like the lines
+
+    m = make(LLM())
+    scenes, _, fixed = m._verify(
+        ["The tomb tapper attacked the party, then Sathrin swung his hammer.", "Sathrin swung his hammer at the tomb tapper."],
+        [],
+        lines,
+    )
+    assert fixed
+    assert scenes == [
+        "Sathrin attacked the tomb tapper first, and the tomb tapper hit back.",
+        "Sathrin swung his hammer at the tomb tapper.",
+    ]

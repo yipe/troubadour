@@ -762,7 +762,7 @@ folder as an Obsidian vault, or read it with any agent: it is plain markdown.
 ## Layout
 
 - `People/`, `Places/`, `Factions/`, `Items/`, `Lore/`: one note per named thing. The file name is its name.
-- `Sessions/`: one page per played session (summary, highlights, what happened), with the full
+- `Sessions/`: one page per played session (summary, table moments or highlights, what happened), with the full
   transcript in `Sessions/Transcripts/`.
 - `Notes/`: session notes pasted into Troubadour, kept word for word.
 - `Facts.md`: things that hold across the whole campaign.
