@@ -1035,3 +1035,22 @@ def test_coverage_is_not_fooled_by_a_name_every_later_line_repeats():
     ]
     scenes = ["The party crossed the bone field slowly.", "A huge creature stood atop the dune."]
     assert mem._reached(scenes, happened) == 1
+
+
+def test_a_note_missing_only_its_last_lines_is_still_finished(setup):
+    vault, sessions, make = setup
+    places = [f"Waystone{c}" for c in "ABCDEFGHIJKLMNOPQRST"]
+    log = [f"The party camped beside {p} and traded near {p} market." for p in places]
+    asked = []
+
+    class LLM:
+        def json(self, system, user, schema, max_tokens=4000):
+            if system is mem.NOTE_SYSTEM:
+                asked.append(user)
+                return {"title": "x", "summary": "x", "scenes": log[:17]} if len(asked) == 1 else {"scenes": log[17:]}
+            return {}
+
+    m = make(LLM())
+    _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in log]])
+    assert len(asked) == 2  # 3 of 20 lines (15%) were missing: still finished
+    assert "WaystoneT" in scenes[-1]

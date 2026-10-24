@@ -42,7 +42,9 @@ CHUNK_CHARS = 6000  # notes per extraction call; small enough for a fast, carefu
 PART_FACTS, PART_NAMES, PART_CLAIMS, FINAL_PART_CLAIMS = 5, 8, 20, 30
 NOTE_MAX = 16  # scenes on the session page; the claim list is notes for that pass, not the page
 PLAY_BEFORE_S, PLAY_AFTER_S, PLAY_CHARS, PLAY_NUMBERS = 120, 1200, 14000, 12  # a play's transcript window
-COVERED = 0.8  # a note whose scenes stop before this share of the log gets a second call for the rest
+ENDING_LINES = (
+    2  # a note whose scenes leave this many log lines unreached gets a second call for the rest (the ending matters at any size)
+)
 STORY_SO_FAR = 15  # earlier log lines shown to each later part
 PART_MOMENTS, MAX_MOMENTS = 5, 12
 LLM_RETRIES, LLM_RETRY_WAIT_S = 2, 5.0  # a server error or dropped connection is tried again
@@ -1270,7 +1272,7 @@ class Memory:
             reply = self.llm.json(NOTE_SYSTEM, settled, NOTE_SCHEMA)
             scenes = [s for s in _lines(reply.get("scenes"), MAX_ITEMS) if isinstance(s, str)]
             reached = _reached(scenes, happened)
-            if reached >= 0 and len(happened) - reached - 1 >= max(2, (1 - COVERED) * len(happened)):
+            if reached >= 0 and len(happened) - reached - 1 >= ENDING_LINES:
                 # The note ran out of scenes partway (stopped at the creature on the dune, before the fight and
                 # the ending): write the rest from the log lines it never got to.
                 rest = "\n".join(f"- {e}" for e in happened[reached + 1 :])
