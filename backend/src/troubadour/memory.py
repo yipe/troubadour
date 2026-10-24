@@ -1345,7 +1345,7 @@ class Memory:
             if not excerpt:
                 return job, {}
             user = f"Glossary:\n{glossary}\n\nTranscript lines:\n{excerpt}\n\nSentence: {sentence}"
-            return job, self.llm.json(VERIFY_SYSTEM, user, VERIFY_SCHEMA, 400)
+            return job, self.llm.json(VERIFY_SYSTEM, user, VERIFY_SCHEMA, 800)
 
         scenes, moments = list(scenes), list(moments)
         fixed = False
