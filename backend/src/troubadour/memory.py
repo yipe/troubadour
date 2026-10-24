@@ -43,6 +43,7 @@ PART_FACTS, PART_NAMES, PART_CLAIMS, FINAL_PART_CLAIMS = 5, 8, 20, 30
 NOTE_MAX = 16  # scenes on the session page; the claim list is notes for that pass, not the page
 STORY_SO_FAR = 15  # earlier log lines shown to each later part
 PART_MOMENTS, MAX_MOMENTS = 5, 12
+LLM_RETRIES, LLM_RETRY_WAIT_S = 2, 5.0  # a server error or dropped connection is tried again
 REASONING_HEADROOM = 12000  # extra max_tokens for a thinking model's reasoning
 NOTE_SEGMENT_PARTS = 16  # parts (~15 min each) per note call; at 4 (3 segments for 2.4 h) the note lost beats (24 vs 27 of 40)
 MOMENT_WORKERS = 2
@@ -115,14 +116,34 @@ class MemoryLLM:
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "response_format": {"type": "json_schema", "json_schema": {"name": "out", "strict": True, "schema": schema}},
         }
-        r = self.client.post(f"{self.url}/chat/completions", headers=self._headers(), json=payload)
+        r = self._post(payload)
         # OpenRouter and some local servers reject reasoning_effort or strict json_schema.
         if r.status_code == 400:
             payload.pop("reasoning_effort", None)
             payload.pop("response_format", None)
-            r = self.client.post(f"{self.url}/chat/completions", headers=self._headers(), json=payload)
+            r = self._post(payload)
         if r.is_error:
             raise RuntimeError(f"The model server couldn't answer ({r.status_code}): {_server_error(r)}")
+        return self._parse(r, payload)
+
+    def _post(self, payload: dict) -> httpx.Response:
+        """One request, tried again on a server error or dropped connection: a write-up is a few dozen
+        calls over 20 minutes, and one LM Studio hiccup (a 500, seen in practice) used to sink it all."""
+        for attempt in range(LLM_RETRIES + 1):
+            try:
+                r = self.client.post(f"{self.url}/chat/completions", headers=self._headers(), json=payload)
+            except (httpx.ConnectError, httpx.RemoteProtocolError):  # not a timeout: that would just wait again
+                if attempt == LLM_RETRIES:
+                    raise
+            else:
+                if r.status_code < 500 or attempt == LLM_RETRIES:
+                    return r
+                log.warning("model server error %s; trying again", r.status_code)
+            time.sleep(LLM_RETRY_WAIT_S)
+        raise AssertionError("unreachable")
+
+    @staticmethod
+    def _parse(r: httpx.Response, payload: dict) -> dict:
         choice = r.json()["choices"][0]
         content = choice["message"]["content"] or ""
         if choice.get("finish_reason") == "length":

@@ -573,7 +573,8 @@ def test_llm_healthy_when_server_down():
     assert _llm_with(handler).healthy() is False
 
 
-def test_an_lm_studio_error_says_why():
+def test_an_lm_studio_error_says_why(monkeypatch):
+    monkeypatch.setattr(mem, "LLM_RETRY_WAIT_S", 0)
     body = {
         "error": "Error in iterating prediction stream: Traceback ...\n  File x\nThe model has crashed without additional information. (Exit code: null)"
     }
@@ -894,3 +895,13 @@ def test_evidence_joins_two_places_a_scene_spans():
     )
     assert "smashed autognome" in window
     assert "bury everyone" in window
+
+
+def test_a_server_hiccup_is_tried_again(monkeypatch):
+    monkeypatch.setattr(mem, "LLM_RETRY_WAIT_S", 0)
+    replies = [
+        httpx.Response(500, text="</html>"),
+        httpx.Response(200, json={"choices": [{"message": {"content": '{"ok": 1}'}}]}),
+    ]
+    llm = _llm_with(lambda request: replies.pop(0))
+    assert llm.json("s", "u", {}) == {"ok": 1}
