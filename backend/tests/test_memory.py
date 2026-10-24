@@ -816,3 +816,41 @@ def test_a_thinking_model_gets_room_for_its_reasoning(monkeypatch):
     monkeypatch.setattr(mem.config, "MEMORY_REASONING", "low")
     llm.json("s", "u", {}, 500)
     assert sent == [500, 500 + mem.REASONING_HEADROOM]
+
+
+def test_a_long_session_is_noted_in_segments_that_all_reach_the_page(setup, monkeypatch):
+    vault, sessions, make = setup
+    monkeypatch.setattr(mem, "TRANSCRIPT_CHUNK_CHARS", 60)  # one line per part
+    monkeypatch.setattr(mem, "NOTE_SEGMENT_PARTS", 2)
+    sid = _session(sessions, lines=[f"Line {i} of the night." for i in range(5)])  # 5 parts: segments of 2 and 3
+    notes = []
+
+    class LLM:
+        def json(self, system, user, schema, max_tokens=4000):
+            if system is mem.WRITEUP_SYSTEM:
+                n = user.count("Line ")  # which part this is, from its one transcript line
+                beat = user.split("Transcript:\n", 1)[1].split(": ", 1)[1].split(" of")[0]
+                return (
+                    {"log": [{"text": f"The party reached the {beat.lower()} marker stone.", "kind": "did", "fixes": ""}]}
+                    if n
+                    else {}
+                )
+            if system is mem.NOTE_SYSTEM:
+                notes.append(user)
+                marks = [l[2:] for l in user.splitlines() if l.startswith("- ")]
+                return {"title": "x", "summary": "x", "scenes": marks}
+            if system is mem.TOP_SYSTEM:
+                return {"title": "The Long Road", "summary": "The party reached the line 0 marker stone.", "highlights": []}
+            return {}
+
+    m = make(LLM())
+    job = m.write_up(sid)
+    while job.state in ("queued", "running"):
+        time.sleep(0.01)
+    assert job.state == "done", job.message
+    assert len(notes) == 2
+    assert any("part 1 of 2" in n and "goes on after it" in n for n in notes)
+    assert any("part 2 of 2" in n and "end of the session" in n for n in notes)
+    page = next((vault.root / "Sessions").glob("*.md")).read_text()
+    assert "line 0 marker" in page
+    assert "line 4 marker" in page  # the last segment's scenes reach the page too

@@ -44,6 +44,7 @@ NOTE_MAX = 16  # scenes on the session page; the claim list is notes for that pa
 STORY_SO_FAR = 15  # earlier log lines shown to each later part
 PART_MOMENTS, MAX_MOMENTS = 5, 12
 REASONING_HEADROOM = 12000  # extra max_tokens for a thinking model's reasoning
+NOTE_SEGMENT_PARTS = 4  # parts (~15 min each) per note call on a long session
 MOMENT_WORKERS = 2
 VERIFY_WORKERS = 4  # scene/moment checks at once (LM Studio --parallel 4)
 EVIDENCE_LINES, EVIDENCE_CHARS = (
@@ -196,6 +197,14 @@ corrected sentence (same meaning otherwise, no longer, nothing added that the li
 "unsupported" if these lines do not show it at all. Answer with JSON only."""
 
 RECAP_SCHEMA = _obj({"summary": STR})
+
+TOP_SCHEMA = _obj({"title": STR, "summary": STR, "highlights": STRS})
+
+TOP_SYSTEM = """You get the scenes of a Dungeons & Dragons session, in order. Write:
+summary: one paragraph, at most 120 words, past tense, plain, using only these scenes. End where the last scene ends.
+highlights: 3 to 6 sentences copied from the scenes, the ones the players will retell. Not the scenery.
+title: 2-5 words, no date.
+Answer with JSON only."""
 
 RECAP_SYSTEM = """You get the scenes of a Dungeons & Dragons session, in order. Write summary: one paragraph, at
 most 120 words, past tense, plain, using only these scenes. End where the last scene ends. Answer with JSON only."""
@@ -943,6 +952,7 @@ class Memory:
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=MOMENT_WORKERS, thread_name_prefix="moments")
         pass_b = [pool.submit(find_moments, part) for part in parts]
         pool.shutdown(wait=False)  # queued calls still run; their results are read after pass A
+        by_part: list[list[dict]] = []  # each part's log, so a long session's note can be written in segments
         for i, part in enumerate(parts):
             prompt = f"Who is at the table:\n{cast}\n\nGlossary:\n{glossary_brief(self.vault)}\n\n"
             # The previous parts' log, so a part that starts mid-scene knows who is who (the rider
@@ -958,7 +968,8 @@ class Memory:
             out = self.llm.json(WRITEUP_SYSTEM, prompt + f"Transcript:\n{part}", WRITEUP_SCHEMA)
             raw = out.get("log") or out.get("claims") or []
             part_claims = [c for c in raw if isinstance(c, dict) and _text(c.get("text"), CLAIM_TEXT_MAX)]
-            claims += part_claims[: FINAL_PART_CLAIMS if last else PART_CLAIMS]
+            by_part.append(part_claims[: FINAL_PART_CLAIMS if last else PART_CLAIMS])
+            claims += by_part[-1]
             part_facts = [
                 (about, text)
                 for f in out.get("facts") or []
@@ -984,17 +995,8 @@ class Memory:
             part, here, found = f.result()
             moments += _moments(found.get("moments"), part, here, seen_moments)[:PART_MOMENTS]
 
-        fights: list[tuple[int, str]] = []
-        happened, open_ = _settle(claims, fights)
         moments = moments[:MAX_MOMENTS]
-        rows = [f"- {e}" for e in happened]
-        for at, text in reversed(fights):  # in place, so each fight sits between what led to it and what followed
-            rows.insert(at, f"- (fight detail) {text}")
-        settled = "\n".join(rows) or "- (nothing happened)"
-        if open_:
-            settled += "\n\nStill open:\n" + "\n".join(f"- {e}" for e in open_)
-        summary = self.llm.json(NOTE_SYSTEM, settled, NOTE_SCHEMA)
-        scenes, open_, highlights = _note(summary, happened, open_, [t for _, t in fights])
+        summary, scenes, open_, highlights = self._write_note(by_part)
         scenes, moments, fixed = self._verify(scenes, moments, lines)
         if fixed:  # the paragraph was written from the unchecked scenes
             recap = self.llm.json(RECAP_SYSTEM, "\n".join(f"- {s}" for s in scenes), RECAP_SCHEMA, 600)
@@ -1099,6 +1101,44 @@ class Memory:
         job.note = str(path.relative_to(self.vault.root))
         job.done = job.total
         job.message = f"Wrote {path.stem}; {job.suggested} suggestions to review"
+
+    def _write_note(self, by_part: list[list[dict]]) -> tuple[dict, list[str], list[str], list[str]]:
+        """(note reply, scenes, still open, highlights) from each part's log.
+
+        One note call over a long session's whole log covers its first half and drops the rest (8k-char
+        parts, 18 of them: the page stopped at the bone field). So a long session is noted in segments of
+        NOTE_SEGMENT_PARTS parts, side by side, and one last call titles and sums up their scenes.
+        """
+        segments = [sum(by_part[i : i + NOTE_SEGMENT_PARTS], []) for i in range(0, len(by_part), NOTE_SEGMENT_PARTS)]
+        if len(segments) > 1 and len(by_part) % NOTE_SEGMENT_PARTS == 1:  # a lone last part joins the one before
+            segments[-2:] = [segments[-2] + segments[-1]]
+
+        def note(k: int) -> tuple[dict, list[str], list[str], list[str]]:
+            fights: list[tuple[int, str]] = []
+            happened, open_ = _settle(segments[k], fights)
+            rows = [f"- {e}" for e in happened]
+            for at, text in reversed(fights):  # in place: between what led to each fight and what followed
+                rows.insert(at, f"- (fight detail) {text}")
+            settled = "\n".join(rows) or "- (nothing happened)"
+            if open_:
+                settled += "\n\nStill open:\n" + "\n".join(f"- {e}" for e in open_)
+            if len(segments) > 1:
+                ends = "It is the end of the session." if k == len(segments) - 1 else "The session goes on after it."
+                settled = f"This log is part {k + 1} of {len(segments)} of the session. {ends} Write 3 to 6 scenes.\n\n{settled}"
+            reply = self.llm.json(NOTE_SYSTEM, settled, NOTE_SCHEMA)
+            return (reply, *_note(reply, happened, open_, [t for _, t in fights]))
+
+        if len(segments) == 1:
+            return note(0)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=VERIFY_WORKERS, thread_name_prefix="note") as pool:
+            notes = list(pool.map(note, range(len(segments))))
+        scenes = [s for _, sc, _, _ in notes for s in sc]
+        open_ = list(dict.fromkeys(o for _, _, op, _ in notes for o in op))
+        top = self.llm.json(TOP_SYSTEM, "\n".join(f"- {s}" for s in scenes), TOP_SCHEMA, 1500)
+        blob = "\n".join(scenes)
+        highlights = [h for h in _lines(top.get("highlights"), 6) if _grounded(h, blob) and not _play_by_play(h)]
+        summary = _text(top.get("summary"), 2000)
+        return {"title": top.get("title"), "summary": summary if _grounded(summary, blob) else ""}, scenes, open_[:8], highlights
 
     def _verify(
         self, scenes: list[str], moments: list[tuple[str, str]], lines: list[str]
