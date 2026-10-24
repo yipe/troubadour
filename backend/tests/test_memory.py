@@ -647,7 +647,7 @@ def test_settle_keeps_the_correction_and_drops_the_joke():
 def test_transcript_lines_label_gm_characters_and_unknown_voices():
     players = [
         {"id": "g", "name": "Mika", "character": "DM", "is_gm": True},
-        {"id": "k", "name": "Kris", "character": "Auggie", "is_gm": False},
+        {"id": "k", "name": "Wren", "character": "Auggie", "is_gm": False},
     ]
 
     def msg(speaker, pid, text, character=None):
@@ -656,16 +656,16 @@ def test_transcript_lines_label_gm_characters_and_unknown_voices():
     msgs = [
         msg("Mika", "g", "A smashed autognome."),
         msg("Mika", "g", "Hello.", "Magenta"),  # the GM voicing an NPC
-        msg("Kris", "k", "I look."),  # untagged line: still the player's character
+        msg("Wren", "k", "I look."),  # untagged line: still the player's character
         msg("Voice", None, "Smiley."),
     ]
     lines, cast = mem.transcript_lines({"players": players, "messages": msgs})
     assert lines[0].endswith("GM Mika: A smashed autognome.")
     assert lines[1].endswith("GM Mika voicing Magenta: Hello.")
-    assert lines[2].endswith("Auggie (played by Kris): I look.")
+    assert lines[2].endswith("Auggie (played by Wren): I look.")
     assert lines[3].endswith("Unknown voice: Smiley.")
     assert "Mika is the GM" in cast
-    assert "Auggie is a player character, played by Kris" in cast
+    assert "Auggie is a player character, played by Wren" in cast
     assert "DM is a player character" not in cast
     assert "Magenta is a player character" not in cast
 
@@ -708,7 +708,7 @@ def test_a_fight_with_an_outcome_is_kept_but_a_lone_attack_is_not():
 
 
 def test_moments_need_a_real_timestamp_and_a_roll_or_a_loud_table():
-    part = "12:00 GM Mika: The tomb tapper swings.\n\n12:20 Sathrin (played by Adrian): No! No!"
+    part = "12:00 GM Mika: The tomb tapper swings.\n\n12:20 Sathrin (played by Jules): No! No!"
     seen: set[str] = set()
     got = mem._moments(
         [
@@ -970,13 +970,13 @@ def test_a_note_that_stops_early_is_finished_from_the_rest_of_the_log(setup):
 def test_play_numbers_pull_damage_and_knockouts_from_table_talk():
     window = (
         "1:58:00 GM Mika: It hits Sathrin for 27 damage.\n"
-        "2:05:05 Sathrin (played by Adrian): No! No! I'm at one hit point.\n"
-        "2:17:13 Sathrin (played by Adrian): taking 50 odd damage in six seconds."
+        "2:05:05 Sathrin (played by Jules): No! No! I'm at one hit point.\n"
+        "2:17:13 Sathrin (played by Jules): taking 50 odd damage in six seconds."
     )
     assert mem.play_numbers(window) == [
         "1:58:00 GM Mika: 27 damage",
-        "2:05:05 Sathrin (played by Adrian): one hit point",
-        "2:17:13 Sathrin (played by Adrian): 50 odd damage",
+        "2:05:05 Sathrin (played by Jules): one hit point",
+        "2:17:13 Sathrin (played by Jules): 50 odd damage",
     ]
 
 
@@ -984,7 +984,7 @@ def test_a_play_window_reaches_the_talk_after_the_fight():
     lines = [f"1:{m:02d}:00 GM Mika: The wind blows over the sand." for m in range(40, 60)]
     lines += [f"2:{m:02d}:00 GM Mika: The wind blows over the sand." for m in range(0, 30)]
     lines[17] = "1:57:00 GM Mika: Sathrin swings his hammer at the tomb tapper and Auggie casts witch bolt."
-    lines[37] = "2:17:00 Sathrin (played by Adrian): taking 50 odd damage in six seconds."
+    lines[37] = "2:17:00 Sathrin (played by Jules): taking 50 odd damage in six seconds."
     window = mem.play_window("Sathrin attacked the tomb tapper with his hammer; Auggie cast witch bolt.", lines)
     assert window.splitlines()[0].startswith("1:5")  # starts a little before the fight
     assert "50 odd damage" in window  # and runs past it
@@ -994,7 +994,7 @@ def test_fight_details_reach_the_note_as_one_play(setup):
     vault, sessions, make = setup
     lines = [
         "1:57:00 GM Mika: Sathrin swings his hammer at the tomb tapper.",
-        "2:17:00 Sathrin (played by Adrian): 50 odd damage.",
+        "2:17:00 Sathrin (played by Jules): 50 odd damage.",
     ]
     log = [
         {"text": "A tomb tapper rose from the dune.", "kind": "did", "fixes": ""},

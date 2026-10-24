@@ -271,9 +271,9 @@ Do not merge two different things because they share a word. A body, an arm, or 
 found is not a person who has been traveling with them. If you are not sure they are the same, write
 them as separate lines. "Can repair" or "offered to" is an aside, not a did, unless the transcript shows
 they did it.
-Lines are labelled with who spoke. "Auggie (played by Kris)" is a player character speaking. A player
-character's name is never the name of something the party finds: a dead or broken autognome (a kind of
-creature) is not the player character Auggie, even if the names sound alike. The GM speaks for every NPC
+Lines are labelled with who spoke. "Pip (played by Theo)" is a player character speaking. A player
+character is never something the party finds: a dead or broken creature of the same kind as a player
+character is not that player character, even if the words sound alike. The GM speaks for every NPC
 and monster; a familiar belongs to the player whose character has it. Say who did a thing and who it
 happened to exactly as the transcript does; if you cannot tell, leave the person out. Keep the proper
 name of every NPC the table meets. Do not treat a word you cannot place (a place name that is not in the
@@ -695,7 +695,7 @@ def chunks(text: str, size: int) -> list[str]:
 
 def transcript_lines(record: dict) -> tuple[list[str], str]:
     """(lines, cast) for the LLM, from the session's roster: the GM, each character with its player, and
-    unidentified voices are labelled so "Kris as Auggie" can't be read as Auggie being a thing in the
+    unidentified voices are labelled so "Theo as Pip" can't be read as Pip being a thing in the
     scene. Roster, not per-line tags: the app tags a few of the GM's lines with an NPC they voiced."""
     roster = {p["id"]: p for p in record.get("players") or []}
     gms = {p["name"] for p in roster.values() if p.get("is_gm")}
