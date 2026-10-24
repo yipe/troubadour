@@ -564,7 +564,9 @@ def _note(
     capped, never the unfiltered list.
     """
     source = "\n".join([*happened, *open_, *fight_details])
-    scenes = [s for s in _lines(value.get("scenes") if isinstance(value, dict) else None) if _grounded(s, source)]
+    # All of them first, then spread to the cap: keeping the first NOTE_MAX dropped the fight and the ending.
+    scenes = [s for s in _lines(value.get("scenes") if isinstance(value, dict) else None, MAX_ITEMS) if _grounded(s, source)]
+    scenes = _spread(scenes, NOTE_MAX)
     if not scenes:
         scenes = _spread(happened, NOTE_MAX)
     scene_blob = "\n".join(scenes)

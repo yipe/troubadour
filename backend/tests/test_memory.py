@@ -866,3 +866,10 @@ def test_verify_drops_a_moment_its_minute_does_not_show(setup):
     m = make(LLM())
     _, moments, _ = m._verify([], [("2:04:53", "The Shadow Lord grabbed Sathrin.")], ["2:04:53 GM Mika: It grabs Sathrin."])
     assert moments == []
+
+
+def test_a_long_note_keeps_its_ending():
+    happened = [f"The party reached marker stone {i}." for i in range(30)]
+    scenes, _, _ = mem._note({"scenes": list(happened)}, happened, [])
+    assert len(scenes) == mem.NOTE_MAX
+    assert scenes[-1] == "The party reached marker stone 29."
