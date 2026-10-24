@@ -1022,3 +1022,16 @@ def test_fight_details_reach_the_note_as_one_play(setup):
         "- (play) Sathrin attacked the tomb tapper with his hammer and took 50 damage.",
         "- The tomb tapper dug into the ground and left.",
     ]
+
+
+def test_coverage_is_not_fooled_by_a_name_every_later_line_repeats():
+    happened = [
+        "The party crossed the bone field slowly.",
+        "The party spotted a huge creature atop the dune.",
+        "The creature tripped and slid down the dune.",
+        "Elara helped the huge creature atop the dune lift its mallet.",
+        "Sathrin attacked the huge creature atop the dune with his hammer.",
+        "The huge creature atop the dune burrowed away and left.",
+    ]
+    scenes = ["The party crossed the bone field slowly.", "A huge creature stood atop the dune."]
+    assert mem._reached(scenes, happened) == 1

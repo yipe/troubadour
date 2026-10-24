@@ -512,14 +512,20 @@ def _settle(claims: list[dict], fights: list[tuple[int, str]] | None = None) -> 
 
 
 def _reached(scenes: list[str], happened: list[str]) -> int:
-    """Index of the latest log line any scene draws on (most shared content words, at least 3), or -1."""
-    last = -1
+    """How far into the log the scenes get: the index of the last log line matched, or -1.
+
+    Scenes are in order, so they are matched walking forward: each to the earliest best line after the
+    previous match (at least 3 shared content words). Matching each to its latest look-alike made a scene
+    about "a creature on the dune" seem to reach the end, where every line mentions the creature.
+    """
+    cursor = -1
     for scene in scenes:
         words = _words(scene)
-        best = max(range(len(happened)), key=lambda i: (len(words & _words(happened[i])), i), default=-1)  # ties: the later line
+        ahead = range(cursor + 1, len(happened))
+        best = max(ahead, key=lambda i: (len(words & _words(happened[i])), -i), default=-1)
         if best >= 0 and len(words & _words(happened[best])) >= 3:
-            last = max(last, best)
-    return last
+            cursor = best
+    return cursor
 
 
 def _spread(items: list[str], n: int) -> list[str]:
