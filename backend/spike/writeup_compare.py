@@ -56,7 +56,9 @@ def main(sid: str, models: list[str]) -> None:
             time.sleep(1)
         print(f"{spec}: {job.state} in {time.monotonic() - t:.0f}s {job.message}")
         note = mem._session_note(sid)
-        (out / (spec.replace("/", "_") + os.environ.get("WU_TAG", "") + ".md")).write_text(note.read_text() if note else job.message)
+        (out / (spec.replace("/", "_") + os.environ.get("WU_TAG", "") + ".md")).write_text(
+            note.read_text() if note else job.message
+        )
         (out / (spec.replace("/", "_") + os.environ.get("WU_TAG", "") + ".calls.json")).write_text(json.dumps(calls, indent=1))
         shutil.rmtree(work)
 
