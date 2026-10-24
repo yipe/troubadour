@@ -905,3 +905,24 @@ def test_a_server_hiccup_is_tried_again(monkeypatch):
     ]
     llm = _llm_with(lambda request: replies.pop(0))
     assert llm.json("s", "u", {}) == {"ok": 1}
+
+
+def test_an_overlong_note_is_merged_not_cut(setup):
+    vault, sessions, make = setup
+    sid = _session(sessions, lines=["We walk."])
+    many = [f"The party reached marker stone {i}." for i in range(30)]
+    merged = [f"The party reached marker stones {i} and {i + 1}." for i in range(0, 30, 2)]
+
+    class LLM:
+        def json(self, system, user, schema, max_tokens=4000):
+            if system is mem.WRITEUP_SYSTEM:
+                return {"log": [{"text": t, "kind": "did", "fixes": ""} for t in many]}
+            if system is mem.NOTE_SYSTEM:
+                return {"title": "x", "summary": "x", "scenes": many}
+            if system is mem.MERGE_SYSTEM:
+                return {"scenes": merged}
+            return {}
+
+    m = make(LLM())
+    _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in many]])
+    assert scenes == merged  # every stone survives, 15 lines instead of 30
