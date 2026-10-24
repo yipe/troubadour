@@ -212,14 +212,25 @@ WRITEUP_SCHEMA = _obj(
     }
 )
 
-VERIFY_SCHEMA = _obj({"verdict": STR, "sentence": STR})
+VERIFY_SCHEMA = _obj(
+    {
+        "checks": {"type": "array", "items": _obj({"question": STR, "answer": STR, "agrees": {"type": "boolean"}})},
+        "verdict": STR,
+        "sentence": STR,
+    }
+)
 
+# Factored chain-of-verification (Dhuliawala et al. 2023): the claims become short questions answered
+# from the lines alone, before any verdict. A bare "is this sentence right?" mostly came back "unsupported".
 VERIFY_SYSTEM = """You check one sentence from a Dungeons & Dragons session note against the transcript lines it
 came from (speech-to-text, so names and words can be misheard; the glossary has the right spellings).
-Check: who did it and who it happened to, who acted first, the order of events, numbers and counts, and
-names. verdict: "ok" if the transcript supports it; "fixed" if part of it is wrong, with sentence = the
-corrected sentence (same meaning otherwise, no longer, nothing added that the lines do not show);
-"unsupported" if these lines do not show it at all. Answer with JSON only."""
+checks: first turn each claim in the sentence into a short question: who did it, who it happened to, who
+acted first, how many, which place, what order (e.g. "Who used Mending on the autognome?"). Answer each
+from the transcript lines alone, without looking at the sentence again; agrees = whether that answer
+matches the sentence. Then verdict: "ok" if every check agrees; "fixed" if a check disagrees and the
+lines show the right answer, with sentence = the corrected sentence (same meaning otherwise, no longer,
+nothing added that the lines do not show); "unsupported" if the lines do not show it at all.
+Answer with JSON only."""
 
 RECAP_SCHEMA = _obj({"summary": STR})
 
@@ -1349,7 +1360,7 @@ class Memory:
             if not excerpt:
                 return job, {}
             user = f"Glossary:\n{glossary}\n\nTranscript lines:\n{excerpt}\n\nSentence: {sentence}"
-            return job, self.llm.json(VERIFY_SYSTEM, user, VERIFY_SCHEMA, 800)
+            return job, self.llm.json(VERIFY_SYSTEM, user, VERIFY_SCHEMA, 1500)
 
         scenes, moments = list(scenes), list(moments)
         fixed = False
