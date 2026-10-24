@@ -235,22 +235,11 @@ def _saved(engine, sid, started, text, seconds=1.0):
         },
         "players": [{"id": "p", "name": "Nora", "character": "", "is_gm": True, "color": "#fff"}],
         "voices": [],
-        "messages": [
-            {
-                "id": "m",
-                "t_start": 0.0,
-                "t_end": 0.5,
-                "speaker": "Nora",
-                "player_id": "p",
-                "character": None,
-                "voice_id": None,
-                "provisional": False,
-                "confidence": 1,
-                "text": text,
-                "fixes": [],
-                "level_db": None,
-            }
-        ],
+        "messages": [{
+            "id": "m", "t_start": 0.0, "t_end": 0.5, "speaker": "Nora", "player_id": "p",
+            "character": None, "voice_id": None, "provisional": False, "confidence": 1,
+            "text": text, "fixes": [], "level_db": None,
+        }],
     }
     (folder / "transcript.json").write_text(json.dumps(record))
     (folder / "meta.json").write_text(json.dumps(record["session"]))

@@ -322,12 +322,7 @@ def put_models(body: ModelsIn):
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     _apply_models(chosen)
-    return {
-        **chosen,
-        "speaker": settings.SPEAKER_MODEL,
-        "whisper_options": list(settings.WHISPER_OPTIONS),
-        "installed": _llm_choices(),
-    }
+    return {**chosen, "speaker": settings.SPEAKER_MODEL, "whisper_options": list(settings.WHISPER_OPTIONS), "installed": _llm_choices()}
 
 
 @app.get("/api/state")
@@ -403,7 +398,9 @@ def improve_transcript(sid: str):
         return memory.submit(
             "improve",
             sid,
-            lambda job: improve.run(job, engine, sid, lambda: memory.emit(job), model=settings.current()["whisper_improve"]),
+            lambda job: improve.run(
+                job, engine, sid, lambda: memory.emit(job), model=settings.current()["whisper_improve"]
+            ),
         ).to_json()
 
 

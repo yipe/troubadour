@@ -217,7 +217,9 @@ def reassign_speakers(job, engine: Engine, sid: str, emit: Callable[[], None]) -
     record["messages"] = messages
     why = []
     if heard_next:
-        why.append(f"{heard_next} because the next person started within 1.5 s and the old label was hearing them")
+        why.append(
+            f"{heard_next} because the next person started within 1.5 s and the old label was hearing them"
+        )
     if rematch:
         why.append(f"{rematch} because the line's own audio matches someone else")
     summary = f"{changed} of {len(messages)} lines reassigned"
