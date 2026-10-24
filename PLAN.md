@@ -256,9 +256,8 @@ re-reads notes when their file changes (edits in Obsidian count).
   isn't an everyday word, filler or contraction.
 - Review decisions go through `POST …/entities/{name}/review` (changes, not list
   replacement: rapid clicks can't undo each other); the UI also serializes its writes.
-- Model: `TROUBADOUR_MEMORY_MODEL` (default the loaded gemma; `TROUBADOUR_MEMORY_REASONING` for
-  gpt-oss). On the 2.6 h session gemma wrote it up in ~5 min; gpt-oss-120b took 19 min
-  and proposed 3× more, noisier, suggestions.
+- Model: `TROUBADOUR_MEMORY_MODEL`, default `swift-qwen3.8-27b` (see "Session write-ups" below for
+  how it was chosen); `TROUBADOUR_MEMORY_REASONING` stays `none` (thinking was 20× slower).
 - **Live use**: new lines go through the glossary corrector (heard-as → name, name
   casing unless the name is an English word), and Whisper is prompted with the
   table's names (Setup, voices panel, confirmed entries) plus the last two lines.
@@ -273,6 +272,84 @@ re-reads notes when their file changes (edits in Obsidian count).
   excerpts it got. Runs on its own thread beside the write-up queue (it never writes). On the
   real 2.6 h campaign: ~2 s per question with gemma. Gemma closes its JSON string early at an
   inner double quote, so it's told to quote with single quotes.
+
+## Session write-ups (method, measurements, research)
+
+`Memory._write_up` turns a saved transcript into a session page. Read this before changing it: most
+of what is here fixed a measured failure, and several obvious-looking changes were tried and lost.
+
+**Pipeline** (`memory.py`), all calls JSON-schema, temperature 0:
+1. **Input**: `transcript_lines` labels every line from the session's roster: `GM <name>` (or
+   `GM <name> voicing <NPC>`), `<Character> (played by <player>)`, `Unknown voice`; a short cast list
+   goes in every prompt. The roster, not per-line tags: the app tags a few GM lines with an NPC, and a
+   line-count guess made the GM a player. `apply_heard_as` replaces confirmed misheard spellings before
+   any model reads them (a hint alone left the misheard word in the page). The glossary brief carries
+   each entry's description, so "Delara" reads as an NPC, not a misspelling of Elara.
+2. **Pass A, the log** (one call per ~12k-char part, in order): `did / open / aside / retracted /
+   corrected` lines, facts, new names, spellings. Each part also gets the last 15 logged lines ("story
+   so far"), so a part that starts mid-scene knows who is who (incremental summarization).
+3. **Pass B, table moments** (one call per part, run beside pass A since it needs no story so far):
+   nat 20s/1s, crits, big damage, knockouts, and whatever set the table off at a *loud moment*.
+   `hot_spots` finds those by code: reactions ("No!", "oh my god", laughter), several speakers, louder
+   than the session's median `level_db`, many short lines, per 30 s. A moment must sit at a real
+   timestamp of its part, and name a roll/number/knockout or fall in a loud stretch.
+4. **Plays**: blow-by-blow combat lines (`_play_by_play`) never reach the page, but they are kept in
+   place. Each cluster gets `_play`: a deterministic transcript window from 2 min before to 20 min after
+   (`play_window`) plus every damage number and knockout said in it (`play_numbers`, regex), and one
+   call writes one sentence: who fought whom, who struck first, why, standout damage, how it ended.
+   Motive and damage were said minutes later in another part ("50 odd damage in six seconds"), so no
+   per-part call could see them.
+5. **Note**: one call turns the log (with `(play)` lines in place) into scenes, still-open items and a
+   one- or two-sentence summary. Code then checks coverage: `_reached` walks the scenes forward against
+   the log; if they stop before the last 20%, a second call writes the rest. Too many scenes go to a
+   merge call (refused if it crams scenes past the length cap), never a prefix cut. Notes are split
+   into segments only past 16 parts (~4 h).
+6. **Verify** (chain-of-verification): each scene is checked against its best transcript windows
+   (`evidence`, up to two 40-line windows by shared content words) and each moment against ±60 s
+   (`around`); a grounded "fixed" replaces it, an unsupported moment is dropped.
+
+**How it is measured.** `spike/writeup_compare.py SID model[@reasoning] …` writes each model's page and
+every prompt/reply to `/tmp/writeup_compare/` from a scratch copy of the vault (`WU_CHUNK`, `WU_TAG`
+knobs). Grading was first holistic (a strong model with a rubric: ±4 points of noise between identical
+pipelines), then atomic: ~40 weighted facts from the players' own notes and a list of known errors,
+scored as recall of the weighted facts plus precision (each repeated known error or unsupported claim
+costs points). The gold set is campaign-private and is not committed; build one per test session from
+the players' corrections of a generated page. Runs at temperature 0 are reproducible (two identical
+runs gave byte-identical pages) unless other requests share the GPU.
+
+**Findings on a real 2.4 h session** (holistic 40-point scale unless noted):
+- Model: swift-qwen3.8-27b 27, gemma-4-31b 24, qwen3.8-27b 22, qwen3.6-35b-a3b 20, gemma-4-26b-a4b 18,
+  gpt-oss-120b 11, laguna-xs 7, gpt-oss-20b 7 (empty), nemotron-3-super timed out. Swift takes ~10 min
+  per session alone vs gemma's ~2.
+- Thinking (`reasoning_effort=low`): 3.6 h instead of 10 min, and replies still overran 16k tokens.
+- 8k parts instead of 12k: worse, because the note then covered only the first half (since fixed by
+  the coverage check; worth re-testing).
+- Segmenting the note (3 segments): lost beats. The single note plus coverage check is better.
+- Silent losses found and fixed: the note kept its first N scenes (the ending fell off), the fallback
+  did the same, any line saying "attacked" was deleted, a reply cut off at max_tokens parsed to `{}`,
+  and one LM Studio 500 killed a 20-minute job (now retried).
+- What the model still gets wrong is mostly the transcript's fault: misheard names ("tomb town",
+  "Thayrin"), garbled crosstalk. Fixing the glossary (heard-as spellings) fixed those immediately.
+
+**Research this is built on** (and where to look next):
+- Incremental vs hierarchical summarization of long text: BooookScore, Chang et al. 2023,
+  arXiv:2310.00785. Incremental keeps more detail; hierarchical reads better. We use incremental (story
+  so far); our segmented note was the hierarchical variant and lost detail, as the paper predicts.
+- Lost in the Middle, Liu et al. 2023, arXiv:2307.03172: long inputs lose their middle and end; the
+  note pass dropping the session's end is this, hence the code-checked coverage.
+- Chain-of-Verification (CoVe), Dhuliawala et al. 2023, arXiv:2309.11495: verify with independent,
+  specific questions. Our verify pass asks "is this sentence right?" and mostly says "unsupported";
+  the next step is per-scene questions (who struck first, how many, who was hurt).
+- FActScore, Min et al. 2023, arXiv:2305.14251; FASTFACT (EMNLP 2025 Findings) and LongDocFACTScore
+  (LREC 2024): score by atomic facts (recall against a reference, precision of claims made). Our
+  benchmark does this.
+- Chain of Density, Adams et al. 2023, arXiv:2309.04269: rewrite a summary to add missing entities
+  without growing it; a fit for the one-line summary.
+- Query-focused meeting summarization, QMSum, Zhong et al. 2021, arXiv:2104.05938: targeted questions
+  beat a generic summary; candidate: per-character "what happened to X" passes.
+- Self-consistency / best-of-N: several samples, pick by code (coverage, grounding, numbers that
+  match the transcript); candidate "try harder" mode, together with a second pass offset by half a
+  part so no scene straddles a part boundary.
 
 ## Troubadour Cloud (opt-in backup)
 
