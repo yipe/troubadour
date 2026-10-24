@@ -299,7 +299,7 @@ NOTE_SYSTEM = """You write the session note a Dungeons & Dragons player would te
 You get a log of what the table settled, already in order, and a short list of what is still open. You do
 not have the transcript. If the log does not say it, it did not happen.
 
-scenes: 6 to 14 sentences, in order. One scene or one fight is one sentence: what changed and how it
+scenes: 8 to 16 sentences, in order (a long session needs the high end). One scene or one fight is one sentence: what changed and how it
 ended. Keep two log lines separate when they are about different things, even if they share a name. A
 found body or a found object is not a person who was already with the party. Keep the proper name of
 every named NPC the log mentions. Join two events with "then", never "leading to" or "prompting", unless
