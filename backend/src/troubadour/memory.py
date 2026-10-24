@@ -41,6 +41,7 @@ CHUNK_CHARS = 6000  # notes per extraction call; small enough for a fast, carefu
 # and anything still unresolved can land as their own claims.
 PART_FACTS, PART_NAMES, PART_CLAIMS, FINAL_PART_CLAIMS = 5, 8, 20, 30
 NOTE_MAX = 16  # scenes on the session page; the claim list is notes for that pass, not the page
+PLAY_BEFORE_S, PLAY_AFTER_S, PLAY_CHARS, PLAY_NUMBERS = 120, 1200, 14000, 12  # a play's transcript window
 COVERED = 0.8  # a note whose scenes stop before this share of the log gets a second call for the rest
 STORY_SO_FAR = 15  # earlier log lines shown to each later part
 PART_MOMENTS, MAX_MOMENTS = 5, 12
@@ -220,6 +221,15 @@ corrected sentence (same meaning otherwise, no longer, nothing added that the li
 
 RECAP_SCHEMA = _obj({"summary": STR})
 
+PLAY_SCHEMA = _obj({"sentence": STR})
+
+PLAY_SYSTEM = """You sum up a fight or a stretch of play in a Dungeons & Dragons session in one sentence of at
+most 60 words. You get the blow-by-blow log lines, the damage and hit points said at the table, and the
+transcript around it (speech-to-text; the GM speaks for every NPC and monster). Say who fought whom (or who
+tried what), who struck first, why if anyone said why, any standout damage with its number and who took it,
+and how it ended: who was knocked out or badly hurt, who fled, what changed. Only what the lines show.
+Answer with JSON only."""
+
 MERGE_SCHEMA = _obj({"scenes": STRS})
 
 MERGE_SYSTEM = f"""You get the scenes of a Dungeons & Dragons session, in order: too many for the page. Merge them
@@ -342,8 +352,10 @@ and not someone's arrival that the log goes on to describe.
 highlights: 3 to 6 sentences copied from scenes, the ones the players will retell. Not the scenery.
 summary: one or two sentences, at most 50 words, past tense: the session's main turns, the way a player
 would answer "what happened last time?". Using only the scenes; the scenes are listed under it, so don't retell them.
-"(fight detail)" lines are blow-by-blow combat. Never copy them; turn each fight into one scene: who
-fought whom, why if the log says why, any standout damage (give the number), and how it ended.
+"(play) lines already sum up a fight or a stretch of play: keep each as its own scene, in its place, close
+to word for word. "(fight detail)" lines are blow-by-blow combat. Never copy them; turn each fight into one
+scene: who fought whom, why if the log says why, any standout damage (give the number), and how it ended.
+A debt, a price, a cut or a deal is part of a scene's point; keep it.
 The last scene says where the session ended: where they stopped, camped or rested.
 When you shorten a scene, keep its point: who is better off and who is saddled with a debt, a burden
 or a problem stays as the log says; never turn a debt or a burden into a benefit.
@@ -716,6 +728,46 @@ def apply_heard_as(lines: list[str], entities: list[Entity]) -> list[str]:
     return [fix(line) for line in lines]
 
 
+def play_window(text: str, lines: list[str]) -> str:
+    """Transcript lines from PLAY_BEFORE_S before the stretch that best matches text to PLAY_AFTER_S after."""
+    found = evidence(text, lines)
+    if not found:
+        return ""
+    want = _words(text)
+    anchor = next((line for line in found.splitlines() if len(_words(line) & want) >= 2), found)
+    try:
+        t0 = _seconds(anchor.split(" ", 1)[0])
+    except ValueError:
+        return ""
+    near = []
+    for line in lines:
+        try:
+            t = _seconds(line.split(" ", 1)[0])
+        except ValueError:
+            continue
+        if t0 - PLAY_BEFORE_S <= t <= t0 + PLAY_AFTER_S:
+            near.append(line)
+    return "\n".join(near)[:PLAY_CHARS]
+
+
+_DAMAGE = re.compile(
+    r"\b\d{1,3}\s*(?:odd\s+|points?\s+of\s+)?damage\b|\b(?:one|zero|0|1)\s+hit\s+points?\b|"
+    r"\bunconscious\b|\bknocked\s+(?:out|down)\b|\bdeath\s+saves?\b|\bone[- ]shot\w*",
+    re.I,
+)
+
+
+def play_numbers(window: str) -> list[str]:
+    """ "2:17:13 Sathrin: 50 odd damage" lines: every damage number and knockout said in a window."""
+    out = []
+    for line in window.splitlines():
+        clock, _, rest = line.partition(" ")
+        who, _, said = rest.partition(": ")
+        for m in _DAMAGE.finditer(said):
+            out.append(f"{clock} {who}: {m.group(0)}")
+    return list(dict.fromkeys(out))[:PLAY_NUMBERS]
+
+
 def evidence(sentence: str, lines: list[str], width: int = EVIDENCE_LINES) -> str:
     """The stretches of transcript lines that share the most of a sentence's content words, or "".
 
@@ -1072,7 +1124,7 @@ class Memory:
             moments += _moments(found.get("moments"), part, here, seen_moments)[:PART_MOMENTS]
 
         moments = moments[:MAX_MOMENTS]
-        summary, scenes, open_, highlights = self._write_note(by_part)
+        summary, scenes, open_, highlights = self._write_note(by_part, lines)
         scenes, moments, fixed = self._verify(scenes, moments, lines)
         if fixed:  # the paragraph was written from the unchecked scenes
             recap = self.llm.json(RECAP_SYSTEM, "\n".join(f"- {s}" for s in scenes), RECAP_SCHEMA, 600)
@@ -1178,7 +1230,7 @@ class Memory:
         job.done = job.total
         job.message = f"Wrote {path.stem}; {job.suggested} suggestions to review"
 
-    def _write_note(self, by_part: list[list[dict]]) -> tuple[dict, list[str], list[str], list[str]]:
+    def _write_note(self, by_part: list[list[dict]], lines: list[str] = ()) -> tuple[dict, list[str], list[str], list[str]]:
         """(note reply, scenes, still open, highlights) from each part's log.
 
         One note call over a long session's whole log covers its first half and drops the rest (8k-char
@@ -1193,8 +1245,16 @@ class Memory:
             fights: list[tuple[int, str]] = []
             happened, open_ = _settle(segments[k], fights)
             rows = [f"- {e}" for e in happened]
-            for at, text in reversed(fights):  # in place: between what led to each fight and what followed
-                rows.insert(at, f"- (fight detail) {text}")
+            clusters: dict[int, list[str]] = {}  # blow-by-blow lines that sit together are one play
+            for at, text in fights:
+                clusters.setdefault(at, []).append(text)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=VERIFY_WORKERS, thread_name_prefix="play") as pool:
+                summed = dict(zip(clusters, pool.map(lambda texts: self._play(texts, lines), clusters.values()), strict=True))
+            for at in sorted(clusters, reverse=True):  # in place: between what led to it and what followed
+                if summed[at]:
+                    rows.insert(at, f"- (play) {summed[at]}")
+                else:
+                    rows[at:at] = [f"- (fight detail) {t}" for t in clusters[at]]
             settled = "\n".join(rows) or "- (nothing happened)"
             if open_:
                 settled += "\n\nStill open:\n" + "\n".join(f"- {e}" for e in open_)
@@ -1224,7 +1284,8 @@ class Memory:
                 whole = all(len(s) <= CLAIM_TEXT_MAX for s in raw)
                 if whole and NOTE_MAX // 2 <= len(fewer) <= NOTE_MAX:
                     reply["scenes"] = fewer
-            return (reply, *_note(reply, happened, open_, [t for _, t in fights]))
+            details = [t for _, t in fights] + [p for p in summed.values() if p]
+            return (reply, *_note(reply, happened, open_, details))
 
         if len(segments) == 1:
             return note(0)
@@ -1237,6 +1298,27 @@ class Memory:
         highlights = [h for h in _lines(top.get("highlights"), 6) if _grounded(h, blob) and not _play_by_play(h)]
         summary = _text(top.get("summary"), 2000)
         return {"title": top.get("title"), "summary": summary if _grounded(summary, blob) else ""}, scenes, open_[:8], highlights
+
+    def _play(self, texts: list[str], lines: list[str]) -> str:
+        """One sentence for a fight or a stretch of play from its blow-by-blow log lines, or "".
+
+        The log never says why a fight started or how badly someone was hurt when that was said minutes
+        later, in another part ("50 odd damage in six seconds", 15 minutes on). So the transcript window
+        runs from just before the play to PLAY_AFTER_S after it, and the damage and hit-point talk in it
+        is pulled out by pattern and handed over as numbers to use.
+        """
+        window = play_window(" ".join(texts), lines)
+        if not window:
+            return ""
+        said = play_numbers(window)
+        user = "Log lines (blow-by-blow):\n" + "\n".join(f"- {t}" for t in texts)
+        if said:
+            user += "\n\nDamage and hit points said at the table:\n" + "\n".join(f"- {n}" for n in said)
+        out = self.llm.json(PLAY_SYSTEM, f"{user}\n\nTranscript:\n{window}", PLAY_SCHEMA, 600)
+        sentence = _text(out.get("sentence"), CLAIM_TEXT_MAX)
+        if not sentence or len(out.get("sentence") or "") > CLAIM_TEXT_MAX:
+            return ""
+        return sentence if _grounded(sentence, "\n".join(texts) + "\n" + window) else ""
 
     def _verify(
         self, scenes: list[str], moments: list[tuple[str, str]], lines: list[str]

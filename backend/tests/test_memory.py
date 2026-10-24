@@ -965,3 +965,60 @@ def test_a_note_that_stops_early_is_finished_from_the_rest_of_the_log(setup):
     assert "Pankora" in asked[1].split("The rest of the log:")[1]
     assert "Crested" not in asked[1].split("The rest of the log:")[1]
     assert scenes[-1] == log[-1]
+
+
+def test_play_numbers_pull_damage_and_knockouts_from_table_talk():
+    window = (
+        "1:58:00 GM Mika: It hits Sathrin for 27 damage.\n"
+        "2:05:05 Sathrin (played by Adrian): No! No! I'm at one hit point.\n"
+        "2:17:13 Sathrin (played by Adrian): taking 50 odd damage in six seconds."
+    )
+    assert mem.play_numbers(window) == [
+        "1:58:00 GM Mika: 27 damage",
+        "2:05:05 Sathrin (played by Adrian): one hit point",
+        "2:17:13 Sathrin (played by Adrian): 50 odd damage",
+    ]
+
+
+def test_a_play_window_reaches_the_talk_after_the_fight():
+    lines = [f"1:{m:02d}:00 GM Mika: The wind blows over the sand." for m in range(40, 60)]
+    lines += [f"2:{m:02d}:00 GM Mika: The wind blows over the sand." for m in range(0, 30)]
+    lines[17] = "1:57:00 GM Mika: Sathrin swings his hammer at the tomb tapper and Auggie casts witch bolt."
+    lines[37] = "2:17:00 Sathrin (played by Adrian): taking 50 odd damage in six seconds."
+    window = mem.play_window("Sathrin attacked the tomb tapper with his hammer; Auggie cast witch bolt.", lines)
+    assert window.splitlines()[0].startswith("1:5")  # starts a little before the fight
+    assert "50 odd damage" in window  # and runs past it
+
+
+def test_fight_details_reach_the_note_as_one_play(setup):
+    vault, sessions, make = setup
+    lines = [
+        "1:57:00 GM Mika: Sathrin swings his hammer at the tomb tapper.",
+        "2:17:00 Sathrin (played by Adrian): 50 odd damage.",
+    ]
+    log = [
+        {"text": "A tomb tapper rose from the dune.", "kind": "did", "fixes": ""},
+        {"text": "Sathrin attacked the tomb tapper with his hammer.", "kind": "did", "fixes": ""},
+        {"text": "The tomb tapper attacked Sathrin.", "kind": "did", "fixes": ""},
+        {"text": "The tomb tapper dug into the ground and left.", "kind": "did", "fixes": ""},
+    ]
+    notes = []
+
+    class LLM:
+        def json(self, system, user, schema, max_tokens=4000):
+            if system is mem.PLAY_SYSTEM:
+                assert "50 odd damage" in user
+                return {"sentence": "Sathrin attacked the tomb tapper with his hammer and took 50 damage."}
+            if system is mem.NOTE_SYSTEM:
+                notes.append(user)
+                return {"title": "x", "summary": "x", "scenes": []}
+            return {}
+
+    m = make(LLM())
+    m._write_note([log], lines)
+    rows = notes[0].splitlines()
+    assert rows == [
+        "- A tomb tapper rose from the dune.",
+        "- (play) Sathrin attacked the tomb tapper with his hammer and took 50 damage.",
+        "- The tomb tapper dug into the ground and left.",
+    ]
