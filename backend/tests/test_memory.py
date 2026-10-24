@@ -926,3 +926,21 @@ def test_an_overlong_note_is_merged_not_cut(setup):
     m = make(LLM())
     _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in many]])
     assert scenes == merged  # every stone survives, 15 lines instead of 30
+
+
+def test_a_merge_that_crams_scenes_is_refused(setup):
+    vault, sessions, make = setup
+    many = [f"The party reached marker stone {i}." for i in range(30)]
+    crammed = ["The party reached marker stone 0.", " ".join(many)]  # 2 scenes, the last far past the cap
+
+    class LLM:
+        def json(self, system, user, schema, max_tokens=4000):
+            if system is mem.NOTE_SYSTEM:
+                return {"title": "x", "summary": "x", "scenes": many}
+            if system is mem.MERGE_SYSTEM:
+                return {"scenes": [*crammed, *many[:8]]}
+            return {}
+
+    m = make(LLM())
+    _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in many]])
+    assert scenes[-1] == "The party reached marker stone 29."  # fell back to the spread; the ending survives

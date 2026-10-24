@@ -222,7 +222,7 @@ RECAP_SCHEMA = _obj({"summary": STR})
 MERGE_SCHEMA = _obj({"scenes": STRS})
 
 MERGE_SYSTEM = f"""You get the scenes of a Dungeons & Dragons session, in order: too many for the page. Merge them
-into at most {NOTE_MAX} scenes, in order. Join scenes that are one event (a fight and how it ended, finding
+into at most {NOTE_MAX} scenes, in order, each one sentence of at most 60 words. Join scenes that are one event (a fight and how it ended, finding
 something and what they did with it); never drop an event, a named person, a number or how the session
 ended. Change no facts and add none. Answer with JSON only."""
 
@@ -1191,8 +1191,11 @@ class Memory:
             if len(scenes) > NOTE_MAX:
                 # Spreading 42 scenes down to 16 dropped whole events (the mallet, the long rest); merging keeps them.
                 merged = self.llm.json(MERGE_SYSTEM, "\n".join(f"- {s}" for s in scenes), MERGE_SCHEMA, 3000)
-                fewer = [s for s in _lines(merged.get("scenes"), MAX_ITEMS) if _grounded(s, "\n".join(scenes))]
-                if NOTE_MAX // 2 <= len(fewer) <= NOTE_MAX:
+                raw = [s for s in merged.get("scenes") or [] if isinstance(s, str)]
+                fewer = [s for s in _lines(raw, MAX_ITEMS) if _grounded(s, "\n".join(scenes))]
+                # A merge that crams the rest of the session into one scene would be cut off at the length cap.
+                whole = all(len(s) <= CLAIM_TEXT_MAX for s in raw)
+                if whole and NOTE_MAX // 2 <= len(fewer) <= NOTE_MAX:
                     reply["scenes"] = fewer
             return (reply, *_note(reply, happened, open_, [t for _, t in fights]))
 
