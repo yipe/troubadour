@@ -201,13 +201,16 @@ RECAP_SCHEMA = _obj({"summary": STR})
 TOP_SCHEMA = _obj({"title": STR, "summary": STR, "highlights": STRS})
 
 TOP_SYSTEM = """You get the scenes of a Dungeons & Dragons session, in order. Write:
-summary: one paragraph, at most 120 words, past tense, plain, using only these scenes. End where the last scene ends.
+summary: one or two sentences, at most 50 words, past tense: the session's main turns, the way a player
+would answer "what happened last time?". Using only the scenes; the scenes are listed under it, so don't retell them.
 highlights: 3 to 6 sentences copied from the scenes, the ones the players will retell. Not the scenery.
 title: 2-5 words, no date.
 Answer with JSON only."""
 
-RECAP_SYSTEM = """You get the scenes of a Dungeons & Dragons session, in order. Write summary: one paragraph, at
-most 120 words, past tense, plain, using only these scenes. End where the last scene ends. Answer with JSON only."""
+RECAP_SYSTEM = """You get the scenes of a Dungeons & Dragons session, in order. Write
+summary: one or two sentences, at most 50 words, past tense: the session's main turns, the way a player
+would answer "what happened last time?". Using only the scenes; the scenes are listed under it, so don't retell them.
+Answer with JSON only."""
 
 WRITEUP_SYSTEM = """You turn a piece of a Dungeons & Dragons session's speech-to-text transcript into a
 plain log. You also get the campaign glossary. The transcript mishears names; spell them as the glossary
@@ -308,7 +311,8 @@ that only explains how they reached the thing that mattered.
 open: copy only the unresolved items. Not a plan, not a guess, not something the log already says was done,
 and not someone's arrival that the log goes on to describe.
 highlights: 3 to 6 sentences copied from scenes, the ones the players will retell. Not the scenery.
-summary: one paragraph, at most 120 words, past tense, plain, using only the scenes. End where the log ends.
+summary: one or two sentences, at most 50 words, past tense: the session's main turns, the way a player
+would answer "what happened last time?". Using only the scenes; the scenes are listed under it, so don't retell them.
 "(fight detail)" lines are blow-by-blow combat. Never copy them; turn each fight into one scene: who
 fought whom, why if the log says why, any standout damage (give the number), and how it ended.
 The last scene says where the session ended: where they stopped, camped or rested.
@@ -651,24 +655,48 @@ def transcript_lines(record: dict) -> tuple[list[str], str]:
     return lines, "\n".join(cast)
 
 
-def evidence(sentence: str, lines: list[str], width: int = EVIDENCE_LINES) -> str:
-    """The stretch of transcript lines that shares the most of a sentence's content words, or "".
+def apply_heard_as(lines: list[str], entities: list[Entity]) -> list[str]:
+    """Lines with each confirmed heard-as spelling replaced by its name ("Thayrin" → "Phaerimm").
 
-    Distinctive words (names, "mallet", "alarms") pin a scene to where it was played; the window is
-    wide enough to hold who did what first. Fewer than 3 shared words: no evidence.
+    The user confirmed these; a saved transcript predates some of them, and a hint alone left the model
+    writing the misheard word. Whole words only, after the speaker label.
+    """
+    swaps = {norm(h): e.name for e in entities for h in e.heard_as if len(norm(h)) >= 3}
+    if not swaps:
+        return lines
+    rx = re.compile(r"(?<![\w'])(" + "|".join(re.escape(h) for h in sorted(swaps, key=len, reverse=True)) + r")(?![\w'])", re.I)
+
+    def fix(line: str) -> str:
+        label, sep, text = line.partition(": ")
+        return label + sep + rx.sub(lambda m: swaps.get(norm(m.group(0)), m.group(0)), text) if sep else line
+
+    return [fix(line) for line in lines]
+
+
+def evidence(sentence: str, lines: list[str], width: int = EVIDENCE_LINES) -> str:
+    """The stretches of transcript lines that share the most of a sentence's content words, or "".
+
+    Distinctive words (names, "mallet", "alarms") pin a scene to where it was played; a window is wide
+    enough to hold who did what first. A scene often joins two moments (found the wagon, then buried
+    them), so a second window is added when it covers 2+ words the first lacks. Fewer than 3 shared
+    words: no evidence.
     """
     want = _words(sentence)
     if not want or not lines:
         return ""
     has = [_words(line) & want for line in lines]
-    best, best_at = 0, 0
-    for start in range(0, max(1, len(lines) - width + 1), max(1, width // 4)):
-        covered = len(set().union(*has[start : start + width]))
-        if covered > best:
-            best, best_at = covered, start
-    if best < min(3, len(want)):
+    starts = range(0, max(1, len(lines) - width + 1), max(1, width // 4))
+    cover = {s: set().union(*has[s : s + width]) for s in starts}
+    first = max(starts, key=lambda s: len(cover[s]))
+    if len(cover[first]) < min(3, len(want)):
         return ""
-    return "\n".join(lines[best_at : best_at + width])[:EVIDENCE_CHARS]
+    picked = [first]
+    rest = [s for s in starts if abs(s - first) >= width]
+    if rest:
+        second = max(rest, key=lambda s: len(cover[s] - cover[first]))
+        if len(cover[second] - cover[first]) >= 2:
+            picked.append(second)
+    return "\n...\n".join("\n".join(lines[s : s + width]) for s in sorted(picked))[:EVIDENCE_CHARS]
 
 
 def around(at: str, lines: list[str], seconds: float = 60.0) -> str:
@@ -925,6 +953,7 @@ class Memory:
         self.seed_known()
         s = record["session"]
         lines, cast = transcript_lines(record)
+        lines = apply_heard_as(lines, self.vault.entities())
         if not lines:
             raise ValueError("That session has no lines.")
         body = "\n".join(lines)

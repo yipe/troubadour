@@ -873,3 +873,24 @@ def test_a_long_note_keeps_its_ending():
     scenes, _, _ = mem._note({"scenes": list(happened)}, happened, [])
     assert len(scenes) == mem.NOTE_MAX
     assert scenes[-1] == "The party reached marker stone 29."
+
+
+def test_confirmed_heard_as_spellings_are_fixed_before_the_model_reads(tmp_path):
+    vault = Vault(tmp_path)
+    vault.create("Phaerimm", "creature", heard_as=["Thayrin"])
+    vault.create("Tomb Tapper", "creature", heard_as=["tomb town"])
+    lines = ["2:16:15 GM Mika: They fought the Thayrin. This thing is a tomb town.", "2:16:20 Thayrin (played by X): hi"]
+    out = mem.apply_heard_as(lines, vault.entities())
+    assert out[0] == "2:16:15 GM Mika: They fought the Phaerimm. This thing is a Tomb Tapper."
+    assert out[1] == lines[1]  # speaker labels are left alone
+
+
+def test_evidence_joins_two_places_a_scene_spans():
+    lines = [f"0:{i:02d} GM: The road goes on." for i in range(100)]
+    lines[5] = "0:05 GM: You find a wagon with a smashed autognome."
+    lines[90] = "0:90 GM: You dig a grave and bury everyone near the cactus."
+    window = mem.evidence(
+        "They found a smashed autognome in a wagon, then dug a grave and buried them by the cactus.", lines, width=10
+    )
+    assert "smashed autognome" in window
+    assert "bury everyone" in window
