@@ -59,13 +59,18 @@ export default function App() {
                   )}
                 >
                   {t.label}
-                  {t.id === "sessions" && running && <span className="size-1.5 rounded-full bg-emerald-500" />}
+                  {t.id === "sessions" && running && (
+                    <span className="size-1.5 rounded-full bg-emerald-500" />
+                  )}
                 </button>
               )
             })}
           </nav>
           {sessionStatus === "running" && (
-            <span className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-red-600" role="status">
+            <span
+              className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-red-600"
+              role="status"
+            >
               <span className="size-2.5 rounded-full bg-red-600 ring-2 ring-red-600/30" aria-hidden />
               RECORDING
             </span>

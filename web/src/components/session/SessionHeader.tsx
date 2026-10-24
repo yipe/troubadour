@@ -148,7 +148,12 @@ export function SessionHeader() {
                 {status === "paused" ? "Resume" : "Pause"}
               </Button>
             )}
-            <Button size="sm" variant="destructive" disabled={stopping || status === "stopping"} onClick={stop}>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={stopping || status === "stopping"}
+              onClick={stop}
+            >
               <Square /> Stop
             </Button>
           </>

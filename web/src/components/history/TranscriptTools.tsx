@@ -84,7 +84,9 @@ export function TranscriptTools({
       retranscribe: mine.filter((j) => j.kind === "retranscribe").at(-1),
     }
   }, [jobs, summary.id])
-  const running = (["improve", "spelling", "retranscribe"] as const).filter((k) => latest[k] && jobActive(latest[k]))
+  const running = (["improve", "spelling", "retranscribe"] as const).filter(
+    (k) => latest[k] && jobActive(latest[k]),
+  )
   const anyRunning = running.length > 0
 
   // Only jobs seen running here count as "just finished" (not a done job from an earlier visit).
@@ -148,7 +150,10 @@ export function TranscriptTools({
       {summary.audio && !confirmRetranscribe && action("retranscribe")}
       {confirmRetranscribe && (
         <div className="space-y-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground">
-          <p>A copy of this transcript is saved first. Speakers you fixed by hand can still move. The words stay.</p>
+          <p>
+            A copy of this transcript is saved first. Speakers you fixed by hand can still move. The words
+            stay.
+          </p>
           <div className="flex gap-2">
             <Button
               size="xs"
@@ -221,8 +226,12 @@ export function TranscriptTools({
               <p>
                 {retranscribed.changed} of {retranscribed.lines} lines reassigned.
               </p>
-              {retranscribed.heard_next > 0 && <p>{retranscribed.heard_next} were hearing the next person.</p>}
-              {retranscribed.rematch > 0 && <p>{retranscribed.rematch} match someone else on their own audio.</p>}
+              {retranscribed.heard_next > 0 && (
+                <p>{retranscribed.heard_next} were hearing the next person.</p>
+              )}
+              {retranscribed.rematch > 0 && (
+                <p>{retranscribed.rematch} match someone else on their own audio.</p>
+              )}
               <p>Previous copy: {retranscribed.backup}</p>
             </div>
           )}

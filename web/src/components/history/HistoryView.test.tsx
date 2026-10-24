@@ -226,9 +226,27 @@ describe("History", () => {
   })
 
   it("merges every session that starts within 10 minutes, and shows progress", async () => {
-    const early = savedSession({ id: "2026-10-08_120000-aaaa", started_at: 1_000, duration_s: 30, audio: true, lines: 1 })
-    const mid = savedSession({ id: "2026-10-08_120100-bbbb", started_at: 1_040, duration_s: 30, audio: true, lines: 1 })
-    const late = savedSession({ id: "2026-10-08_180000-cccc", started_at: 8_000, duration_s: 30, audio: true, lines: 1 })
+    const early = savedSession({
+      id: "2026-10-08_120000-aaaa",
+      started_at: 1_000,
+      duration_s: 30,
+      audio: true,
+      lines: 1,
+    })
+    const mid = savedSession({
+      id: "2026-10-08_120100-bbbb",
+      started_at: 1_040,
+      duration_s: 30,
+      audio: true,
+      lines: 1,
+    })
+    const late = savedSession({
+      id: "2026-10-08_180000-cccc",
+      started_at: 8_000,
+      duration_s: 30,
+      audio: true,
+      lines: 1,
+    })
     const posts: string[][] = []
     let release: () => void = () => {}
     const gate = new Promise<void>((resolve) => {
@@ -249,7 +267,10 @@ describe("History", () => {
     expect(screen.getByRole("button", { name: "Merge matching sessions" })).toBeEnabled()
     fireEvent.click(screen.getByRole("button", { name: "Merge matching sessions" }))
     await flush()
-    expect(screen.getByRole("progressbar", { name: "Merging matching sessions" })).toHaveAttribute("aria-valuemax", "1")
+    expect(screen.getByRole("progressbar", { name: "Merging matching sessions" })).toHaveAttribute(
+      "aria-valuemax",
+      "1",
+    )
     expect(posts).toEqual([[early.id, mid.id]])
     await act(async () => release())
     await flush()

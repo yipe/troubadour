@@ -13,7 +13,13 @@ import { api } from "@/lib/api"
 import type { ModelSettings } from "@/lib/types"
 
 /** Account-menu dialog: which Whisper and which local LLM this Mac uses. */
-export function ModelsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function ModelsDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const [settings, setSettings] = useState<ModelSettings | null>(null)
   const [whisper, setWhisper] = useState("")
   const [whisperImprove, setWhisperImprove] = useState("")
@@ -88,7 +94,12 @@ export function ModelsDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           </p>
         ) : (
           <div className="space-y-3 text-sm">
-            <Field label="Live transcription" value={whisper} options={whisperOptions} onChange={setWhisper} />
+            <Field
+              label="Live transcription"
+              value={whisper}
+              options={whisperOptions}
+              onChange={setWhisper}
+            />
             <Field
               label="Improve transcript"
               value={whisperImprove}
@@ -126,8 +137,8 @@ export function ModelsDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             />
             <p className="text-xs text-muted-foreground">
               A port means this Mac. A host and port reaches another machine. OpenRouter works as
-              https://openrouter.ai/api/v1 with an API key; leave the key empty for LM Studio. The model list is
-              what that server offers, plus any model you have chosen here before.
+              https://openrouter.ai/api/v1 with an API key; leave the key empty for LM Studio. The model list
+              is what that server offers, plus any model you have chosen here before.
             </p>
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>

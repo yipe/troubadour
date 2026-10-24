@@ -164,7 +164,12 @@ export function SessionViewer({ summary, onBack }: { summary: SavedSession; onBa
             </aside>
           ) : (
             <div className="flex w-full shrink-0 justify-center border-t py-2 lg:w-12 lg:flex-col lg:border-t-0 lg:border-l">
-              <Button variant="ghost" size="icon" aria-label="Show session tools" onClick={() => setRailOpen(true)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Show session tools"
+                onClick={() => setRailOpen(true)}
+              >
                 <AudioLines />
               </Button>
             </div>
@@ -209,47 +214,47 @@ function RecordBody({ record, seek }: { record: LoadedRecord; seek?: (t: number)
 
   return (
     <main className="flex min-h-[60vh] min-w-0 flex-1 flex-col lg:min-h-0">
-        {(record.players.length > 0 || talk.unassigned > 0) && (
-          <>
-            <div className="flex flex-wrap gap-3 px-4 py-3">
-              {record.players.map((p) => (
-                <PlayerBox key={p.id} person={p} seconds={talk.byPlayer.get(p.id) ?? 0} total={talk.total} />
-              ))}
-              <UnnamedShareChip seconds={talk.unassigned} total={talk.total} />
-            </div>
-            <div className="border-t" />
-          </>
-        )}
-        {record.lines.length === 0 ? (
-          <p className="flex flex-1 items-center justify-center text-muted-foreground">
-            This session has no lines.
-          </p>
-        ) : (
-          <div className="relative min-h-0 flex-1">
-            <Virtuoso
-              // Definite size from the first paint (see ChatFeed). Starts at the first line.
-              style={{ position: "absolute", inset: 0 }}
-              data={record.lines}
-              computeItemKey={(_, l) => l.id}
-              increaseViewportBy={400}
-              components={{ Header: TranscriptSpacer, Footer: TranscriptSpacer }}
-              itemContent={(i, l) => (
-                <TranscriptRow
-                  continued={l.speaker_key !== null && l.speaker_key === record.lines[i - 1]?.speaker_key}
-                  id={l.id}
-                  text={l.text}
-                  fixes={l.fixes}
-                  tStart={l.t_start}
-                  uncertain={l.uncertain}
-                  speaker={l.speaker}
-                  person={l.player}
-                  character={l.character && `as ${l.character}`}
-                  onTimestampClick={seek && (() => seek(l.t_start))}
-                />
-              )}
-            />
+      {(record.players.length > 0 || talk.unassigned > 0) && (
+        <>
+          <div className="flex flex-wrap gap-3 px-4 py-3">
+            {record.players.map((p) => (
+              <PlayerBox key={p.id} person={p} seconds={talk.byPlayer.get(p.id) ?? 0} total={talk.total} />
+            ))}
+            <UnnamedShareChip seconds={talk.unassigned} total={talk.total} />
           </div>
-        )}
+          <div className="border-t" />
+        </>
+      )}
+      {record.lines.length === 0 ? (
+        <p className="flex flex-1 items-center justify-center text-muted-foreground">
+          This session has no lines.
+        </p>
+      ) : (
+        <div className="relative min-h-0 flex-1">
+          <Virtuoso
+            // Definite size from the first paint (see ChatFeed). Starts at the first line.
+            style={{ position: "absolute", inset: 0 }}
+            data={record.lines}
+            computeItemKey={(_, l) => l.id}
+            increaseViewportBy={400}
+            components={{ Header: TranscriptSpacer, Footer: TranscriptSpacer }}
+            itemContent={(i, l) => (
+              <TranscriptRow
+                continued={l.speaker_key !== null && l.speaker_key === record.lines[i - 1]?.speaker_key}
+                id={l.id}
+                text={l.text}
+                fixes={l.fixes}
+                tStart={l.t_start}
+                uncertain={l.uncertain}
+                speaker={l.speaker}
+                person={l.player}
+                character={l.character && `as ${l.character}`}
+                onTimestampClick={seek && (() => seek(l.t_start))}
+              />
+            )}
+          />
+        </div>
+      )}
     </main>
   )
 }

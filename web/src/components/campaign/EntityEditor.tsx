@@ -8,7 +8,14 @@ import { NativeSelect } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
 import { api, type EntityPatch, type EntityReview } from "@/lib/api"
 import { ENTITY_TYPES, TYPE_LABEL, jobActive, jobCount } from "@/lib/campaign"
-import { attempt, campaignActions, deleteEntity, mergeEntity, mutateEntity, useCampaign } from "@/lib/campaignStore"
+import {
+  attempt,
+  campaignActions,
+  deleteEntity,
+  mergeEntity,
+  mutateEntity,
+  useCampaign,
+} from "@/lib/campaignStore"
 import type { Entity, EntityType } from "@/lib/types"
 import { ObsidianLink } from "./ObsidianLink"
 import { ChipEditor } from "./ChipEditor"
@@ -280,7 +287,9 @@ function LookForFacts({ name }: { name: string }) {
         Look for facts
         {running && <span className="text-muted-foreground tabular-nums">{jobCount(job)}</span>}
       </Button>
-      {job?.state === "error" && <span className="text-xs text-destructive">{job.message || "Fact search failed"}</span>}
+      {job?.state === "error" && (
+        <span className="text-xs text-destructive">{job.message || "Fact search failed"}</span>
+      )}
       {job?.state === "done" && <span className="text-xs text-muted-foreground">{job.message}</span>}
     </div>
   )

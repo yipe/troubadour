@@ -41,45 +41,45 @@ export function SavedSessionRow({
   return (
     <li data-session-id={s.id} className="py-1.5 first:pt-0 last:pb-0">
       <div className="flex items-start gap-2">
-      {onSelect && (
-        <input
-          type="checkbox"
-          className="mt-2"
-          aria-label={`Select session ${dateTime(s.started_at)}`}
-          checked={selected}
-          onChange={(e) => onSelect(s.id, e.target.checked)}
-        />
-      )}
-      <div className="min-w-0 flex-1">
-      <button
-        type="button"
-        onClick={() => actions.openSavedSession(s)}
-        className="-mx-2 block w-[calc(100%+1rem)] rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted/60"
-      >
-        <div className="flex items-baseline justify-between gap-2 text-sm">
-          <span className="font-medium">{dateTime(s.started_at)}</span>
-          <span className="flex items-center gap-2 font-mono text-xs text-muted-foreground tabular-nums">
-            {s.quality && (
-              <span
-                data-testid="quality-badge"
-                data-quality={s.quality}
-                role="img"
-                aria-label={VERDICT[s.quality].short}
-                title={VERDICT[s.quality].short}
-                className={cn("size-2 rounded-full", VERDICT[s.quality].dot)}
-              />
-            )}
-            {hms(s.duration_s)}
-          </span>
+        {onSelect && (
+          <input
+            type="checkbox"
+            className="mt-2"
+            aria-label={`Select session ${dateTime(s.started_at)}`}
+            checked={selected}
+            onChange={(e) => onSelect(s.id, e.target.checked)}
+          />
+        )}
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => actions.openSavedSession(s)}
+            className="-mx-2 block w-[calc(100%+1rem)] rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted/60"
+          >
+            <div className="flex items-baseline justify-between gap-2 text-sm">
+              <span className="font-medium">{dateTime(s.started_at)}</span>
+              <span className="flex items-center gap-2 font-mono text-xs text-muted-foreground tabular-nums">
+                {s.quality && (
+                  <span
+                    data-testid="quality-badge"
+                    data-quality={s.quality}
+                    role="img"
+                    aria-label={VERDICT[s.quality].short}
+                    title={VERDICT[s.quality].short}
+                    className={cn("size-2 rounded-full", VERDICT[s.quality].dot)}
+                  />
+                )}
+                {hms(s.duration_s)}
+              </span>
+            </div>
+            <p className="truncate text-xs text-muted-foreground">
+              {sourceLabel(s.source)} · {s.lines} lines
+            </p>
+          </button>
+          <div className="flex justify-end">
+            <SessionDownloads session={s} />
+          </div>
         </div>
-        <p className="truncate text-xs text-muted-foreground">
-          {sourceLabel(s.source)} · {s.lines} lines
-        </p>
-      </button>
-      <div className="flex justify-end">
-        <SessionDownloads session={s} />
-      </div>
-      </div>
       </div>
     </li>
   )
