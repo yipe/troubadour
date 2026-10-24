@@ -944,3 +944,25 @@ def test_a_merge_that_crams_scenes_is_refused(setup):
     m = make(LLM())
     _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in many]])
     assert scenes[-1] == "The party reached marker stone 29."  # fell back to the spread; the ending survives
+
+
+def test_a_note_that_stops_early_is_finished_from_the_rest_of_the_log(setup):
+    vault, sessions, make = setup
+    places = ["Barnest", "Cyclemeet", "Dialward", "Crested", "Pankora", "Garif", "Smiley", "Delara", "Dusty", "Magenta"]
+    log = [f"The party met {p} and traded with {p} beside {p}'s tent." for p in places]
+    asked = []
+
+    class LLM:
+        def json(self, system, user, schema, max_tokens=4000):
+            if system is mem.NOTE_SYSTEM:
+                asked.append(user)
+                if len(asked) == 1:
+                    return {"title": "x", "summary": "x", "scenes": log[:4]}  # stops at stone 3
+                return {"scenes": log[4:]}
+            return {}
+
+    m = make(LLM())
+    _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in log]])
+    assert "Pankora" in asked[1].split("The rest of the log:")[1]
+    assert "Crested" not in asked[1].split("The rest of the log:")[1]
+    assert scenes[-1] == log[-1]

@@ -41,6 +41,7 @@ CHUNK_CHARS = 6000  # notes per extraction call; small enough for a fast, carefu
 # and anything still unresolved can land as their own claims.
 PART_FACTS, PART_NAMES, PART_CLAIMS, FINAL_PART_CLAIMS = 5, 8, 20, 30
 NOTE_MAX = 16  # scenes on the session page; the claim list is notes for that pass, not the page
+COVERED = 0.8  # a note whose scenes stop before this share of the log gets a second call for the rest
 STORY_SO_FAR = 15  # earlier log lines shown to each later part
 PART_MOMENTS, MAX_MOMENTS = 5, 12
 LLM_RETRIES, LLM_RETRY_WAIT_S = 2, 5.0  # a server error or dropped connection is tried again
@@ -330,7 +331,7 @@ NOTE_SYSTEM = """You write the session note a Dungeons & Dragons player would te
 You get a log of what the table settled, already in order, and a short list of what is still open. You do
 not have the transcript. If the log does not say it, it did not happen.
 
-scenes: 8 to 16 sentences, in order (a long session needs the high end). One scene or one fight is one sentence: what changed and how it
+scenes: 6 to 14 sentences, in order, from the start of the log to its end. One scene or one fight is one sentence: what changed and how it
 ended. Keep two log lines separate when they are about different things, even if they share a name. A
 found body or a found object is not a person who was already with the party. Keep the proper name of
 every named NPC the log mentions. Join two events with "then", never "leading to" or "prompting", unless
@@ -493,6 +494,17 @@ def _settle(claims: list[dict], fights: list[tuple[int, str]] | None = None) -> 
             continue
         (open_ if status == "open" else happened).append(text)
     return happened, open_
+
+
+def _reached(scenes: list[str], happened: list[str]) -> int:
+    """Index of the latest log line any scene draws on (most shared content words, at least 3), or -1."""
+    last = -1
+    for scene in scenes:
+        words = _words(scene)
+        best = max(range(len(happened)), key=lambda i: (len(words & _words(happened[i])), i), default=-1)  # ties: the later line
+        if best >= 0 and len(words & _words(happened[best])) >= 3:
+            last = max(last, best)
+    return last
 
 
 def _spread(items: list[str], n: int) -> list[str]:
@@ -1188,6 +1200,18 @@ class Memory:
                 settled = f"This log is part {k + 1} of {len(segments)} of the session. {ends} Write 3 to 6 scenes.\n\n{settled}"
             reply = self.llm.json(NOTE_SYSTEM, settled, NOTE_SCHEMA)
             scenes = [s for s in _lines(reply.get("scenes"), MAX_ITEMS) if isinstance(s, str)]
+            reached = _reached(scenes, happened)
+            if reached >= 0 and len(happened) - reached - 1 >= max(2, (1 - COVERED) * len(happened)):
+                # The note ran out of scenes partway (stopped at the creature on the dune, before the fight and
+                # the ending): write the rest from the log lines it never got to.
+                rest = "\n".join(f"- {e}" for e in happened[reached + 1 :])
+                more = self.llm.json(
+                    NOTE_SYSTEM,
+                    f"Scenes so far (do not repeat):\n{chr(10).join(scenes)}\n\nThe rest of the log:\n{rest}",
+                    NOTE_SCHEMA,
+                )
+                scenes += [s for s in _lines(more.get("scenes"), MAX_ITEMS) if isinstance(s, str)]
+                reply["scenes"] = scenes = list(dict.fromkeys(scenes))
             if len(scenes) > NOTE_MAX:
                 # Spreading 42 scenes down to 16 dropped whole events (the mallet, the long rest); merging keeps them.
                 merged = self.llm.json(MERGE_SYSTEM, "\n".join(f"- {s}" for s in scenes), MERGE_SCHEMA, 3000)
