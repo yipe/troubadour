@@ -1132,3 +1132,20 @@ def test_money_lines_reach_the_one_shot(setup):
     m.llm.one_shot = {"title": "x", "hook": "x", "timeline": _beats(6), "open": []}
     m._one_shot([[]], ["0:09 GM Mika: His deficit goes on your tab.", "0:10 GM Mika: The wind blows."], "")
     assert "His deficit goes on your tab." in m.llm.one_shot_calls[0].split("Transcript:")[0]
+
+
+def test_an_open_thread_a_scene_already_tells_is_dropped(setup):
+    vault, sessions, make = setup
+    sid = _session(sessions)
+    llm = FakeLLM(writeups=[{"log": [{"text": "The party found a cave near Dallon.", "kind": "did", "fixes": ""}]}])
+    llm.one_shot = {
+        "title": "x",
+        "hook": "x",
+        "timeline": _beats(7) + [{"at": "00:05", "text": "A rider on a pink horse tossed Sathrin two hundred gold pieces."}],
+        "open": ["The rider on the pink horse tossed gold and rode away.", "Smiley still wants the treasure hunters dead."],
+    }
+    wait(make(llm).write_up(sid))
+    page = next((vault.root / "Sessions").glob("*.md")).read_text()
+    still = page.split("## Still open\n", 1)[1].split("\n\n", 1)[0]
+    assert "pink horse" not in still
+    assert "treasure hunters" in still

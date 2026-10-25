@@ -43,6 +43,7 @@ PART_FACTS, PART_NAMES, PART_CLAIMS, FINAL_PART_CLAIMS = 5, 8, 20, 30
 NOTE_MAX = 16  # scenes on the session page; the claim list is notes for that pass, not the page
 ONE_SHOT_MAX_CHARS = 200_000  # ~55k tokens with the glossary: fits one slot of a 262k model loaded --parallel 4
 ONE_SHOT_MIN_BEATS, ONE_SHOT_MONEY_LINES = 6, 30
+RESOLVED_WORDS = 4  # an open item sharing this many content words with a scene is already told
 BEAT_WINDOW_S = 180.0  # a timestamped beat is checked against this much transcript either side
 PLAY_BEFORE_S, PLAY_AFTER_S, PLAY_CHARS, PLAY_NUMBERS = 120, 1200, 14000, 12  # a play's transcript window
 ENDING_LINES = (
@@ -1236,6 +1237,8 @@ class Memory:
             job.suggested += 1
 
         linked = [link_names(t, self.vault) for t in scenes]
+        # A thread a scene already resolves (the rider arrived; they long rested) is not still open.
+        open_ = [o for o in open_ if not any(len(_words(o) & _words(sc)) >= RESOLVED_WORDS for sc in scenes)]
         open_linked = [link_names(t, self.vault) for t in open_]
         highlights = [link_names(h, self.vault) for h in highlights]
         moments_linked = [f"{at} {link_names(t, self.vault)}" for at, t in moments]
