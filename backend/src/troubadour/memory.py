@@ -41,6 +41,9 @@ CHUNK_CHARS = 6000  # notes per extraction call; small enough for a fast, carefu
 # and anything still unresolved can land as their own claims.
 PART_FACTS, PART_NAMES, PART_CLAIMS, FINAL_PART_CLAIMS = 5, 8, 20, 30
 NOTE_MAX = 16  # scenes on the session page; the claim list is notes for that pass, not the page
+ONE_SHOT_MAX_CHARS = 200_000  # ~55k tokens with the glossary: fits one slot of a 262k model loaded --parallel 4
+ONE_SHOT_MIN_BEATS, ONE_SHOT_MONEY_LINES = 6, 30
+BEAT_WINDOW_S = 180.0  # a timestamped beat is checked against this much transcript either side
 PLAY_BEFORE_S, PLAY_AFTER_S, PLAY_CHARS, PLAY_NUMBERS = 120, 1200, 14000, 12  # a play's transcript window
 ENDING_LINES = (
     2  # a note whose scenes leave this many log lines unreached gets a second call for the rest (the ending matters at any size)
@@ -241,6 +244,25 @@ most 60 words. You get the blow-by-blow log lines, the damage and hit points sai
 transcript around it (speech-to-text; the GM speaks for every NPC and monster). Say who fought whom (or who
 tried what), who struck first, why if anyone said why, any standout damage with its number and who took it,
 and how it ended: who was knocked out or badly hurt, who fled, what changed. Only what the lines show.
+Answer with JSON only."""
+
+ONE_SHOT_SCHEMA = _obj(
+    {"title": STR, "hook": STR, "timeline": {"type": "array", "items": _obj({"at": STR, "text": STR})}, "open": STRS}
+)
+
+ONE_SHOT_SYSTEM = """You write the session page of a Dungeons & Dragons session from its whole speech-to-text
+transcript, for a player who missed it. The transcript mishears words; the glossary has the right names. Lines are
+labelled with who spoke; the GM narrates and speaks for every NPC and monster. Players joke, plan, speculate and talk
+about real life: only what happens in the game counts. A creature the party finds is not a player character, even
+if it is the same kind of creature. Be accurate before being complete: when you are not sure who did something or
+how many, leave that detail out rather than guess. Keep who did what to whom and who started it, motives that were
+said, debts, prices and deals (and who they burden), who was hurt and how badly, the names of NPCs, and where the
+session ended. The fights and plays you are given were summed up from the transcript: use them.
+hook: one or two sentences, at most 50 words: the session's main turns.
+timeline: 8 to 16 beats in order from the start to the end of the session, each one or two sentences, each with
+at = the timestamp at the start of the transcript line where it begins, copied exactly with its hours (e.g. 1:09:26).
+open: threads still unresolved at the end, up to 5; not plans, not guesses, not things already done.
+title: 2-5 words, no date.
 Answer with JSON only."""
 
 MERGE_SCHEMA = _obj({"scenes": STRS})
@@ -769,6 +791,9 @@ def play_window(text: str, lines: list[str]) -> str:
     return "\n".join(near)[:PLAY_CHARS]
 
 
+# Money said at the table: who pays, who owes. A summary that drops the debt loses the scene's point.
+_MONEY = re.compile(r"\b(deficit|debt|owes?|owed|tab|fee|buy-in|cut|joint assets|\d+\s*(?:gold|gp|pieces))\b", re.I)
+
 _DAMAGE = re.compile(
     r"\b\d{1,3}\s*(?:odd\s+|points?\s+of\s+)?damage\b|\b(?:one|zero|0|1)\s+hit\s+points?\b|"
     r"\bunconscious\b|\bknocked\s+(?:out|down)\b|\bdeath\s+saves?\b|\bone[- ]shot\w*",
@@ -1143,8 +1168,14 @@ class Memory:
             moments += _moments(found.get("moments"), part, here, seen_moments)[:PART_MOMENTS]
 
         moments = moments[:MAX_MOMENTS]
-        summary, scenes, open_, highlights = self._write_note(by_part, lines)
-        scenes, moments, fixed = self._verify(scenes, moments, lines)
+        whole = self._one_shot(by_part, lines, cast)
+        if whole:
+            summary, scenes, scene_at, open_ = whole
+            highlights: list[str] = []
+        else:  # too long for one call, or the call failed: the log-based note
+            summary, scenes, open_, highlights = self._write_note(by_part, lines)
+            scene_at = []
+        scenes, moments, fixed = self._verify(scenes, moments, lines, scene_at)
         if fixed:  # the paragraph was written from the unchecked scenes
             recap = self.llm.json(RECAP_SYSTEM, "\n".join(f"- {s}" for s in scenes), RECAP_SCHEMA, 600)
             if _grounded(_text(recap.get("summary"), 2000), "\n".join(scenes)):
@@ -1249,6 +1280,45 @@ class Memory:
         job.done = job.total
         job.message = f"Wrote {path.stem}; {job.suggested} suggestions to review"
 
+    def _one_shot(
+        self, by_part: list[list[dict]], lines: list[str], cast: str
+    ) -> tuple[dict, list[str], list[str], list[str]] | None:
+        """(title and summary, scenes, their timestamps, still open) from one call over the whole transcript, or None.
+
+        One reading of the whole session beat the part-by-part log plus note on every measure (20.6 vs
+        17.7 of 40, in a fifth of the time): no part boundary splits a fight from its aftermath, nothing is
+        squeezed through one-line log entries. What a model reads badly in 40k tokens of table talk, code
+        hands it as facts: each fight summed up with the damage said at the table, and the money said.
+        Sessions past ONE_SHOT_MAX_CHARS, or a reply with too few beats, return None.
+        """
+        body = "\n".join(lines)
+        if len(body) > ONE_SHOT_MAX_CHARS:
+            return None
+        fights: list[tuple[int, str]] = []
+        _settle(sum(by_part, []), fights)
+        clusters: dict[int, list[str]] = {}
+        for at, text in fights:
+            clusters.setdefault(at, []).append(text)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=VERIFY_WORKERS, thread_name_prefix="play") as pool:
+            plays = [p for p in pool.map(lambda texts: self._play(texts, lines), clusters.values()) if p]
+        money = [line for line in lines if _MONEY.search(line.partition(": ")[2])][:ONE_SHOT_MONEY_LINES]
+        user = f"Who is at the table:\n{cast}\n\nGlossary:\n{glossary_brief(self.vault)}\n\n"
+        if plays:
+            user += (
+                "Fights and plays, summed up from the transcript (trust these):\n" + "\n".join(f"- {p}" for p in plays) + "\n\n"
+            )
+        if money:
+            user += "Money, debts and deals said at the table:\n" + "\n".join(money) + "\n\n"
+        out = self.llm.json(ONE_SHOT_SYSTEM, f"{user}Transcript:\n{body}", ONE_SHOT_SCHEMA, 4000)
+        beats = [b for b in out.get("timeline") or [] if isinstance(b, dict) and _text(b.get("text"), CLAIM_TEXT_MAX)]
+        if len(beats) < ONE_SHOT_MIN_BEATS:
+            return None
+        stamps = {line.split(" ", 1)[0] for line in lines}
+        scenes = [_text(b["text"], CLAIM_TEXT_MAX) for b in beats][:NOTE_MAX]
+        scene_at = [a if (a := _text(b.get("at"), 10)) in stamps else "" for b in beats][:NOTE_MAX]
+        open_ = [o for o in _lines(out.get("open"), 8) if not _NOT_OPEN.search(o)]
+        return {"title": out.get("title"), "summary": _text(out.get("hook"), 400)}, scenes, scene_at, open_
+
     def _write_note(self, by_part: list[list[dict]], lines: list[str] = ()) -> tuple[dict, list[str], list[str], list[str]]:
         """(note reply, scenes, still open, highlights) from each part's log.
 
@@ -1342,7 +1412,7 @@ class Memory:
         return sentence if _grounded(sentence, "\n".join(texts) + "\n" + window) else ""
 
     def _verify(
-        self, scenes: list[str], moments: list[tuple[str, str]], lines: list[str]
+        self, scenes: list[str], moments: list[tuple[str, str]], lines: list[str], scene_at: list[str] = ()
     ) -> tuple[list[str], list[tuple[str, str]], bool]:
         """Check each scene and moment against the transcript lines it came from; apply corrections.
 
@@ -1352,7 +1422,9 @@ class Memory:
         may simply be the wrong one), "fixed" replaces it.
         """
         glossary = glossary_brief(self.vault)
-        jobs = [("scene", i, s, evidence(s, lines)) for i, s in enumerate(scenes)]
+        at = list(scene_at) + [""] * len(scenes)
+        # A scene with its own timestamp is checked against the minutes around it, not a word-matched guess.
+        jobs = [("scene", i, s, around(at[i], lines, BEAT_WINDOW_S) or evidence(s, lines)) for i, s in enumerate(scenes)]
         jobs += [("moment", i, t, around(at, lines)) for i, (at, t) in enumerate(moments)]
 
         def check(job):

@@ -24,11 +24,18 @@ class FakeLLM:
         }
         self.calls: list[str] = []
         self.moment_calls: list[str] = []  # pass B, kept apart so calls[-1] is still the note
+        self.one_shot_calls: list[str] = []
+        self.one_shot: dict = {}
 
     def json(self, system, user, schema, max_tokens=4000):
         if system is mem.MOMENTS_SYSTEM:
             self.moment_calls.append(user)
             return self.moments.pop(0) if self.moments else {"moments": []}
+        if system is mem.ONE_SHOT_SYSTEM:  # no timeline: these tests exercise the log-based note
+            self.one_shot_calls.append(user)
+            return self.one_shot
+        if system in (mem.PLAY_SYSTEM, mem.VERIFY_SYSTEM):
+            return {}
         self.calls.append(user)
         if system is mem.NOTES_SYSTEM:
             return self.notes.pop(0) if self.notes else {}
@@ -1076,3 +1083,52 @@ def test_a_merge_that_drops_the_ending_is_refused(setup):
     m = make(LLM())
     _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in log]])
     assert "WaystoneZ" in scenes[-1]
+
+
+def _beats(n):
+    return [
+        {"at": f"00:{5 * (i % 3):02d}", "text": f"The party reached waystone {chr(65 + i)} and traded there."} for i in range(n)
+    ]
+
+
+def test_the_page_comes_from_one_reading_of_the_whole_session(setup):
+    vault, sessions, make = setup
+    sid = _session(sessions)
+    llm = FakeLLM(writeups=[{"log": [{"text": "The party found a cave near Dallon.", "kind": "did", "fixes": ""}]}])
+    llm.one_shot = {"title": "The Long Road", "hook": "The party walked far.", "timeline": _beats(8), "open": []}
+    m = make(llm)
+    wait(m.write_up(sid))
+    (page,) = (vault.root / "Sessions").glob("*.md")
+    text = page.read_text()
+    assert "waystone H" in text
+    assert "The party walked far." in text
+    assert "Transcript:\n" in llm.one_shot_calls[0]  # the whole transcript, not the log
+
+
+def test_a_thin_one_shot_falls_back_to_the_log_note(setup):
+    vault, sessions, make = setup
+    sid = _session(sessions)
+    llm = FakeLLM(writeups=[{"log": [{"text": "The party found a cave near Dallon.", "kind": "did", "fixes": ""}]}])
+    llm.one_shot = {"title": "x", "hook": "x", "timeline": _beats(3), "open": []}  # fewer than ONE_SHOT_MIN_BEATS
+    m = make(llm)
+    wait(m.write_up(sid))
+    assert any(c.startswith("- The party found a cave near Dallon.") for c in llm.calls)  # the log went to the note
+
+
+def test_one_shot_keeps_only_real_timestamps(setup):
+    vault, sessions, make = setup
+    m = make(FakeLLM())
+    beats = _beats(6) + [{"at": "9:99:99", "text": "The party slept beside waystone Z."}]
+    m.llm.one_shot = {"title": "x", "hook": "x", "timeline": beats, "open": []}
+    lines = ["00:00 GM: a", "00:05 GM: b", "00:10 GM: c"]
+    _, scenes, scene_at, _ = m._one_shot([[]], lines, "")
+    assert scene_at[:3] == ["00:00", "00:05", "00:10"]
+    assert scene_at[-1] == ""  # not a line in the transcript
+
+
+def test_money_lines_reach_the_one_shot(setup):
+    vault, sessions, make = setup
+    m = make(FakeLLM())
+    m.llm.one_shot = {"title": "x", "hook": "x", "timeline": _beats(6), "open": []}
+    m._one_shot([[]], ["0:09 GM Mika: His deficit goes on your tab.", "0:10 GM Mika: The wind blows."], "")
+    assert "His deficit goes on your tab." in m.llm.one_shot_calls[0].split("Transcript:")[0]
