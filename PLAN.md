@@ -330,6 +330,19 @@ runs gave byte-identical pages) unless other requests share the GPU.
   higher recall, lower precision. Stay at 0.
 - Cleaning the transcript first (drop backchannel, merge runs, Qwen labels table talk out): 15.5 vs 20.6.
   The labels drop story with the chatter (the debt, the mallet, the long rest were in "table" lines).
+- Final comparison on the player-corrected gold (48 facts, 22 known errors; one session, ±2 grader noise),
+  whole session in one call: Claude Opus 29.6, Sonnet 28.4 (hosted, opt-in test); local: Qwen3.8-Flash-Next
+  IQ3_XXS 24.3 (82 GB), qwen3.8-27b base 21.1, Swift-Qwen 27B 18–21, qwen3.6-35b-a3b 20.0, gemma-4-31b 19.0,
+  Laguna S 17.0, laguna-xs 15.1, Haiku 14.1, gemma-4-26b 11.8, gpt-oss-120b 11.7, GLM-4.5-Air 11.3,
+  gemma-4-e4b 9.4, gpt-oss-20b 5.6. The production hybrid (one call + plays + verify + moments) scored 15.6:
+  its extra stages add as many errors as facts.
+- Flash-Next IQ4_XS (94.6 GB, needs `sudo sysctl iogpu.wired_limit_mb=116000`): 19.5, not better than IQ3.
+- A checklist answered first (per character, NPC, fight, money, ending), then the recap: +2.8 for Swift
+  (18.0 → 20.8), −2.4 for Flash-Next. It helps a model that misses facts, not one that already finds them.
+- Improve transcript (large-v3 re-listen, 1066 of 1595 lines changed) before writing up: no gain (Flash-Next
+  IQ4 19.7 vs 19.5; IQ3 16.8 vs 24.3). It also drops reactions ("No! No!") the loud-moment detector uses.
+- Glossary fixes pay immediately: confirmed heard-as spellings (Thayrin → Phaerimm, Garif → Gerleff,
+  House Raid → House Randrir) fixed those names in every later page.
 - 8k parts instead of 12k: worse, because the note then covered only the first half (since fixed by
   the coverage check; worth re-testing).
 - Segmenting the note (3 segments): lost beats. The single note plus coverage check is better.
@@ -358,6 +371,19 @@ runs gave byte-identical pages) unless other requests share the GPU.
 - Self-consistency / best-of-N: several samples, pick by code (coverage, grounding, numbers that
   match the transcript); candidate "try harder" mode, together with a second pass offset by half a
   part so no scene straddles a part boundary.
+
+**Next steps** (best first; benchmark each with `spike/writeup_oneshot.py` and the gold set, see
+`spike/WRITEUP_BENCHMARK.md`):
+1. Make the plain whole-session call the write-up's page step (drop the moments pass, plays and verify from
+   the page; keep pass A for glossary facts, names and spellings). It beat the hybrid 20.9 vs 15.6.
+2. Default model: try `qwen/qwen3.8-27b` (base) over Swift on a second session before switching; offer
+   Flash-Next as the "best local" choice for machines with 96 GB+ free.
+3. Opt-in hosted write-ups (Sonnet via the OpenRouter setting), off by default like Cloud backup: +4–8 points,
+   ~40 s, but the transcript leaves the Mac, so it needs the user's explicit choice.
+4. Learn from edits: diff a session page the user corrects against what was generated; turn changed names
+   into heard-as spellings and changed claims into facts the next write-up is given.
+5. A second gold session before trusting any change smaller than ~3 points.
+
 
 ## Troubadour Cloud (opt-in backup)
 
