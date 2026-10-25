@@ -322,6 +322,14 @@ runs gave byte-identical pages) unless other requests share the GPU.
   gpt-oss-120b 11, laguna-xs 7, gpt-oss-20b 7 (empty), nemotron-3-super timed out. Swift takes ~10 min
   per session alone vs gemma's ~2.
 - Thinking (`reasoning_effort=low`): 3.6 h instead of 10 min, and replies still overran 16k tokens.
+- Whole session in one call vs the part-by-part log: one call won (20.6 vs 17.7 of 40 on the atomic-fact
+  score, 3 min vs 16). Same one call on bigger local models: Laguna S 2.1 17.9, gpt-oss-120b 11.8, GLM-4.5-Air
+  11.1, Nemotron 3 Super never stopped writing, Command A's GGUF caps context at 16k. Hosted, for scale (opt-in
+  test, one session): Claude Opus 27.4, Sonnet 24.9, Haiku 16.2. The model's reading is the ceiling.
+- Temperature (Qwen's suggested 0.7 / top-p 0.8 / top-k 20, and 0.3): means 18.6 and 20.6 vs 20.6 at 0;
+  higher recall, lower precision. Stay at 0.
+- Cleaning the transcript first (drop backchannel, merge runs, Qwen labels table talk out): 15.5 vs 20.6.
+  The labels drop story with the chatter (the debt, the mallet, the long rest were in "table" lines).
 - 8k parts instead of 12k: worse, because the note then covered only the first half (since fixed by
   the coverage check; worth re-testing).
 - Segmenting the note (3 segments): lost beats. The single note plus coverage check is better.
