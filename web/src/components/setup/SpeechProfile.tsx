@@ -34,7 +34,10 @@ export function SpeechProfile({
         <Button
           size="sm"
           variant="outline"
-          disabled={running}
+          disabled={running || !player.clone_ok}
+          title={
+            player.clone_ok ? undefined : "Turn on the switch above first: the profile needs their consent"
+          }
           onClick={async () => {
             const j = await attempt(() => api.buildProfile(player.id))
             if (j) campaignActions.putJob(j)
@@ -57,7 +60,9 @@ export function SpeechProfile({
       )}
       {!profile && !running && (
         <p className="text-xs text-muted-foreground">
-          From their lines in saved sessions: pace, pet phrases, questions, in-character share.
+          {player.clone_ok
+            ? "From their lines in saved sessions: pace, pet phrases, questions, in-character share."
+            : `Needs ${player.name}'s consent: turn on the switch above.`}
         </p>
       )}
       {profile && (

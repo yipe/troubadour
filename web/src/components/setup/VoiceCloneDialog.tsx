@@ -101,6 +101,8 @@ export function VoiceCloneDialog({
           {player.name} agrees to a voice clone
         </label>
 
+        <SpeechProfile player={player} profile={profile} job={profiling} />
+
         {player.clone_ok && (
           <div className="space-y-4">
             {!trained ? (
@@ -219,8 +221,6 @@ export function VoiceCloneDialog({
                 ))}
               </ul>
             )}
-
-            <SpeechProfile player={player} profile={profile} job={profiling} />
           </div>
         )}
       </DialogContent>
