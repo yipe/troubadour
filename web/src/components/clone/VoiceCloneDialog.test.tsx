@@ -8,7 +8,7 @@ import { applyEvent, useStore } from "@/lib/store"
 import type { CampaignJob, CloneClip, Clones, Player, SpeechProfile } from "@/lib/types"
 import { campaignJob, player, session, snapshotBase } from "@/test/fixtures"
 import { bodyOf, mockFetch } from "@/test/mockFetch"
-import { PlayerCard } from "./PlayerCard"
+import { PlayerCard } from "@/components/setup/PlayerCard"
 
 const initialStore = useStore.getState()
 const initialCampaign = useCampaign.getState()

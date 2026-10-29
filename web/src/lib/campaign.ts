@@ -78,6 +78,14 @@ export function splitWikiLinks(text: string): FactSegment[] {
   return out
 }
 
+/** The latest job that matches (job ids are random, so insertion order decides). */
+export function latestJob(
+  jobs: Record<string, CampaignJob>,
+  match: (j: CampaignJob) => boolean,
+): CampaignJob | undefined {
+  return Object.values(jobs).filter(match).at(-1)
+}
+
 export function jobActive(j: CampaignJob): boolean {
   return j.state === "queued" || j.state === "running"
 }

@@ -1,9 +1,10 @@
-import { AlertCircle, Loader2, MessagesSquare } from "lucide-react"
+import { Loader2, MessagesSquare } from "lucide-react"
+import { JobStatus } from "@/components/campaign/JobProgress"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import { jobActive } from "@/lib/campaign"
-import { attempt, campaignActions } from "@/lib/campaignStore"
+import { campaignActions } from "@/lib/campaignStore"
 import type { CampaignJob, Player, SpeechProfile as Profile } from "@/lib/types"
 
 const pct = (share: number) => `${Math.round(share * 100)}%`
@@ -38,26 +39,13 @@ export function SpeechProfile({
           title={
             player.clone_ok ? undefined : "Turn on the switch above first: the profile needs their consent"
           }
-          onClick={async () => {
-            const j = await attempt(() => api.buildProfile(player.id))
-            if (j) campaignActions.putJob(j)
-          }}
+          onClick={() => void campaignActions.startJob(() => api.buildProfile(player.id))}
         >
           {running ? <Loader2 className="animate-spin" /> : <MessagesSquare />}
           {profile ? "Update profile" : "Profile how they talk"}
         </Button>
       </div>
-      {running && (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
-          {job.state === "queued" ? "Waiting for another job…" : job.message || "Reading their transcripts…"}
-        </p>
-      )}
-      {job?.state === "error" && (
-        <p role="alert" className="flex items-center gap-1 text-sm text-destructive">
-          <AlertCircle className="size-3.5 shrink-0" /> {job.message || "Profile failed"}
-        </p>
-      )}
+      <JobStatus job={job} working="Reading their transcripts…" failed="Profile failed" />
       {!profile && !running && (
         <p className="text-xs text-muted-foreground">
           {player.clone_ok

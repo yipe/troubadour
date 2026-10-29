@@ -77,6 +77,9 @@ function upsert<T extends { id: string }>(list: T[], item: T): T[] {
   return next
 }
 
+/** No session is running or paused: what jobs that use the voice model wait for. */
+export const useIdle = () => useStore((s) => (s.session?.status ?? "idle") === "idle")
+
 export const actions = {
   setView: (view: View) => set({ view }),
   openSavedSession: (viewing: SavedSession) => set({ view: "history", viewing }),

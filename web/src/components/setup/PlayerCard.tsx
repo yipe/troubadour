@@ -10,10 +10,10 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { api, type PlayerPatch } from "@/lib/api"
 import { fileToAvatar } from "@/lib/format"
-import { actions, useStore } from "@/lib/store"
+import { actions, useIdle, useStore } from "@/lib/store"
 import type { Player } from "@/lib/types"
 import { TrainDialog } from "./TrainDialog"
-import { VoiceCloneDialog } from "./VoiceCloneDialog"
+import { VoiceCloneDialog } from "@/components/clone/VoiceCloneDialog"
 
 async function patch(id: string, body: PlayerPatch) {
   try {
@@ -35,7 +35,7 @@ export function PlayerCard({ player }: { player: Player }) {
       ),
   )
   const serverError = useStore((s) => !!s.session?.error)
-  const idle = useStore((s) => (s.session?.status ?? "idle") === "idle")
+  const idle = useIdle()
 
   const onFile = async (file: File | undefined) => {
     if (!file) return

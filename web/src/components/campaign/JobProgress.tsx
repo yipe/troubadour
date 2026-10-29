@@ -1,6 +1,6 @@
 import { AlertCircle, Loader2, X } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
-import { jobCount } from "@/lib/campaign"
+import { jobActive, jobCount } from "@/lib/campaign"
 import { campaignActions } from "@/lib/campaignStore"
 import type { CampaignJob } from "@/lib/types"
 
@@ -79,4 +79,35 @@ export function JobBar({ job: j }: { job: CampaignJob }) {
       <Progress value={pct} />
     </div>
   )
+}
+
+/**
+ * A job's state as one line under the control that started it: while it runs, what it's doing and how
+ * far (unless the control already shows that: `progress={false}`); if it failed, why. Nothing once done.
+ */
+export function JobStatus({
+  job: j,
+  working,
+  failed,
+  progress = true,
+}: {
+  job: CampaignJob | undefined
+  working: string
+  failed: string
+  progress?: boolean
+}) {
+  if (j && progress && jobActive(j))
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 shrink-0 animate-spin" />
+        {j.state === "queued" ? "Waiting for another job…" : j.message || working} {jobCount(j)}
+      </p>
+    )
+  if (j?.state === "error")
+    return (
+      <p role="alert" className="flex items-center gap-1 text-sm text-destructive">
+        <AlertCircle className="size-3.5 shrink-0" /> {j.message || failed}
+      </p>
+    )
+  return null
 }

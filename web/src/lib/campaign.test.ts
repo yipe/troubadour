@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { entity } from "@/test/fixtures"
-import { findEntity, matchesSearch, needsReview, obsidianUrl, splitWikiLinks } from "./campaign"
+import { campaignJob, entity } from "@/test/fixtures"
+import { findEntity, latestJob, matchesSearch, needsReview, obsidianUrl, splitWikiLinks } from "./campaign"
 
 describe("splitWikiLinks", () => {
   it("shows the label after | and the target otherwise", () => {
@@ -55,5 +55,19 @@ describe("glossary helpers", () => {
     expect(obsidianUrl({ id: "v1", folder: "Campaigns/Morvath" }, "Sessions/A B.md")).toBe(
       "obsidian://open?vault=v1&file=Campaigns%2FMorvath%2FSessions%2FA%20B.md",
     )
+  })
+})
+
+describe("latestJob", () => {
+  it("is the last matching job in insertion order (ids are random)", () => {
+    const jobs = Object.fromEntries(
+      [
+        campaignJob({ id: "zz", kind: "say", player_id: "p1" }),
+        campaignJob({ id: "aa", kind: "say", player_id: "p1" }),
+        campaignJob({ id: "mm", kind: "say", player_id: "p2" }),
+      ].map((j) => [j.id, j]),
+    )
+    expect(latestJob(jobs, (j) => j.player_id === "p1")?.id).toBe("aa")
+    expect(latestJob(jobs, (j) => j.kind === "clone")).toBeUndefined()
   })
 })

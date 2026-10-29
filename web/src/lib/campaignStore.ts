@@ -201,6 +201,13 @@ export const campaignActions = {
 
   putJob: (job: CampaignJob) => set((s) => ({ jobs: { ...s.jobs, [job.id]: job } })),
 
+  /** Ask the server to start a job and track it; a refusal shows as a toast. The job, or undefined. */
+  startJob: async (call: () => Promise<CampaignJob>) => {
+    const job = await attempt(call)
+    if (job) campaignActions.putJob(job)
+    return job
+  },
+
   dismissJob: (id: string) => set((s) => ({ dismissed: { ...s.dismissed, [id]: true } })),
 
   putAnswer: (answer: CampaignAnswer) => set((s) => ({ answers: { ...s.answers, [answer.id]: answer } })),

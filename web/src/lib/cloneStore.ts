@@ -7,7 +7,7 @@ import type { CampaignJob, Clones } from "./types"
 /** Voice clones (GET /api/clones): fetched by the views that show them, again whenever a clone job ends. */
 export const useClones = create<{ clones: Clones | null }>(() => ({ clones: null }))
 
-export const CLONE_JOBS: Partial<Record<CampaignJob["kind"], true>> = {
+const CLONE_JOBS: Partial<Record<CampaignJob["kind"], true>> = {
   clone: true,
   say: true,
   read: true,

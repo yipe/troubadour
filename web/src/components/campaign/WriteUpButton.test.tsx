@@ -11,6 +11,7 @@ import { campaign, campaignJob, player, savedSession, sessionRecord } from "@/te
 import { bodyOf, mockFetch } from "@/test/mockFetch"
 
 const ID = "2026-10-08_193401-eebf"
+const PAGE = "Sessions/2026-10-08 The Desert Road.md"
 const initial = useCampaign.getState()
 const initialStore = useStore.getState()
 
@@ -22,7 +23,7 @@ function server(c: Campaign, clones?: { current: Clones }) {
       return campaignJob({ id: "w1", kind: "writeup", title: ID })
     if (clones && call.url === "/api/clones") return clones.current
     if (clones && call.url === "/api/players/p1/clone/read")
-      return campaignJob({ id: "r1", kind: "read", title: ID, player_id: "p1" })
+      return campaignJob({ id: "r1", kind: "read", title: "The Desert Road", player_id: "p1", note: PAGE })
     return new Response(null, { status: 500 })
   })
 }
@@ -103,7 +104,7 @@ describe("History viewer: write up for campaign", () => {
   })
 
   it("reads the session page aloud in a player's cloned voice", async () => {
-    const page = "Sessions/2026-10-08 The Desert Road.md"
+    const page = PAGE
     useStore.setState({
       players: [player({ id: "p1", name: "Alice", clone_ok: true }), player({ id: "p2", name: "Bob" })],
     })
@@ -130,7 +131,8 @@ describe("History viewer: write up for campaign", () => {
         data: campaignJob({
           id: "r1",
           kind: "read",
-          title: ID,
+          title: "The Desert Road",
+          note: PAGE,
           player_id: "p1",
           state: "running",
           done: 3,
@@ -156,7 +158,7 @@ describe("History viewer: write up for campaign", () => {
     act(() =>
       applyEvent({
         type: "campaign.job",
-        data: campaignJob({ id: "r1", kind: "read", title: ID, state: "done" }),
+        data: campaignJob({ id: "r1", kind: "read", title: "The Desert Road", note: PAGE, state: "done" }),
       }),
     )
     await act(async () => {})
