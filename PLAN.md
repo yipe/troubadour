@@ -438,6 +438,13 @@ Face on first use, like Whisper, then run locally.
   `POST /api/players/{id}/clone/say {text ≤ 2000}`, `POST /api/players/{id}/clone/read {session}`
   (that session's write-up page), `GET /api/clones/{player}/{preview|clip}.wav`,
   `DELETE /api/clones/{player}/clips/{clip}`, `PATCH /api/players/{id} {clone_ok}`.
+- **The preview is something they'd say.** ~20 s at their pace (`talk.preview_text`): the memory
+  LLM writes table talk in their style from their speech profile (made on the way if missing), with
+  the word count checked (0.6–1.5× the target) and no names they never used; if it's offline or
+  writes junk, their own example lines stitched to length; with too few lines, the stock line.
+  Candidates are judged on its first sentences (≤ 140 characters, 3 tries each); the winner reads
+  the whole line once. Scratch smoke (gemma-4-26b, made-up transcripts): 65 words, 20.2 s, in their
+  phrases; the whole build including the profile took 25 s. `voice.json`: `preview_text`, `preview_kind`.
 - UI: Setup → player card → Voice clone (consent, build, preview, Say box, clips); History →
   Write-up tab → Read aloud (once the session is written up). Nothing autoplays.
 - Smoke test with real models and synthetic voices: `uv run spike/clone_smoke.py [out_dir]`.
