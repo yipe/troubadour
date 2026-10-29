@@ -29,6 +29,7 @@ export function PlayerGrid() {
           person={p}
           speaking={p.id === speakingPlayerId}
           seconds={talk.byPlayer.get(p.id) ?? 0}
+          inCharacter={talk.inCharacter.get(p.id)}
           total={talk.total}
         />
       ))}

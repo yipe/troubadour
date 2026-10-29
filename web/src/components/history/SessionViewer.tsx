@@ -218,7 +218,13 @@ function RecordBody({ record, seek }: { record: LoadedRecord; seek?: (t: number)
         <>
           <div className="flex flex-wrap gap-3 px-4 py-3">
             {record.players.map((p) => (
-              <PlayerBox key={p.id} person={p} seconds={talk.byPlayer.get(p.id) ?? 0} total={talk.total} />
+              <PlayerBox
+                key={p.id}
+                person={p}
+                seconds={talk.byPlayer.get(p.id) ?? 0}
+                inCharacter={talk.inCharacter.get(p.id)}
+                total={talk.total}
+              />
             ))}
             <UnnamedShareChip seconds={talk.unassigned} total={talk.total} />
           </div>

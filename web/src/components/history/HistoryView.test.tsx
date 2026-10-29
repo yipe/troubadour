@@ -26,6 +26,7 @@ const record: SessionRecord = sessionRecord({
     { id: "p2", name: "Priya", character: "Pip", is_gm: false, color: "#ec4899" },
     { id: "p1", name: "Nora", character: "DM", is_gm: true }, // saved before colors were stored
   ],
+  voices: [{ id: "v-morvath", label: "Voice 2", player_id: "p1", character: "Morvath", trained: false }],
   messages: [
     recordMessage({
       id: "m1",
@@ -33,6 +34,7 @@ const record: SessionRecord = sessionRecord({
       t_end: 30,
       speaker: "Nora",
       player_id: "p1",
+      voice_id: "v-morvath",
       text: "Roll initiative, three.",
     }),
     recordMessage({
@@ -145,6 +147,9 @@ describe("History", () => {
     expect(within(box("p1")).getByTestId("talk-share")).toHaveTextContent("60%")
     expect(within(box("p2")).getByTestId("talk-share")).toHaveTextContent("20%")
     expect(screen.getByTestId("unnamed-share")).toHaveTextContent("Unnamed voices · 20%")
+    // Nora spoke only in her Morvath voice; Priya's "Pip" is her seat, not a character voice.
+    expect(within(box("p1")).getByTestId("in-character")).toHaveTextContent("~100% in character")
+    expect(within(box("p2")).queryByTestId("in-character")).toBeNull()
 
     expect(box("p2").style.getPropertyValue("--player")).toBe("#ec4899")
     expect(box("p1").style.getPropertyValue("--player")).toBe(PLAYER_PALETTE[1])

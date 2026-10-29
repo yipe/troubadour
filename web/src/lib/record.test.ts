@@ -61,4 +61,27 @@ describe("loadRecord", () => {
     expect(lines.map((l) => l.fixes)).toEqual([[fix], []])
     expect(spelling).toBeNull()
   })
+
+  it("knows a character voice from the record's voices, not from a line's character", () => {
+    const { lines } = loadRecord(
+      sessionRecord({
+        id: "s",
+        voices: [
+          { id: "v-own", label: "Voice 1", player_id: "p1", character: null, trained: true },
+          { id: "v-npc", label: "Voice 2", player_id: "p1", character: "Morvath", trained: false },
+        ],
+        messages: [
+          recordMessage({ id: "own", t_start: 1, player_id: "p1", voice_id: "v-own", character: "Pip" }),
+          recordMessage({ id: "npc", t_start: 2, player_id: "p1", voice_id: "v-npc", character: "Morvath" }),
+          recordMessage({ id: "none", t_start: 3, voice_id: null }),
+        ],
+      }),
+    )
+    // "Pip" is the seat character shown on their own voice's lines: not in character.
+    expect(lines.map((l) => [l.id, l.in_character])).toEqual([
+      ["own", false],
+      ["npc", true],
+      ["none", false],
+    ])
+  })
 })

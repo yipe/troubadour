@@ -24,6 +24,8 @@ describe("talkTime", () => {
     expect(t.byPlayer.get("p2")).toBe(3)
     expect(t.unassigned).toBe(0)
     expect(t.total).toBe(20)
+    expect(t.inCharacter.get("p1")).toBe(5) // the Morvath voice
+    expect(t.inCharacter.has("p2")).toBe(false)
   })
 
   it("sends pending, null, unknown voices and deleted players to unassigned", () => {
@@ -94,6 +96,17 @@ describe("recordTalkTime", () => {
     expect(t.byPlayer.get("p2")).toBe(2)
     expect(t.unassigned).toBe(3)
     expect(t.total).toBe(20)
+  })
+
+  it("counts each player's time in a character voice", () => {
+    const t = recordTalkTime([
+      { player_id: "p1", t_start: 0, t_end: 10 },
+      { player_id: "p1", t_start: 10, t_end: 14, in_character: true },
+      { player_id: null, t_start: 14, t_end: 20, in_character: true }, // unassigned: nobody's
+    ])
+    expect(t.byPlayer.get("p1")).toBe(14)
+    expect(t.inCharacter.get("p1")).toBe(4)
+    expect(t.inCharacter.size).toBe(1)
   })
 
   it("counts negative durations as 0", () => {

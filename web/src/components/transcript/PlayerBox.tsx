@@ -17,11 +17,14 @@ export function PlayerBox({
   speaking,
   seconds,
   total,
+  inCharacter = 0,
 }: {
   person: PlayerBoxPerson
   speaking?: boolean
   seconds: number
   total: number
+  /** seconds of `seconds` in a character voice */
+  inCharacter?: number
 }) {
   const share = total > 0 ? (seconds / total) * 100 : 0
   return (
@@ -50,6 +53,15 @@ export function PlayerBox({
           >
             <div className="font-medium tabular-nums">{sharePct(seconds, total)}</div>
             <div className="text-xs text-muted-foreground tabular-nums">{talkDuration(seconds)}</div>
+            {inCharacter > 0 && (
+              <div
+                data-testid="in-character"
+                className="text-xs text-muted-foreground tabular-nums"
+                title={`About ${talkDuration(inCharacter)} of their ${talkDuration(seconds)} was in a character voice (an estimate: voices named with a character in the voices panel)`}
+              >
+                ~{sharePct(inCharacter, seconds)} in character
+              </div>
+            )}
           </div>
           <div
             aria-hidden

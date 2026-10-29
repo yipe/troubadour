@@ -35,6 +35,9 @@ export interface ViewerLine {
   /** The speaker's player, or a stand-in when the id isn't in the roster; null for unnamed voices. */
   player: ViewerPlayer | null
   character: string | null
+  /** Spoken in a character voice: one named with a character in the voices panel. Not `character`,
+   * which also shows a player's seat character on lines in their own voice. */
+  in_character: boolean
   /** `speakerKey` of the line; consecutive lines with the same non-null key render as one turn. */
   speaker_key: string | null
   uncertain: boolean
@@ -70,6 +73,7 @@ function viewerPlayer(p: RecordPlayer, index: number): ViewerPlayer {
 export function loadRecord(record: SessionRecord): LoadedRecord {
   const players = (record.players ?? []).map(viewerPlayer)
   const byId = new Map(players.map((p) => [p.id, p]))
+  const characterVoices = new Set((record.voices ?? []).filter((v) => v.character).map((v) => v.id))
   const lines: ViewerLine[] = (record.messages ?? [])
     .map((m) => {
       const text = String(m.text ?? "")
@@ -92,6 +96,7 @@ export function loadRecord(record: SessionRecord): LoadedRecord {
         player_id: m.player_id ?? null,
         player,
         character: m.character || null,
+        in_character: m.voice_id != null && characterVoices.has(m.voice_id),
         speaker_key: speakerKey(m.player_id ?? null, m.voice_id ?? null, m.character || null),
         uncertain: !!m.provisional || (m.confidence ?? 1) < 0.5,
         text,
