@@ -12,17 +12,16 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import soxr
 import torch
 from pyannote.audio import Pipeline
-from silero_vad import get_speech_timestamps, load_silero_vad
 
 from troubadour import config, tts
 from troubadour.audio import read_wav
-from troubadour.voices import embed_span
+from troubadour.memory import Job
+from troubadour.voices import embed_span, speech_spans
 
 TRAIN_TEXT = (
     "The bridge is out, so you will have to wade across the river. The water is cold and fast, and "
@@ -63,8 +62,7 @@ def main() -> None:
     rng = np.random.default_rng(0)
     clip = (clip + 0.01 * rng.standard_normal(len(clip))).astype(np.float32)  # a quiet room's hiss
     clip16 = soxr.resample(clip, rate, config.SR).astype(np.float32)
-    stamps = get_speech_timestamps(torch.from_numpy(clip16), load_silero_vad(), sampling_rate=config.SR)
-    spans = [(s["start"] / config.SR, s["end"] / config.SR) for s in stamps]
+    spans = speech_spans(clip16)
 
     pipeline = Pipeline.from_pretrained(config.DIARIZER)
     pipeline.to(torch.device("mps"))
@@ -79,14 +77,15 @@ def main() -> None:
     print(f"another voice's likeness, for scale: {likeness(other, other_rate):.3f}")
 
     clones = tts.Clones(lambda: out / "clones", allowed=lambda pid: True)
-    job = SimpleNamespace(done=0, total=0, message="")
+    job = Job(id="smoke", kind="clone", title="")
+    job.on_change = lambda: print(f"  {job.done}/{job.total} {job.message}")
     t = time.time()
-    status = clones.build(job, lambda: print(f"  {job.done}/{job.total} {job.message}"), "psmoke", clip, rate, spans, likeness)
+    status = clones.build(job, "psmoke", [("Train recording", tts.speech_only(clip, rate, spans), rate)], likeness)
     print(f"build: {time.time() - t:.1f}s {status}")
 
-    job = SimpleNamespace(done=0, total=0, message="")
+    job = Job(id="smoke", kind="read", title="")
     t = time.time()
-    clip_meta = clones.speak(job, lambda: None, "psmoke", tts.speakable(PAGE), "read", "The Drowned Bridge", {})
+    clip_meta = clones.speak(job, "psmoke", tts.speakable(PAGE), "read", "The Drowned Bridge", {})
     took = time.time() - t
     print(f"read: {took:.1f}s for {clip_meta['seconds']}s of audio ({job.total} chunks)")
     audio, sr = read_wav(clones.file("psmoke", clip_meta["id"]))

@@ -15,7 +15,8 @@ import numpy as np
 from .config import SR
 from .settings import current as model_settings
 
-_lock = threading.Lock()
+# One MLX model runs at a time: Whisper here, the voice-clone models in tts.py.
+mlx_lock = threading.Lock()
 
 # Whisper's stock outputs for noise / silence (YouTube outros and subtitle credits).
 HALLUCINATIONS = {
@@ -88,7 +89,7 @@ def prompt_names(first: list[str], glossary: list[str], recent: list[str], nickn
 def _run(audio: np.ndarray, prompt: str | None, model: str | None = None) -> str:
     import mlx_whisper
 
-    with _lock:
+    with mlx_lock:
         result = mlx_whisper.transcribe(
             audio,
             path_or_hf_repo=model or model_settings()["whisper"],

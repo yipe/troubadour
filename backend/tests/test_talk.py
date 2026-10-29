@@ -2,16 +2,16 @@
 
 import numpy as np
 import pytest
-from test_tts import FakeSynth, alice, api, finished  # noqa: F401 (api is a fixture)
+from conftest import ScriptedLLM
 
-from troubadour import config, talk
+from troubadour import talk
 from troubadour.audio import tempo
 
 AL, BO = "p-al", "p-bo"
 
 
 def msg(pid: str, text: str, seconds: float = 2.4, **kw) -> dict:
-    return {"player_id": pid, "text": text, "t_start": 0.0, "t_end": seconds, "character": None, "confidence": 0.9} | kw
+    return {"player_id": pid, "voice_id": f"v-{pid}", "text": text, "t_start": 0.0, "t_end": seconds, "confidence": 0.9} | kw
 
 
 def table(sessions: int = 2, lines: int = 20) -> list[dict]:
@@ -31,6 +31,7 @@ def table(sessions: int = 2, lines: int = 20) -> list[dict]:
     return [
         {
             "session": {"id": f"s{s}"},
+            "voices": [{"id": "v-p-al", "character": None}, {"id": "v-p-bo", "character": None}],
             "messages": [msg(AL, al[i % 4]) for i in range(lines)] + [msg(BO, bo[i % 4], 4.0) for i in range(lines)],
         }
         for s in range(sessions)
@@ -50,6 +51,17 @@ def test_profile_counts_how_they_talk():
     assert (p["questions"], p["exclamations"], p["in_character"]) == (0.75, 0.0, 0.0)
     assert p["openers"] == ["okay", "you"]
     assert p["description"] is None
+
+
+def test_in_character_means_a_character_voice_not_a_seat_character():
+    records = table()
+    for m in records[0]["messages"][:20]:
+        m["character"] = "Elara"  # what saved lines show for a seat character: not a character voice
+    assert talk.profile(records, AL)["in_character"] == 0.0
+    records[1]["voices"].append({"id": "v-elara", "character": "Elara"})
+    for m in records[1]["messages"][:10]:
+        m["voice_id"] = "v-elara"  # named with a character in the voices panel
+    assert talk.profile(records, AL)["in_character"] == 0.25
 
 
 def test_pet_phrases_are_theirs_not_everyones():
@@ -112,36 +124,23 @@ def test_examples_are_confident_mid_length_lines_from_every_session():
 # ------------------------------------------------------------- LLM output is untrusted
 
 
-class LLM:
-    def __init__(self, *replies):
-        self.replies = list(replies)
-        self.prompts: list[str] = []
-
-    def json(self, system, user, schema, max_tokens=4000):
-        self.prompts.append(user)
-        reply = self.replies.pop(0)
-        if isinstance(reply, Exception):
-            raise reply
-        return reply
-
-
 def test_describe_keeps_plain_short_text_only():
     prof = talk.profile(table(), AL)
-    assert talk.describe(LLM({"description": "**Quick** and curious; she asks before she acts."}), "Al", prof) == (
+    assert talk.describe(ScriptedLLM({"text": "**Quick** and curious; she asks before she acts."}), "Al", prof) == (
         "Quick and curious; she asks before she acts."
     )
-    assert talk.describe(LLM({"description": 42}), "Al", prof) is None
-    assert talk.describe(LLM({"description": "ok"}), "Al", prof) is None
-    assert talk.describe(LLM(ConnectionError("down")), "Al", prof) is None
+    assert talk.describe(ScriptedLLM({"text": 42}), "Al", prof) is None
+    assert talk.describe(ScriptedLLM({"text": "ok"}), "Al", prof) is None
+    assert talk.describe(ScriptedLLM(ConnectionError("down")), "Al", prof) is None
     long = "She talks fast. " * 60
-    out = talk.describe(LLM({"description": long}), "Al", prof)
+    out = talk.describe(ScriptedLLM({"text": long}), "Al", prof)
     assert len(out) <= talk.DESCRIPTION_CHARS
     assert out.endswith("fast.")
 
 
 def test_the_prompt_carries_the_counts_and_their_lines():
     prof = talk.profile(table(), AL)
-    llm = LLM({"description": "Asks a lot of questions before acting."})
+    llm = ScriptedLLM({"text": "Asks a lot of questions before acting."})
     talk.describe(llm, "Al", prof)
     assert "Pet phrases: " in llm.prompts[0]
     assert "you know what" in llm.prompts[0]
@@ -174,7 +173,7 @@ def test_their_own_name_may_become_i():
 
 
 def test_restyle_retries_with_the_reason_and_keeps_the_original_when_it_cant():
-    llm = LLM(
+    llm = ScriptedLLM(
         {"text": "Okay so the party crossed the old bridge."},
         {"text": "Okay, Marla paid 3000 gold."},  # wrong number: asked again, with the reason
         {"text": "Okay so Marla paid 30 gold."},
@@ -199,7 +198,7 @@ def test_restyle_retries_with_the_reason_and_keeps_the_original_when_it_cant():
 
 
 def test_restyle_with_the_llm_down_asks_once_and_keeps_every_word():
-    llm = LLM(ConnectionError("down"))
+    llm = ScriptedLLM(ConnectionError("down"))
     text = "The party crossed the old bridge.\n\nThe dwarf lost his axe."
     assert talk.restyle(llm, "Al", talk.profile(table(), AL), text, []) == (text, 2)
     assert len(llm.prompts) == 1
@@ -231,75 +230,6 @@ def test_audio_tempo_keeps_pitch_and_changes_length():
     assert tempo(a, sr, 1.0) is a
 
 
-# ------------------------------------------------------------- API
-
-
-def _transcripts(pid: str, other: str) -> None:
-    import json
-
-    for r in table():
-        for m in r["messages"]:
-            m["player_id"] = pid if m["player_id"] == AL else other
-        folder = config.DATA_DIR / "sessions" / f"2026-10-0{r['session']['id'][1]}_140000-abcd"
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / "transcript.json").write_text(json.dumps(r))
-    (config.DATA_DIR / "sessions" / "broken").mkdir()
-    (config.DATA_DIR / "sessions" / "broken" / "transcript.json").write_text("{nope")
-
-
-def test_api_profile_then_say_in_their_words(api, engine, monkeypatch):  # noqa: F811
-    from troubadour import server
-
-    pid = alice(api, engine)
-    r = api.post(f"/api/players/{pid}/clone/say", json={"text": "Hi.", "in_their_words": True})
-    assert r.status_code == 400  # no voice yet
-    j = finished(api, api.post(f"/api/players/{pid}/clone").json())  # no transcripts: the stock preview line
-    assert j["state"] == "done"
-    assert api.get("/api/clones").json()["voices"][pid]["preview_kind"] == ""
-    r = api.post(f"/api/players/{pid}/clone/say", json={"text": "Hi.", "in_their_words": True})
-    assert r.json()["detail"] == "Profile how Alice talks first."
-    _transcripts(pid, "p-gm")
-
-    llm = LLM({"description": "Asks before acting; opens with okay."}, {"text": "Okay you know what, I open the door."})
-    monkeypatch.setattr(server.memory, "llm", llm)
-    j = api.post(f"/api/players/{pid}/profile").json()
-    assert (j["kind"], j["player_id"]) == ("profile", pid)
-    assert finished(api, j)["message"] == "Profile ready"
-    prof = api.get("/api/clones").json()["profiles"][pid]
-    assert prof["description"] == "Asks before acting; opens with okay."
-    assert any("you know what" in p for p in prof["phrases"])
-
-    j = api.post(f"/api/players/{pid}/clone/say", json={"text": "I open the door.", "in_their_words": True}).json()
-    assert finished(api, j)["state"] == "done"
-    [clip] = api.get("/api/clones").json()["clips"]
-    assert clip["in_their_words"] is True
-    assert clip["text"] == "Okay you know what, I open the door."
-    assert clip["title"] == "I open the door."  # what was asked for
-    assert engine.clones.synth.said[-1] == "Okay you know what, I open the door."
-
-    api.patch(f"/api/players/{pid}", json={"clone_ok": False})
-    assert api.get("/api/clones").json()["profiles"] == {}
-
-
-def test_api_profile_needs_consent_not_an_idle_mic(api, engine):  # noqa: F811
-    pid = alice(api, engine, consent=False)
-    assert api.post(f"/api/players/{pid}/profile").status_code == 400
-    api.patch(f"/api/players/{pid}", json={"clone_ok": True})
-    engine.status = "running"  # counting lines and asking the LLM don't touch the voice model
-    j = api.post(f"/api/players/{pid}/profile").json()
-    assert finished(api, j)["state"] == "error"  # but there are no transcripts to count
-    assert "Not enough of their lines yet" in finished(api, j)["message"]
-
-
-def test_profile_needs_consent_to_be_saved(tmp_path):
-    from troubadour.tts import Clones
-
-    clones = Clones(lambda: tmp_path, allowed=lambda pid: False, synth=FakeSynth())
-    with pytest.raises(ValueError, match="off for this player"):
-        clones.save_profile("p1", {"player_id": "p1"})
-    assert clones.profiles() == {}
-
-
 # ------------------------------------------------------------- the voice's sample line
 
 
@@ -307,7 +237,7 @@ def test_preview_text_is_written_in_their_style_at_their_length():
     prof = talk.profile(table(), AL)  # ~200 words a minute: 20 s is ~67 words
     target = round(20 * prof["wpm"] / 60)
     written = " ".join(["Okay so you know what, I check the door for traps?"] * 7)
-    llm = LLM({"text": written})
+    llm = ScriptedLLM({"text": written})
     text, kind = talk.preview_text(llm, "Al", prof, ["Marla"])
     assert (text, kind) == (written, "ai")
     assert f"Write about {target} words." in llm.prompts[0]
@@ -325,7 +255,7 @@ def test_preview_text_is_written_in_their_style_at_their_length():
 )
 def test_preview_text_falls_back_to_their_own_lines(reply):
     prof = talk.profile(table(), AL)
-    text, kind = talk.preview_text(LLM(reply), "Al", prof, ["Marla"])
+    text, kind = talk.preview_text(ScriptedLLM(reply), "Al", prof, ["Marla"])
     assert kind == "their lines"
     assert text.startswith(prof["examples"][0])
     assert len(talk.tokens(text)) >= round(20 * prof["wpm"] / 60)
@@ -334,19 +264,5 @@ def test_preview_text_falls_back_to_their_own_lines(reply):
 def test_preview_text_may_use_their_own_name():
     prof = talk.profile(table(), AL)
     written = "Okay so Al is going first, you know what? " * 8
-    assert talk.preview_text(LLM({"text": written}), "Al", prof, ["Al"], own=["Al"])[1] == "ai"
-    assert talk.preview_text(LLM({"text": written}), "Al", prof, ["Al"])[1] == "their lines"
-
-
-def test_api_build_writes_a_line_they_would_say(api, engine, monkeypatch):  # noqa: F811
-    from troubadour import server
-
-    pid = alice(api, engine)
-    _transcripts(pid, "p-gm")
-    line = " ".join(["Okay so you know what, I check the door for traps?"] * 7)
-    llm = LLM({"description": "Asks before acting."}, {"text": line})
-    monkeypatch.setattr(server.memory, "llm", llm)
-    assert finished(api, api.post(f"/api/players/{pid}/clone").json())["state"] == "done"
-    clones = api.get("/api/clones").json()
-    assert pid in clones["profiles"]  # made on the way, from their transcripts
-    assert (clones["voices"][pid]["preview_text"], clones["voices"][pid]["preview_kind"]) == (line, "ai")
+    assert talk.preview_text(ScriptedLLM({"text": written}), "Al", prof, ["Al"], own=["Al"])[1] == "ai"
+    assert talk.preview_text(ScriptedLLM({"text": written}), "Al", prof, ["Al"])[1] == "their lines"

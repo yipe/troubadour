@@ -80,11 +80,7 @@ def run(job, engine: Engine, sid: str, emit: Callable[[], None], model: str | No
             emit()
 
     def pause() -> None:
-        # A live session needs Whisper more than this does: wait until it's over.
-        while engine.status != "idle":
-            job.message = "Paused while a session runs"
-            emit()
-            time.sleep(2)
+        engine.wait_idle(job)  # a live session needs Whisper more than this does
 
     new, changed = improve_record(
         record,
@@ -168,10 +164,7 @@ def reassign_speakers(job, engine: Engine, sid: str, emit: Callable[[], None]) -
     heard_next = 0
     rematch = 0
     for i, m in enumerate(messages):
-        while engine.status != "idle":
-            job.message = "Paused while a session runs"
-            emit()
-            time.sleep(2)
+        engine.wait_idle(job)
         prev_end = float(messages[i - 1]["t_end"]) if i else None
         next_start = float(messages[i + 1]["t_start"]) if i + 1 < len(messages) else None
         window = speaker_window(float(m["t_start"]), float(m["t_end"]), prev_end, next_start, engine.matcher.pad_to)

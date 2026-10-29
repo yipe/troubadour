@@ -15,12 +15,13 @@ Run from `backend/`: `uv run troubadour` (server), `uv run pytest -q`, `uv run r
 | `transcript.py` | Saved record shape (`build`), Markdown export, UTF-16 helpers. |
 | `campaign.py` | Obsidian vault: `Vault`, entity notes (frontmatter + Facts sections), `Corrector`, `everyday()`. |
 | `obsidian.py` | Finds the campaign folder in Obsidian's vault registry, so links name the vault by id. |
-| `memory.py` | Campaign jobs (note import, session write-up), job runner, spelling suggestions, `looks_like`. |
+| `memory.py` | Campaign jobs (note import, session write-up), job runner (a job reports with `Job.update()` / `advance()`), spelling suggestions, `looks_like`. |
 | `ask.py` | Ask: questions answered from the campaign's transcripts and notes (LLM plan → BM25 search → LLM answer with citations). |
 | `cleanup.py` | Spelling cleanup: `Speller.find` (code), `ask` (constrained LLM), `apply` (edits + offsets), `clean_record`. |
 | `improve.py` | Post-session jobs: re-transcribe (`run`), `fix_spellings`, restore. |
 | `dnd_terms.py` | D&D vocabulary: committed SRD list + an optional local list in `data/dnd_terms.json`. |
-| `tts.py` | Voice clones (opt-in per player): Chatterbox + DeepFilterNet on MLX, `Clones` (files under `data/clones/`), note → speakable text. |
+| `tts.py` | Voice clones (opt-in per player), audio and files: Chatterbox + DeepFilterNet on MLX, `Clones` (`data/clones/`), choosing clean references, note → speakable text. |
+| `cloning.py` | The voice-clone jobs (profile, build, say, read), HTTP-free: what a request checks, what the job does. |
 | `talk.py` | Speech profile from saved transcripts (pace, pet phrases by log-odds, openers, examples, LLM description) and "in their words" restyling with checks on numbers and names. |
 | `cloud.py` | Opt-in Troubadour Cloud backup: OAuth PKCE sign-in, vault scan, plan → signed uploads → commit. |
 | `providers.py` | Opt-in hosted LLMs: ChatGPT plan sign-in (OAuth + plan usage), OpenRouter sign-in, pasted keys, wire formats `MemoryLLM` uses. With `cloud.py`, the only network code besides the local LLM. |
@@ -32,7 +33,7 @@ Run from `backend/`: `uv run troubadour` (server), `uv run pytest -q`, `uv run r
 - **Session isolation:** work for an abandoned session must never write shared state. Check
   `sess is self.live` under `self.lock` before mutating; message ids are unique across sessions.
 - **Locks:** `engine.lock` (RLock) guards players/voices/messages; never call Whisper, the LLM or
-  disk-heavy work while holding it. `asr._lock` serializes Whisper; `embed_lock` serializes torch MPS.
+  disk-heavy work while holding it. `asr.mlx_lock` serializes MLX (Whisper, the voice clone); `embed_lock` serializes torch MPS.
 - **A broken vault, a down LLM, or a full disk never stops transcription.** Catch, log, carry on.
 - **Patches, not replacements**, for anything a UI may click quickly (`Vault.review`, ignore list).
 - **Never lose words:** improve keeps a line's old text if Whisper now hears nothing; every spelling
@@ -49,7 +50,8 @@ Run from `backend/`: `uv run troubadour` (server), `uv run pytest -q`, `uv run r
 - No models, no network: Whisper is stubbed (`troubadour.asr.transcribe`), the embedder is a fake,
   `engine.cleanup_llm.json` raises unless a test patches it, and the generated D&D list is hidden
   (`hermetic_dnd_terms`). Keep it that way.
-- Use the fixtures in `tests/conftest.py` (`dirs`, `engine`, `tone`, `speak`, `write_wav`).
+- Use the fixtures in `tests/conftest.py` (`dirs`, `engine`, `tone`, `speak`, `write_wav`; voice clones:
+  `FakeSynth`, `ScriptedLLM`, `job()`, `fake_vad`).
 - Fake LLMs return scripted JSON (`tests/test_memory.py::FakeLLM`); include adversarial outputs
   (junk names, invented spellings) when testing anything an LLM feeds.
 - Piping pytest through `tail` hides its exit code: check `${PIPESTATUS[0]}` or don't pipe.

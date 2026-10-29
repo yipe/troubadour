@@ -34,7 +34,7 @@ from .audio import FileSource, MicSource, Recorder, load_audio, read_wav, wav_by
 from .campaign import Corrector, Entity, english
 from .memory import MemoryLLM
 from .segment import SegmentConfig, Segmenter
-from .voices import VoiceMatcher, centroid, embed_span, normalize
+from .voices import VoiceMatcher, centroid, embed_span, normalize, speech_spans
 
 
 def keep_awake() -> subprocess.Popen | None:
@@ -61,6 +61,7 @@ SUGGEST_MIN = 0.25
 PROVISIONAL_BELOW = 0.55
 CHARACTER_MARGIN = 0.08  # one player's other voiceprint must win by this much to switch (no flicker)
 REFINE_EVERY_S = 15.0
+IDLE_POLL_S = 2.0  # a background job held by a live session checks this often whether it's over
 SAMPLE_MAX_S = 8.0
 MIC_STALL_S = 5.0  # mic silent this long (no frames at all, not just quiet) → warn the UI
 TRAIN_MIN_SPEECH_S = 4.0
@@ -492,7 +493,7 @@ class Engine:
         self._next_label = 1
         self._persisted_vecs: dict[str, np.ndarray] = {}  # voiceprints from state.json until the matcher exists
         self.vault = None  # campaign.Vault (set by the server): its glossary corrects new lines
-        self.clones = tts.Clones(lambda: config.DATA_DIR / "clones", allowed=self.clone_allowed)
+        self.clones = tts.Clones(lambda: config.DATA_DIR / "clones", allowed=self.clone_allowed, wait_idle=self.wait_idle)
         self._glossary: tuple = ((), 0.0, None, [], [])  # (signature, checked, fixer, names, entries)
         self._spell: tuple = (None, None)  # (key, Speller): rebuilt when the glossary or Setup changes
         self.cleanup_q: queue.Queue = queue.Queue()  # lines with names only the LLM can settle
@@ -2242,13 +2243,8 @@ class Engine:
             self._emit_session()
 
     def _finish_training(self, job: TrainJob) -> str:
-        import torch
-        from silero_vad import get_speech_timestamps, load_silero_vad
-
         audio = np.concatenate(job.frames)
-        # Separate VAD instance: the session's model is stateful and owned by the segmenter.
-        stamps = get_speech_timestamps(torch.from_numpy(audio), load_silero_vad(), sampling_rate=SR)
-        spans = [(s["start"] / SR, s["end"] / SR) for s in stamps]
+        spans = speech_spans(audio)
         speech = sum(e - s for s, e in spans)
         if speech < TRAIN_MIN_SPEECH_S:
             raise ValueError(f"Only heard {speech:.0f}s of speech. Try again, a bit louder or closer.")
@@ -2289,6 +2285,8 @@ class Engine:
         return f"Heard {speech:.0f}s of speech."
 
     # ----------------------------------------------------------------- voice clones
+    # The engine's part: who agreed, their Train clip and voiceprint, the speaker model, and the
+    # session state the jobs wait on. The jobs themselves are cloning.py.
 
     def clone_allowed(self, pid: str) -> bool:
         with self.lock:
@@ -2304,8 +2302,8 @@ class Engine:
                 raise KeyError(pid)
             if not p.clone_ok:
                 raise ValueError(f"Turn on the voice clone for {p.name} first (they agree to it).")
-            if needs_idle and self.status != "idle":
-                raise ValueError("Stop the session first: the voice model would hold up the transcription.")
+            if needs_idle:
+                self._require_idle("using the voice clone")
             return p.name
 
     def _train_voice(self, pid: str) -> Voice | None:
@@ -2319,78 +2317,50 @@ class Engine:
             None,
         )
 
-    def clone_source(self, pid: str) -> tuple[np.ndarray, int, list[tuple[float, float]]]:
+    def has_train_clip(self, pid: str) -> bool:
+        with self.lock:
+            return self._train_voice(pid) is not None
+
+    def train_clip(self, pid: str) -> tuple[np.ndarray, int, list[tuple[float, float]]]:
         """(audio, rate, speech spans in seconds) of their Train clip: the lossless own-rate copy when
         there is one. The spans come from the 16 kHz copy (Silero's rate); both hold the same seconds."""
-        import torch
-        from silero_vad import get_speech_timestamps, load_silero_vad
-
         with self.lock:
             v = self._train_voice(pid)
             if v is None:
                 raise ValueError("Train them first: the voice clone copies the Train recording.")
             audio, hq = v.sample_audio, self._voice_hq_path(v.id)
-        stamps = get_speech_timestamps(torch.from_numpy(audio), load_silero_vad(), sampling_rate=SR)
-        spans = [(s["start"] / SR, s["end"] / SR) for s in stamps]
+        spans = speech_spans(audio)
         if hq.is_file():
             native, rate = read_wav(hq)
             return native, rate, spans
         return audio, SR, spans
 
-    def clone_candidates(self, pid: str) -> list[tuple[str, np.ndarray, int]]:
-        """References to try for their clone, as (label, speech, rate): the Train recording, then up to
-        tts.SESSION_REFS stretches of session recordings at the mic's own rate. Session lines are their
-        solo, confident, own-voice lines (tts.solo_lines) that sound like their voiceprint, ranked by
-        how far the speech stands above the room (tts.noise_floor_db): hours of play hold quieter
-        moments than one Train clip, and the clone's likeness follows the reference's cleanliness."""
-        if not self._wait_ready():  # a Build clicked while the app is still starting
-            raise RuntimeError(self.load_error or "The speech models didn't load.")
-        audio, rate, spans = self.clone_source(pid)
-        out = [("Train recording", tts.speech_only(audio, rate, spans), rate)]
-        lines = []
-        for path in sorted(self.sessions_dir().glob("*/transcript.json")):
-            wav = path.parent / "audio.wav"  # mic sessions: replays have no recording of their own
-            if not wav.is_file():
-                continue
-            try:
-                messages = json.loads(path.read_text())["messages"]
-            except (OSError, ValueError, KeyError):
-                continue
-            lines += [(path.parent.name, wav, s, e) for s, e in tts.solo_lines(messages, pid)]
-        # Longest first when there are too many to measure: more speech per ffmpeg call.
-        lines = sorted(lines, key=lambda line: -(line[3] - line[2]))[: tts.MAX_LINES]
-        with self.lock:
-            v = self._train_voice(pid)
-            target = self.matcher.vector(v.id).copy() if v and self.matcher and v.id in self.matcher.names else None
-        scored, wavs = [], {}
-        for sid, wav, s, e in lines:
-            try:
-                clip = load_audio(wav, s, e)
-            except subprocess.CalledProcessError:
-                continue
-            with self.embed_lock:
-                vec = embed_span(self.embedder, clip, 0.0, len(clip) / SR)
-            if vec is None or (target is not None and float(target @ vec) < tts.SELF_LIKENESS):
-                continue  # labelled theirs, but doesn't sound like them: not worth cloning from
-            scored.append((tts.noise_floor_db(clip, SR), sid, s, e))
-            wavs[sid] = wav
-        for sid, picked in tts.pick_sessions(scored):
-            with wave.open(str(wavs[sid])) as w:
-                native = w.getframerate()
-            pieces = [load_audio(wavs[sid], s, e, rate=native) for s, e in picked]
-            out.append((f"recording of {sid[:10]}", tts.join(pieces, native), native))
-        return out
-
-    def voice_likeness(self, pid: str, audio: np.ndarray, rate: int) -> float | None:
-        """How much `audio` sounds like them to the speaker-ID model: cosine to their Train voiceprint."""
-        import soxr
-
+    def train_voiceprint(self, pid: str) -> np.ndarray | None:
+        """Their own (Train) voice's voiceprint, as the matcher has it now."""
         with self.lock:
             v = self._train_voice(pid)
             if v is None or self.matcher is None or v.id not in self.matcher.names:
                 return None
-            target = self.matcher.vector(v.id).copy()
-        x = soxr.resample(audio, rate, SR).astype(np.float32) if rate != SR else audio
+            return self.matcher.vector(v.id).copy()
+
+    def embed(self, audio: np.ndarray) -> np.ndarray | None:
+        """The speaker model's voiceprint of 16 kHz audio (None if too short to trust)."""
+        self.wait_for_models()
         with self.embed_lock:
-            vec = embed_span(self.embedder, x, 0.0, len(x) / SR)
-        return None if vec is None else float(target @ vec)
+            return embed_span(self.embedder, audio, 0.0, len(audio) / SR)
+
+    def wait_for_models(self) -> None:
+        """Block until the speech models are loaded (a job started while the app starts up)."""
+        if not self._wait_ready():
+            raise RuntimeError(self.load_error or "The speech models didn't load.")
+
+    def wait_idle(self, job) -> None:
+        """Hold a background job while a session runs: the session needs Whisper and the GPU more.
+        The job says so meanwhile, then gets its own message back."""
+        if self.status == "idle":
+            return
+        before = job.message
+        while self.status != "idle":
+            job.update(message="Paused while a session runs")
+            time.sleep(IDLE_POLL_S)
+        job.update(message=before)

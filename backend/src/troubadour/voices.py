@@ -16,6 +16,16 @@ def normalize(v: np.ndarray) -> np.ndarray:
     return v / (np.linalg.norm(v) + 1e-9)
 
 
+def speech_spans(audio: np.ndarray) -> list[tuple[float, float]]:
+    """(start, end) seconds of speech in 16 kHz audio, by Silero. Its own model instance: the live
+    session's is stateful and owned by the segmenter."""
+    import torch
+    from silero_vad import get_speech_timestamps, load_silero_vad
+
+    stamps = get_speech_timestamps(torch.from_numpy(audio), load_silero_vad(), sampling_rate=SR)
+    return [(s["start"] / SR, s["end"] / SR) for s in stamps]
+
+
 def embed_span(embedder, audio: np.ndarray, start: float, end: float) -> np.ndarray | None:
     """Unit vector for audio[start:end], or None if too short to trust."""
     import torch

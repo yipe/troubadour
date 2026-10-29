@@ -73,7 +73,7 @@ def tempo(audio: np.ndarray, rate: int, factor: float) -> np.ndarray:
 
 
 def read_wav(path: Path | str) -> tuple[np.ndarray, int]:
-    """(mono float32, rate) of a 16- or 24-bit PCM WAV, at its own rate (load_audio resamples to 16 kHz)."""
+    """(mono float32, rate) of a 16- or 24-bit PCM WAV, at its own rate."""
     with wave.open(str(path)) as w:
         width, rate, channels = w.getsampwidth(), w.getframerate(), w.getnchannels()
         raw = w.readframes(w.getnframes())

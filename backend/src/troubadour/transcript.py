@@ -62,6 +62,13 @@ def speaker(voice_id: str | None, voices: dict, players: dict) -> dict:
     return {"name": p["name"], "player_id": p["id"], "character": character, "gm": p.get("is_gm", False)}
 
 
+def character_voices(record: dict) -> set[str]:
+    """Ids of the voices named with a character in the voices panel: a line in one of them was spoken
+    in a character voice. A line's own `character` can't tell: speaker() also fills in the seat's
+    character on every line of a player who has no separate character voice."""
+    return {v["id"] for v in record.get("voices", []) if v.get("character")}
+
+
 def build(meta: dict, players: list[dict], voices: list[dict], messages: list[dict]) -> dict:
     """The JSON record. meta: {id, started_at (epoch s), source, duration_s}."""
     by_player = {p["id"]: p for p in players}

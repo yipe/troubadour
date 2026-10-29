@@ -1,14 +1,16 @@
 """Voice clones: say anything, or read a session page aloud, in a player's voice. All on this Mac.
 
 Opt-in per player (`Player.clone_ok`): nothing is built or spoken in someone's voice until it is on,
-and turning it off deletes their reference and every clip made with it.
+and turning it off deletes everything made from it (`Clones.forget`).
 
-Chatterbox doesn't train. It clones zero-shot from one reference clip and reads only its start
-(10 s for the decoder, 6 s for the speech-token model), so the reference is the player's Train clip
-(the lossless own-rate copy when there is one) with the silences cut out. The clone copies the room
-and noise along with the voice, so building a voice tries the clip as recorded and cleaned by
-DeepFilterNet, speaks the same preview line from each, and keeps whichever sounds more like the
-player to the speaker-ID model (cosine to their voiceprint). See PLAN.md "Voice clones".
+Chatterbox doesn't train. It clones zero-shot from one reference clip and reads only its start (10 s
+for the decoder, 6 s for the speech-token model), and it copies the room along with the voice: the
+clone's likeness follows how clean the reference is far more than how long. So a build tries several
+references (the Train recording, then the cleanest stretches of the player's own lines in session
+recordings: `solo_lines`, `noise_floor_db`, `pick_sessions`), cleans each with DeepFilterNet, and
+keeps the one whose clone sounds most like their voiceprint (`Clones.build`).
+
+This module is audio, text and files; the jobs that feed it are cloning.py. See PLAN.md "Voice clones".
 """
 
 import json
@@ -25,34 +27,38 @@ import numpy as np
 from . import asr, config
 from .audio import read_wav, wav_bytes
 from .audio import tempo as stretch
+from .campaign import write_atomic
+from .transcript import character_voices
 
 OUT_SR = 24000  # Chatterbox's output rate
 REF_S = 10.0  # Chatterbox reads no more of the reference than this
-REF_GAP_S = 0.15  # between the Train clip's stretches of speech, once the silences are cut
+REF_GAP_S = 0.15  # between stretches of speech, once the silences are cut
 MIN_REF_S = 3.0
-MAX_CHUNK_CHARS = 280  # one Chatterbox call per chunk: longer text drifts, or stops early
+# Reading: one Chatterbox call per chunk (longer text drifts, or stops early), with pauses between.
+MAX_CHUNK_CHARS = 280
 SENTENCE_PAUSE_S = 0.25
 PARAGRAPH_PAUSE_S = 0.6
-# A reading of 40+ characters outside this many characters per second is babble or cut short: retry.
+# A reading of CHECK_MIN_CHARS+ outside CPS_RANGE characters per second is babble or cut short: retried.
 CPS_RANGE = (6.0, 30.0)
 CPS_TYPICAL = 14.0
 CHECK_MIN_CHARS = 40
 ATTEMPTS = 2
+# Building: each candidate reference reads the preview's first sentences (TRIAL_CHARS) PREVIEW_RUNS
+# times and is judged on the mean likeness: one generation varies by ~0.1 (spike/clone_reference.py).
 PREVIEW = "Previously, on our adventure: the party crossed the river at dawn, and nobody fell in. Mostly."
-# Building a voice: each candidate reference speaks the preview this many times and is judged on the
-# mean likeness. One generation varies by ~0.1 (spike/clone_reference.py): one would pick by luck.
 PREVIEW_RUNS = 3
-TRIAL_CHARS = 140  # the part of the preview each candidate is judged on (~7 s): whole sentences
-# Candidate references from session recordings: solo lines of their own voice, confidently theirs.
+TRIAL_CHARS = 140
+# Candidate references from session recordings: their solo, settled, own-voice lines.
 SOLO_GAP_S = 0.3  # nobody else talks within this of the line
 LINE_S = (2.5, 12.0)
 LINE_CONFIDENCE = 0.75
-MAX_LINES = 300  # measured per build (ffmpeg seek + one embedding each): bounded
+MAX_LINES = 300  # measured per build (an ffmpeg seek and an embedding each)
 SESSION_REFS = 3  # sessions tried, the cleanest first (one session: one mic position and room)
 SELF_LIKENESS = 0.5  # a line must sound this much like their voiceprint to count as theirs
+# Text in (mirrored in web/src/components/setup/VoiceCloneDialog.tsx) and kept on a clip.
 SAY_MAX_CHARS = 2000
 READ_MAX_CHARS = 30000  # about half an hour read aloud
-CLIP_TEXT_CHARS = 300  # what a clip's metadata keeps of its text
+CLIP_TEXT_CHARS = 300
 # Session page sections that don't read well aloud: name lists, links, and copies of the scenes.
 SKIP_SECTIONS = {"mentioned", "transcript", "highlights", "table moments", "facts", "suggested facts"}
 ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
@@ -80,6 +86,21 @@ def speech_only(audio: np.ndarray, rate: int, spans: list[tuple[float, float]], 
     return normalize(np.concatenate(parts[:-1])) if parts else np.zeros(0, np.float32)
 
 
+def join(pieces: list[np.ndarray], rate: int) -> np.ndarray:
+    """Clips back to back with short gaps, peak-normalized, at most REF_S of speech."""
+    if not pieces:
+        return np.zeros(0, np.float32)
+    ends = np.cumsum([len(p) / rate for p in pieces])
+    return speech_only(np.concatenate(pieces), rate, list(zip([0.0, *ends[:-1]], ends, strict=True)))
+
+
+def speech_seconds(audio: np.ndarray, rate: int) -> float:
+    """Length without the silence before and after (under 2% of the peak); 0 for silence."""
+    peak = float(np.abs(audio).max()) if len(audio) else 0.0
+    loud = np.flatnonzero(np.abs(audio) >= 0.02 * peak) if peak > 0 else []
+    return (loud[-1] - loud[0] + 1) / rate if len(loud) else 0.0
+
+
 def noise_floor_db(audio: np.ndarray, rate: int) -> float:
     """Loud vs quiet 20 ms frames, in dB: how far the speech stands above the room. Higher is cleaner."""
     n = max(1, int(0.02 * rate))
@@ -90,22 +111,27 @@ def noise_floor_db(audio: np.ndarray, rate: int) -> float:
     return float(20 * np.log10(np.percentile(rms, 95) / np.percentile(rms, 10)))
 
 
-def solo_lines(messages: list[dict], pid: str) -> list[tuple[float, float]]:
-    """(start, end) of their lines fit to clone from: their own voice (no character), settled and
-    confident, 2.5-12 s, with nobody else talking just before, during or after."""
-    others = sorted((m["t_start"], m["t_end"]) for m in messages if m.get("player_id") != pid)
+# ------------------------------------------------------------------ references from sessions
+
+
+def solo_lines(record: dict, pid: str) -> list[tuple[float, float]]:
+    """(start, end) of their lines in a saved record fit to clone from: in their own voice (not a
+    character voice), settled and confident, 2.5-12 s, with nobody else talking just before, during
+    or after."""
+    messages = record["messages"]
+    characters = character_voices(record)
+    others = [(m["t_start"], m["t_end"]) for m in messages if m.get("player_id") != pid]
     out = []
     for m in messages:
         t0, t1 = m["t_start"], m["t_end"]
         if (
             m.get("player_id") != pid
-            or m.get("character")
+            or m.get("voice_id") in characters
             or m.get("provisional")
             or (m.get("confidence") or 0) < LINE_CONFIDENCE
             or not LINE_S[0] <= t1 - t0 <= LINE_S[1]
+            or any(s < t1 + SOLO_GAP_S and e > t0 - SOLO_GAP_S for s, e in others)
         ):
-            continue
-        if any(s < t1 + SOLO_GAP_S and e > t0 - SOLO_GAP_S for s, e in others):
             continue
         out.append((t0, t1))
     return out
@@ -130,16 +156,6 @@ def pick_sessions(scored: list[tuple[float, str, float, float]], limit: int = SE
             picks.append((float(np.mean([f for f, _, _ in chosen])), sid, [(s, e) for _, s, e in chosen]))
     picks.sort(key=lambda p: -p[0])
     return [(sid, spans) for _, sid, spans in picks[:limit]]
-
-
-def join(pieces: list[np.ndarray], rate: int) -> np.ndarray:
-    """Clips back to back with short gaps, peak-normalized, at most REF_S of speech."""
-    spans, t, parts = [], 0.0, []
-    for p in pieces:
-        parts.append(p)
-        spans.append((t, t + len(p) / rate))
-        t += len(p) / rate
-    return speech_only(np.concatenate(parts), rate, spans) if parts else np.zeros(0, np.float32)
 
 
 # ------------------------------------------------------------------ text
@@ -252,8 +268,8 @@ def plausible(text: str, audio: np.ndarray, rate: int = OUT_SR) -> bool:
 
 class Synth:
     """Chatterbox and DeepFilterNet on MLX, loaded on first use (downloaded the first time). Each call
-    holds Whisper's lock, so only one MLX model runs at a time, and a live session's transcription
-    waits for at most one chunk (a few seconds)."""
+    holds asr.mlx_lock: one MLX model at a time. Jobs also wait out live sessions (Clones.wait_idle),
+    so this only ever holds up a session that starts mid-call, by that one call."""
 
     def __init__(self, model: str | None = None):
         self.model_id = model or config.TTS_MODEL
@@ -277,7 +293,7 @@ class Synth:
         _, dfn = self._models()
         sr = dfn.config.sample_rate
         x = soxr.resample(audio, rate, sr).astype(np.float32) if rate != sr else audio
-        with asr._lock:
+        with asr.mlx_lock:
             return np.asarray(dfn.enhance_array(x), np.float32), sr
 
     def voice(self, audio: np.ndarray, rate: int):
@@ -285,12 +301,12 @@ class Synth:
         import mlx.core as mx
 
         tts, _ = self._models()
-        with asr._lock:
+        with asr.mlx_lock:
             return tts.prepare_conditionals(mx.array(audio), rate)
 
     def speak(self, text: str, voice) -> np.ndarray:
         tts, _ = self._models()
-        with asr._lock:
+        with asr.mlx_lock:
             parts = [np.asarray(r.audio, np.float32) for r in tts.generate(text=text, conds=voice, verbose=False)]
         return np.concatenate(parts) if parts else np.zeros(0, np.float32)
 
@@ -298,64 +314,64 @@ class Synth:
 # ------------------------------------------------------------------ clones on disk
 
 
-def speech_seconds(audio: np.ndarray, rate: int) -> float:
-    """Length without the silence before and after (under 2% of the peak)."""
-    loud = np.flatnonzero(np.abs(audio) >= 0.02 * (np.abs(audio).max() if len(audio) else 0.0))
-    return (loud[-1] - loud[0] + 1) / rate if len(loud) else 0.0
-
-
-def _write_atomic(path: Path, data: bytes) -> None:
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_bytes(data)
-    tmp.replace(path)
+def _url(pid: str, name: str) -> str:
+    return f"/api/clones/{pid}/{name}.wav"
 
 
 class Clones:
-    """data/clones/<player id>/: reference.wav (what Chatterbox clones), preview.wav, voice.json, and
-    clips/<clip id>.wav + .json. `allowed(pid)` is the player's opt-in, checked again (under the
-    lock that forget() takes) before anything is written, so turning it off mid-job leaves nothing."""
+    """data/clones/<player id>/: reference.wav (what Chatterbox clones), preview.wav, voice.json,
+    profile.json (talk.py) and clips/<clip id>.wav + .json.
 
-    def __init__(self, root: Callable[[], Path], allowed: Callable[[str], bool], synth: Synth | None = None):
+    `allowed(pid)` is the player's opt-in, checked again under the lock forget() takes before anything
+    is written, so turning it off mid-job leaves nothing. `wait_idle(job)` holds a job while a live
+    session runs; it's called before every model call. Jobs are memory.Job: update() and advance()
+    report progress."""
+
+    def __init__(
+        self,
+        root: Callable[[], Path],
+        allowed: Callable[[str], bool],
+        synth: Synth | None = None,
+        wait_idle: Callable[[object], None] = lambda job: None,
+    ):
         self.root = root
         self.allowed = allowed
         self.synth = synth or Synth()
+        self.wait_idle = wait_idle
         self._lock = threading.Lock()
+
+    # ---------------------------------------------------------------- reading
 
     def _dir(self, pid: str) -> Path:
         if not ID.fullmatch(pid):
             raise KeyError(pid)
         return self.root() / pid
 
-    def status(self, pid: str) -> dict | None:
+    def _read_json(self, pid: str, name: str) -> dict | None:
         try:
-            meta = json.loads((self._dir(pid) / "voice.json").read_text())
+            return json.loads((self._dir(pid) / name).read_text())
         except (OSError, ValueError):
             return None
-        return meta | {"preview_url": f"/api/clones/{pid}/preview.wav?v={meta['built_at']}"}
+
+    def _each(self, read: Callable[[str], dict | None]) -> dict[str, dict]:
+        """{player id: read(player id)} over every player folder that has one."""
+        root = self.root()
+        found = ((d.name, read(d.name)) for d in sorted(root.iterdir()) if d.is_dir()) if root.is_dir() else ()
+        return {pid: item for pid, item in found if item}
+
+    def status(self, pid: str) -> dict | None:
+        meta = self._read_json(pid, "voice.json")
+        return meta and meta | {"preview_url": f"{_url(pid, 'preview')}?v={meta['built_at']}"}
 
     def voices(self) -> dict[str, dict]:
-        root = self.root()
-        found = (self.status(d.name) for d in sorted(root.iterdir()) if d.is_dir()) if root.is_dir() else ()
-        return {s["player_id"]: s for s in found if s}
+        return self._each(self.status)
 
     def profile(self, pid: str) -> dict | None:
         """Their speech profile (talk.py), if one has been made."""
-        try:
-            return json.loads((self._dir(pid) / "profile.json").read_text())
-        except (OSError, ValueError):
-            return None
+        return self._read_json(pid, "profile.json")
 
     def profiles(self) -> dict[str, dict]:
-        root = self.root()
-        found = (self.profile(d.name) for d in sorted(root.iterdir()) if d.is_dir()) if root.is_dir() else ()
-        return {p["player_id"]: p for p in found if p}
-
-    def save_profile(self, pid: str, prof: dict) -> None:
-        folder = self._dir(pid)
-        with self._lock:
-            self._check_allowed(pid)
-            folder.mkdir(parents=True, exist_ok=True)
-            _write_atomic(folder / "profile.json", json.dumps(prof).encode())
+        return self._each(self.profile)
 
     def clips(self) -> list[dict]:
         out = []
@@ -364,7 +380,7 @@ class Clones:
                 clip = json.loads(meta.read_text())
             except (OSError, ValueError):
                 continue
-            out.append(clip | {"url": f"/api/clones/{clip['player_id']}/{clip['id']}.wav"})
+            out.append(clip | {"url": _url(clip["player_id"], clip["id"])})
         return sorted(out, key=lambda c: c["created_at"], reverse=True)
 
     def file(self, pid: str, name: str) -> Path:
@@ -376,6 +392,19 @@ class Clones:
             raise KeyError(name)
         return path
 
+    # ---------------------------------------------------------------- writing
+
+    def _write(self, pid: str, files: dict[str, bytes]) -> None:
+        """Write their files (paths relative to their folder), if they still agree."""
+        folder = self._dir(pid)
+        with self._lock:
+            self._check_allowed(pid)
+            for name, data in files.items():
+                write_atomic(folder / name, data)
+
+    def save_profile(self, pid: str, prof: dict) -> None:
+        self._write(pid, {"profile.json": json.dumps(prof).encode()})
+
     def delete_clip(self, pid: str, cid: str) -> None:
         if cid == "preview":
             raise KeyError(cid)
@@ -385,86 +414,82 @@ class Clones:
             path.with_suffix(".json").unlink(missing_ok=True)
 
     def forget(self, pid: str) -> None:
-        """Everything made from their voice: the reference, the preview and every clip."""
+        """Everything made from their voice: the reference, the preview, the profile and every clip."""
         with self._lock:
             shutil.rmtree(self._dir(pid), ignore_errors=True)
+
+    # ---------------------------------------------------------------- the voice model
 
     def _check_allowed(self, pid: str) -> None:
         if not self.allowed(pid):
             raise ValueError("Voice cloning is off for this player.")
 
-    def _speak(self, text: str, voice) -> np.ndarray:
+    def _speak(self, job, text: str, voice) -> np.ndarray:
         """Up to ATTEMPTS tries for a reading at a human pace; else the try closest to one."""
         tries = []
         for _ in range(ATTEMPTS):
+            self.wait_idle(job)
             audio = self.synth.speak(text, voice)
             if plausible(text, audio):
                 return audio
             tries.append(audio)
         return min(tries, key=lambda a: abs(len(text) / max(len(a) / OUT_SR, 1e-3) - CPS_TYPICAL))
 
-    def _read(self, text: str, voice, step: Callable[[], None] = lambda: None) -> np.ndarray:
-        """`text` chunk by chunk (chunks), with the pauses between; step() after each chunk."""
+    def _read(self, job, text: str, voice) -> np.ndarray:
+        """`text` chunk by chunk with the pauses between; the job advances a step per chunk."""
         pieces = []
         for chunk, pause in chunks(text):
-            pieces += [self._speak(chunk, voice), np.zeros(int(pause * OUT_SR), np.float32)]
-            step()
+            pieces += [self._speak(job, chunk, voice), np.zeros(int(pause * OUT_SR), np.float32)]
+            job.advance()
         return np.concatenate(pieces) if pieces else np.zeros(0, np.float32)
+
+    def _voice(self, job, audio: np.ndarray, rate: int):
+        self.wait_idle(job)
+        return self.synth.voice(audio, rate)
 
     def build(
         self,
         job,
-        emit: Callable[[], None],
         pid: str,
         candidates: list[tuple[str, np.ndarray, int]],
         likeness: Callable[[np.ndarray, int], float | None],
-        preview_text: str = PREVIEW,
+        preview_text: str = "",
         preview_kind: str = "",
     ) -> dict:
         """Their voice from whichever candidate reference clones closest. candidates: (label, speech,
-        rate): the Train recording's speech, then the cleanest stretches of session recordings. Every
-        reference goes through DeepFilterNet first: the clone copies whatever room it hears, and the
-        voice should sound clean (the likeness, measured against a table-mic voiceprint, would rather
-        keep the room: it isn't asked). Each candidate is judged on PREVIEW_RUNS readings of the
-        preview's first sentences (TRIAL_CHARS); the winner then reads the whole preview (about 20 s of something they
-        would say: talk.preview_text) once."""
+        rate). Every reference goes through DeepFilterNet first: the voice should sound clean, and the
+        likeness (measured against a table-mic voiceprint) would rather keep the room, so it isn't
+        asked. Each is judged on PREVIEW_RUNS readings of the preview's first sentences; the winner
+        then reads the whole preview once. preview_text: ~20 s of something they would say
+        (talk.preview_text), made by preview_kind ("ai" | "their lines"); empty: the stock PREVIEW."""
         self._check_allowed(pid)
         candidates = [(label, a, r) for label, a, r in candidates if len(a) >= MIN_REF_S * r]
         if not candidates:
             raise ValueError(f"No recording of them has {MIN_REF_S:.0f} s of speech; train again.")
-        parts = chunks(preview_text) or chunks(PREVIEW)
-        preview_text = " ".join(c for c, _ in parts)
-        preview_kind = preview_kind if preview_text != PREVIEW else ""
+        parts = chunks(preview_text)
+        if not parts:
+            preview_text, preview_kind, parts = PREVIEW, "", chunks(PREVIEW)
         trial = chunks(preview_text, max_chars=TRIAL_CHARS)[0][0]
-        job.done, job.total = 0, len(candidates) * PREVIEW_RUNS + len(parts)
-        job.message = "Loading the voice model (the first time downloads it)…"
-        emit()
+        job.update(done=0, total=len(candidates) * PREVIEW_RUNS + len(parts), message="Loading the voice model…")
         tried, best = [], None
         for label, audio, rate in candidates:
-            job.message = f"Trying the {label}…"
-            emit()
+            job.update(message=f"Trying the {label}…")
+            self.wait_idle(job)
             clean, clean_rate = self.synth.denoise(audio, rate)
             clean = normalize(clean)
-            voice = self.synth.voice(clean, clean_rate)
+            voice = self._voice(job, clean, clean_rate)
             scores = []
             for _ in range(PREVIEW_RUNS):
-                scores.append(likeness(self._speak(trial, voice), OUT_SR))
-                job.done += 1
-                emit()
+                scores.append(likeness(self._speak(job, trial, voice), OUT_SR))
+                job.advance()
             known = [s for s in scores if s is not None]
             score = float(np.mean(known)) if known else None
             tried.append({"source": label, "likeness": None if score is None else round(score, 3)})
-            if best is None or (score if score is not None else -1.0) > (best[0] if best[0] is not None else -1.0):
+            if best is None or (-1.0 if score is None else score) > (-1.0 if best[0] is None else best[0]):
                 best = (score, label, clean, clean_rate, voice)
         score, label, ref, rate, voice = best
-        job.message = f"Recording the preview with the {label}…"
-        emit()
-
-        def step() -> None:
-            job.done += 1
-            emit()
-
-        preview = self._read(preview_text, voice, step)
+        job.update(message=f"Recording the preview with the {label}…")
+        preview = self._read(job, preview_text, voice)
         meta = {
             "player_id": pid,
             "built_at": int(time.time()),
@@ -472,25 +497,25 @@ class Clones:
             "tried": tried,
             "likeness": None if score is None else round(score, 3),
             "reference_s": round(len(ref) / rate, 1),
-            "preview_text": preview_text,
-            "preview_kind": preview_kind,  # "ai" (written in their style) | "their lines" | "" (the stock line)
+            "preview_text": " ".join(c for c, _ in parts),
+            "preview_kind": preview_kind,
             # The clone's own pace, so "in their words" can time-stretch it to the player's (talk.tempo).
             "clone_wpm": round(60 * len(preview_text.split()) / max(speech_seconds(preview, OUT_SR), 1e-3)),
         }
-        folder = self._dir(pid)
-        with self._lock:
-            self._check_allowed(pid)
-            folder.mkdir(parents=True, exist_ok=True)
-            _write_atomic(folder / "reference.wav", wav_bytes(ref, rate, bits=24))
-            _write_atomic(folder / "preview.wav", wav_bytes(preview, OUT_SR))
-            _write_atomic(folder / "voice.json", json.dumps(meta).encode())
-        job.message = f"Voice ready from the {label}" + ("" if score is None else f" (likeness {score:.2f})")
+        self._write(
+            pid,
+            {
+                "reference.wav": wav_bytes(ref, rate, bits=24),
+                "preview.wav": wav_bytes(preview, OUT_SR),
+                "voice.json": json.dumps(meta).encode(),
+            },
+        )
+        job.update(message=f"Voice ready from the {label}" + ("" if score is None else f" (likeness {score:.2f})"))
         return self.status(pid) or meta
 
     def speak(
         self,
         job,
-        emit: Callable[[], None],
         pid: str,
         text: str,
         kind: str,
@@ -509,16 +534,10 @@ class Clones:
         parts = chunks(text)
         if not parts:
             raise ValueError("Nothing to read.")
-        job.done, job.total, job.message = 0, len(parts), "Loading the voice model…"
-        emit()
-        voice = self.synth.voice(ref, rate)
-        job.message = ""
-
-        def step() -> None:
-            job.done += 1
-            emit()
-
-        audio = stretch(self._read(text, voice, step), OUT_SR, tempo)
+        job.update(done=0, total=len(parts), message="Loading the voice model…")
+        voice = self._voice(job, ref, rate)
+        job.update(message="")
+        audio = stretch(self._read(job, text, voice), OUT_SR, tempo)
         cid = "c" + uuid.uuid4().hex[:10]
         meta = {
             "id": cid,
@@ -531,11 +550,6 @@ class Clones:
             "seconds": round(len(audio) / OUT_SR, 1),
             "created_at": time.time(),
         }
-        clips = self._dir(pid) / "clips"
-        with self._lock:
-            self._check_allowed(pid)
-            clips.mkdir(parents=True, exist_ok=True)
-            _write_atomic(clips / f"{cid}.wav", wav_bytes(audio, OUT_SR))
-            _write_atomic(clips / f"{cid}.json", json.dumps(meta).encode())
-        job.message = f"{meta['seconds']:.0f} s of audio"
-        return meta | {"url": f"/api/clones/{pid}/{cid}.wav"}
+        self._write(pid, {f"clips/{cid}.wav": wav_bytes(audio, OUT_SR), f"clips/{cid}.json": json.dumps(meta).encode()})
+        job.update(message=f"{meta['seconds']:.0f} s of audio")
+        return meta | {"url": _url(pid, cid)}

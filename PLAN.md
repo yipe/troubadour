@@ -392,22 +392,25 @@ runs gave byte-identical pages) unless other requests share the GPU.
 
 ## Voice clones (say things, read write-ups aloud)
 
-`tts.py`: Chatterbox (multilingual v3, MLX port via `mlx-audio`, `TROUBADOUR_TTS` overrides it)
-speaks in a player's voice; DeepFilterNet (MLX) cleans the reference. Both download from Hugging
-Face on first use, like Whisper, then run locally.
+Chatterbox (multilingual v3, MLX port via `mlx-audio`, `TROUBADOUR_TTS` overrides it) speaks in a
+player's voice; DeepFilterNet (MLX) cleans the reference. Both download from Hugging Face on first
+use, like Whisper, then run locally. Code: `tts.py` (audio, text, `Clones`: the files),
+`talk.py` (speech profile, restyling), `cloning.py` (the jobs; HTTP-free), the engine's part
+(consent, Train clip, voiceprint, the live session jobs wait out); the server only checks and queues.
 
 - **Consent first.** `Player.clone_ok` (library-level, off by default; Setup → player card →
   Voice clone). Nothing is built or spoken until it's on. Turning it off, or deleting the
-  player, deletes `data/clones/<player>/` (reference, preview, every clip). A job checks the flag
+  player, deletes `data/clones/<player>/` (reference, preview, profile, every clip). A job checks the flag
   again under the lock `forget` takes before it writes, so turning it off mid-job leaves nothing.
 - **No training.** Chatterbox is zero-shot and reads only the start of one reference clip (10 s
   for the decoder, 6 s for the speech-token model), so more audio doesn't help; cleaner audio does.
-  The reference is the player's Train recording (`<voice>.hq.wav`, the mic's own rate, else the
-  16 kHz clip), silences cut by Silero, first 10 s of speech.
+  A Train recording is required (`<voice>.hq.wav`, the mic's own rate, else the 16 kHz clip;
+  silences cut by Silero, first 10 s of speech); session recordings add candidates (below).
 - **Build searches for the cleanest reference.** The clone copies room and noise along with the
   voice, and its likeness follows the reference's cleanliness far more than its length. Candidates:
   the Train recording's speech, then up to 3 sessions' worth of their cleanest lines from mic
-  recordings (`audio.wav`, at the mic's own rate): their own voice, not provisional, confidence
+  recordings (`audio.wav`, at the mic's own rate): their own voice (not a voice named with a
+  character: a saved line's `character` also shows the seat's character, so it can't tell), not provisional, confidence
   ≥ 0.75, 2.5–12 s, nobody else within 0.3 s, sounding like their voiceprint (cos ≥ 0.5), ranked by
   how far speech stands above the room (95th vs 10th percentile of 20 ms frame RMS); per session the
   cleanest lines up to 10 s (≤ 300 lines measured per build). Every candidate goes through
@@ -427,17 +430,21 @@ Face on first use, like Whisper, then run locally.
   voice 0.18–0.33); Whisper read clones back word for word except fantasy names. Speed: ~0.3–0.5×
   real time warm; first load ~35 s.
 - **Reading.** `speakable` turns a note into paragraphs (no frontmatter, links, tags, tables;
-  headings and list items become sentences; Mentioned, Transcript, Highlights and Table moments
-  are skipped). `chunks` packs whole sentences up to 280 characters, never across a paragraph
+  headings and list items become sentences; Mentioned, Transcript, Highlights, Table moments,
+  Facts and Suggested facts are skipped). `chunks` packs whole sentences up to 280 characters, never across a paragraph
   (Chatterbox drifts or stops early on long input); pauses 0.25 s between chunks, 0.6 s between
   paragraphs. A reading of 40+ characters outside 6–30 characters per second is redone once.
-- **GPU.** Each model call holds Whisper's lock (one MLX model at a time). Jobs are refused while
-  a session runs; one that started before a session began delays its transcription by one chunk.
-- Jobs (`campaign.job`, `player_id` set): `clone`, `say`, `read`. API: `GET /api/clones`
-  (`{voices: {player id: status}, clips}`), `POST /api/players/{id}/clone`,
-  `POST /api/players/{id}/clone/say {text ≤ 2000}`, `POST /api/players/{id}/clone/read {session}`
-  (that session's write-up page), `GET /api/clones/{player}/{preview|clip}.wav`,
-  `DELETE /api/clones/{player}/clips/{clip}`, `PATCH /api/players/{id} {clone_ok}`.
+- **GPU.** Each model call holds `asr.mlx_lock` (one MLX model at a time). Clone, say and read
+  jobs are refused while a session runs, and before every model call they wait out one that started
+  since (`Engine.wait_idle`, "Paused while a session runs"; improve uses it too), so a session that
+  starts mid-call waits for that one call (a few seconds).
+- Jobs (`campaign.job`, `player_id` set): `profile`, `clone`, `say`, `read` (titled with the page;
+  `note` is its vault path). API: `GET /api/clones` (`{voices, profiles, clips}`, voices and
+  profiles by player id), `POST /api/players/{id}/profile`, `POST /api/players/{id}/clone`,
+  `POST /api/players/{id}/clone/say {text ≤ 2000, in_their_words}`,
+  `POST /api/players/{id}/clone/read {session, in_their_words}` (that session's write-up page),
+  `GET /api/clones/{player}/{preview|clip}.wav`, `DELETE /api/clones/{player}/clips/{clip}`,
+  `PATCH /api/players/{id} {clone_ok}`.
 - **The preview is something they'd say.** ~20 s at their pace (`talk.preview_text`): the memory
   LLM writes table talk in their style from their speech profile (made on the way if missing), with
   the word count checked (0.6–1.5× the target) and no names they never used; if it's offline or
@@ -456,16 +463,19 @@ the clone). `POST /api/players/{id}/profile` (job `profile`, allowed mid-session
 reads every saved `transcript.json`, all campaigns (people are library-wide), and counts:
 
 - pace: words per minute over lines ≥ 1.5 s after taking off the VAD padding (0.2 s a side);
-  words per line; share of questions, exclamations, in-character lines; first words their lines
+  words per line; share of questions, exclamations, lines in a character voice (one named with a
+  character in the voices panel); first words their lines
   open with (≥ 5% of their lines and 1.3× the table's rate).
 - pet phrases: 1–3-word n-grams by log-odds with an informative Dirichlet prior (Monroe et al.
   2008), against everyone else's lines: z ≥ 2, ≥ 2× the table's rate, ≥ 3 times in ≥ 3 lines.
   Function words never count alone; discourse words ("okay", "like", "literally") can. A phrase
   swallows the shorter ones inside it used about as often, and overlapping ones merge ("you know
-  what" + "know what I" → "you know what I"), up to 6 words.
+  what" + "know what I" → "you know what I") if they're said together in ≥ 3 lines, up to 8 words.
 - up to 12 example lines (6–30 words, confidence ≥ 0.6, not provisional; pet-phrase lines first,
   round robin over sessions), and a 2–4 sentence description from the memory LLM (plain text,
-  ≤ 600 characters; none if the LLM is down: the numbers stand alone).
+  ≤ 600 characters; none if the LLM is down: the numbers stand alone). The memory LLM is the one the
+  user picked: with a hosted provider, the counts, examples and texts to restyle go to it, as
+  write-ups' transcripts do.
 - Needs 30 lines and 300 words. Whisper drops most "um"s and filler-only lines aren't saved, so
   hesitation isn't measured.
 
@@ -479,8 +489,7 @@ itself), then that paragraph keeps the original wording (the job says how many).
 (made-up transcripts, gemma-4-26b): the first prompt overused pet phrases (one line came back 6×
 longer, the same sentence four times); with "use their habits lightly" plus the reason on retry,
 every paragraph of a short page passed. The checks can't catch tone shifts (a statement turned into
-"…?"). The
-clip is then time-stretched to their pace (ffmpeg `atempo`, pitch kept): their wpm over the
+"…?"). The clip is then time-stretched to their pace (ffmpeg `atempo`, pitch kept): their wpm over the
 clone's own (`clone_wpm`, measured on the preview at build), clamped to 0.85–1.15. Clips record
 `in_their_words`; `text` is what was spoken.
 

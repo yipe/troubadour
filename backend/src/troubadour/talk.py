@@ -9,9 +9,11 @@ phrases (word sequences they use far more than everyone else at the table, by lo
 informative Dirichlet prior: Monroe, Colaresi & Quinn 2008, "Fightin' Words"). Whisper drops most
 "um"s and "uh"s and filler-only lines aren't saved, so hesitation can't be measured.
 
-The local LLM adds a short description, and "in their words" rewrites text paragraph by paragraph.
-Both are untrusted: a description is plain text with a length cap; a rewrite must keep every number
-and every campaign name it was given and add none, or that paragraph keeps the original wording.
+The memory LLM (local, or the hosted one the user picked) adds a short description, writes the
+voice's preview line, and for "in their words" rewrites text paragraph by paragraph. All untrusted:
+a description is plain text with a length cap; a preview line must be about the right length and
+use no name they never used; a rewrite must keep every number and every campaign name it was given
+and add none, or that paragraph keeps the original wording.
 """
 
 import math
@@ -21,6 +23,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable
 
 from . import ask
+from .transcript import character_voices
 
 MIN_LINES = 30
 MIN_WORDS = 300
@@ -35,9 +38,11 @@ PHRASE_RATIO = 2.0  # and they must use it at least this many times as often as 
 SAME_COUNT = 1.25  # counts this close are the same habit (a phrase and the words inside it)
 MAX_SAYING = 8  # words, once overlapping phrases are merged
 MAX_PHRASES = 8
-OPENER_SHARE = 0.05
+OPENER_SHARE = 0.05  # a first word that starts this share of their lines
+OPENER_RATIO = 1.3  # ... and this many times the table's share
 MAX_OPENERS = 3
 EXAMPLE_WORDS = (6, 30)
+EXAMPLE_CONFIDENCE = 0.6  # an example line must be confidently theirs
 MAX_EXAMPLES = 12
 DESCRIPTION_CHARS = 600
 LENGTH_RANGE = (0.6, 1.6)  # a rewrite's length against the text's
@@ -151,7 +156,7 @@ def openers(mine: list[str], others: list[str]) -> list[str]:
         return Counter({w: c / total for w, c in firsts.items()})
 
     mine_s, other_s = shares(mine), shares(others)
-    out = [w for w, s in mine_s.most_common() if s >= OPENER_SHARE and s >= 1.3 * other_s.get(w, 0.0)]
+    out = [w for w, s in mine_s.most_common() if s >= OPENER_SHARE and s >= OPENER_RATIO * other_s.get(w, 0.0)]
     return out[:MAX_OPENERS]
 
 
@@ -161,8 +166,14 @@ def _share(lines: list[dict], test: Callable[[dict], bool]) -> float:
 
 def profile(records: list[dict], pid: str) -> dict:
     """Counted speech patterns of player `pid` across saved transcript records (transcript.build shape)."""
-    mine = [m | {"session": r["session"]["id"]} for r in records for m in r["messages"] if m.get("player_id") == pid]
-    others = [m for r in records for m in r["messages"] if m.get("player_id") not in (None, pid)]
+    mine, others = [], []
+    for r in records:
+        characters = character_voices(r)
+        for m in r["messages"]:
+            if m.get("player_id") == pid:
+                mine.append(m | {"session": r["session"]["id"], "in_character": m.get("voice_id") in characters})
+            elif m.get("player_id") is not None:
+                others.append(m)
     words = sum(len(tokens(m["text"])) for m in mine)
     if len(mine) < MIN_LINES or words < MIN_WORDS:
         raise ValueError(
@@ -185,7 +196,7 @@ def profile(records: list[dict], pid: str) -> dict:
         "words_per_line": round(words / len(mine), 1),
         "questions": _share(mine, lambda m: m["text"].rstrip().endswith("?")),
         "exclamations": _share(mine, lambda m: m["text"].rstrip().endswith("!")),
-        "in_character": _share(mine, lambda m: bool(m.get("character"))),
+        "in_character": _share(mine, lambda m: m["in_character"]),
         "phrases": phrases,
         "openers": openers(texts, other_texts),
         "examples": examples(mine, phrases),
@@ -198,7 +209,9 @@ def examples(mine: list[dict], phrases: list[str]) -> list[str]:
     spread across sessions (round robin) so one evening doesn't set the tone."""
     lo, hi = EXAMPLE_WORDS
     good = [
-        m for m in mine if lo <= len(tokens(m["text"])) <= hi and not m.get("provisional") and (m.get("confidence") or 0) >= 0.6
+        m
+        for m in mine
+        if lo <= len(tokens(m["text"])) <= hi and not m.get("provisional") and (m.get("confidence") or 0) >= EXAMPLE_CONFIDENCE
     ]
     padded = [f" {' '.join(tokens(m['text']))} " for m in good]
     ranked = sorted(range(len(good)), key=lambda i: (not any(f" {p} " in padded[i] for p in phrases), i))
@@ -222,13 +235,6 @@ DESCRIBE_SYSTEM = (
     "register, energy, humor, habits, and pet phrases. No judgments of the person, no guesses about who "
     "they are or their life, no markdown, and no quotes longer than six words."
 )
-DESCRIBE_SCHEMA = {
-    "type": "object",
-    "properties": {"description": {"type": "string"}},
-    "required": ["description"],
-    "additionalProperties": False,
-}
-
 RESTYLE_SYSTEM = (
     "Rewrite the text the way this player would say it out loud at the table: their phrasing, sentence "
     "length and register. Use their habits lightly: at most one pet phrase every sentence or two, and "
@@ -237,12 +243,30 @@ RESTYLE_SYSTEM = (
     "questions, names or numbers. They are the one speaking, so their own name may become I. Plain "
     "spoken text only: no markdown, stage directions or quotation marks around the whole thing."
 )
-RESTYLE_SCHEMA = {
+PREVIEW_SYSTEM = (
+    "Write something this tabletop role-playing player might say out loud at the table, in one go, as "
+    "them: their phrasing, sentence length, register, energy and pet phrases (lightly, never repeated). "
+    "Table talk about the game: a plan, a reaction, a question to the GM, a bit of banter. No stage "
+    "directions, no real-world personal details, and no names except ones in their sample lines. Plain "
+    "spoken text only."
+)
+TEXT_SCHEMA = {
     "type": "object",
     "properties": {"text": {"type": "string"}},
     "required": ["text"],
     "additionalProperties": False,
 }
+
+
+def _plain(text: str) -> str:
+    """An LLM's text as plain spoken words: no markdown marks, one line, no wrapping quotes."""
+    return " ".join(re.sub(r"[*_`#>]", "", text).split()).strip('"“”')
+
+
+def _ask(llm, system: str, user: str, max_tokens: int) -> str:
+    """The LLM's {"text"} as plain words ("" for junk). Raises if the LLM can't be reached."""
+    text = llm.json(system, user, TEXT_SCHEMA, max_tokens=max_tokens).get("text")
+    return _plain(text) if isinstance(text, str) else ""
 
 
 def _brief(name: str, prof: dict) -> str:
@@ -265,13 +289,9 @@ def _brief(name: str, prof: dict) -> str:
 def describe(llm, name: str, prof: dict) -> str | None:
     """A short plain-text description, or None if the LLM is down or answers junk."""
     try:
-        out = llm.json(DESCRIBE_SYSTEM, _brief(name, prof), DESCRIBE_SCHEMA, max_tokens=400)
+        text = _ask(llm, DESCRIBE_SYSTEM, _brief(name, prof), max_tokens=400)
     except Exception:
         return None
-    text = out.get("description")
-    if not isinstance(text, str):
-        return None
-    text = " ".join(re.sub(r"[*_`#>]", "", text).split())
     if len(text) < 20:
         return None
     if len(text) > DESCRIPTION_CHARS:  # cut at the last sentence that fits
@@ -330,12 +350,10 @@ def restyle(
         done, prompt = None, f"{brief}\n\nText:\n{para}"
         for _ in range(0 if down else 2):
             try:
-                reply = llm.json(RESTYLE_SYSTEM, prompt, RESTYLE_SCHEMA, max_tokens=1200)
+                candidate = _ask(llm, RESTYLE_SYSTEM, prompt, max_tokens=1200)
             except Exception:
                 down = True  # the LLM is down: the rest is read as written, without waiting on it again
                 break
-            candidate = reply.get("text")
-            candidate = " ".join(re.sub(r"[*_`#]", "", candidate).split()).strip('"“”') if isinstance(candidate, str) else ""
             why = problem(para, candidate, names, own)
             if why is None:
                 done = candidate
@@ -347,15 +365,6 @@ def restyle(
     return "\n\n".join(out), kept
 
 
-PREVIEW_SYSTEM = (
-    "Write something this tabletop role-playing player might say out loud at the table, in one go, as "
-    "them: their phrasing, sentence length, register, energy and pet phrases (lightly, never repeated). "
-    "Table talk about the game: a plan, a reaction, a question to the GM, a bit of banter. No stage "
-    "directions, no real-world personal details, and no names except ones in their sample lines. Plain "
-    "spoken text only."
-)
-
-
 def preview_text(
     llm, name: str, prof: dict, names: Iterable[str], own: Iterable[str] = (), seconds: float = PREVIEW_S
 ) -> tuple[str, str]:
@@ -364,11 +373,9 @@ def preview_text(
     so it's their own example lines from the transcripts, to length; "" if there are none."""
     target = round(seconds * (prof.get("wpm") or DEFAULT_WPM) / 60)
     try:
-        out = llm.json(PREVIEW_SYSTEM, f"{_brief(name, prof)}\n\nWrite about {target} words.", RESTYLE_SCHEMA, max_tokens=800)
+        text = _ask(llm, PREVIEW_SYSTEM, f"{_brief(name, prof)}\n\nWrite about {target} words.", max_tokens=800)
     except Exception:
-        out = {}
-    text = out.get("text") if isinstance(out.get("text"), str) else ""
-    text = " ".join(re.sub(r"[*_`#]", "", text).split()).strip('"“”')
+        text = ""
     names = list(names)
     allowed = _found(names, " ".join(prof["examples"])) | set(own)
     lo, hi = PREVIEW_WORDS

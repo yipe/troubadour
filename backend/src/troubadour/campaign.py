@@ -394,10 +394,11 @@ def render(e: Entity) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-def write_atomic(path: Path, text: str) -> None:
+def write_atomic(path: Path, data: str | bytes) -> None:
+    """Write via a temp file and rename: a reader never sees half a file. Text is UTF-8."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(text, encoding="utf-8")
+    tmp.write_bytes(data.encode("utf-8") if isinstance(data, str) else data)
     tmp.replace(path)
 
 

@@ -120,3 +120,65 @@ def write_wav(path: Path, audio: np.ndarray) -> Path:
 def hermetic_dnd_terms(tmp_path, monkeypatch):
     """Tests use the built-in D&D names, never a local list in data/dnd_terms.json."""
     monkeypatch.setattr("troubadour.dnd_terms.generated_path", lambda: tmp_path / "no-dnd-terms.json")
+
+
+# ------------------------------------------------------------- voice clones (tts.py, talk.py, cloning.py)
+
+
+class FakeSynth:
+    """Chatterbox stand-in. A reading is `cps` characters per second, filled with the reference's mean
+    level so a test's likeness can tell which reference made it. `bad` readings come back first,
+    0.1 s long (cut short). Records what it said and how much audio it cleaned."""
+
+    def __init__(self, cps: float = 14.0, bad: int = 0):
+        self.cps, self.bad = cps, bad
+        self.said: list[str] = []
+        self.denoised: list[float] = []
+        self.on_speak = lambda: None
+
+    def denoise(self, audio, rate):
+        self.denoised.append(len(audio) / rate)
+        return audio * 0.5, rate  # quieter; the reference is peak-normalized again after
+
+    def voice(self, audio, rate):
+        return float(np.abs(audio).mean())
+
+    def speak(self, text, voice):
+        from troubadour.tts import OUT_SR
+
+        self.said.append(text)
+        self.on_speak()
+        if self.bad:
+            self.bad -= 1
+            return np.full(int(0.1 * OUT_SR), voice, np.float32)
+        return np.full(int(len(text) / self.cps * OUT_SR), voice, np.float32)
+
+
+class ScriptedLLM:
+    """The memory LLM, answering from a script in order (an Exception in it is raised); records prompts."""
+
+    def __init__(self, *replies):
+        self.replies = list(replies)
+        self.prompts: list[str] = []
+
+    def json(self, system, user, schema, max_tokens=4000):
+        self.prompts.append(user)
+        reply = self.replies.pop(0) if self.replies else ConnectionError("the script ran out")
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+
+def job():
+    """A campaign job outside the job thread (progress updates go nowhere)."""
+    from troubadour.memory import Job
+
+    return Job(id="test", kind="clone", title="")
+
+
+@pytest.fixture
+def fake_vad(monkeypatch):
+    """Silero would hear no speech in a test tone: the whole clip is speech."""
+    import silero_vad
+
+    monkeypatch.setattr(silero_vad, "get_speech_timestamps", lambda a, m, sampling_rate: [{"start": 0, "end": len(a)}])

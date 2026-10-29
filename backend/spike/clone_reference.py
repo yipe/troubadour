@@ -38,6 +38,7 @@ from scipy.signal import fftconvolve
 
 from troubadour import config
 from troubadour.audio import read_wav
+from troubadour.tts import noise_floor_db
 from troubadour.voices import embed_span, normalize
 
 VOICE, OTHERS = "Daniel", ["Samantha", "Fred"]
@@ -70,12 +71,6 @@ def room(clean: np.ndarray, babble: list[np.ndarray], seed: int, snr_db: float =
     noise = noise / (np.abs(noise).max() + 1e-9) + 0.05 * rng.standard_normal(len(wet))
     mix = wet + noise * np.sqrt(np.mean(wet**2) / np.mean(noise**2)) / 10 ** (snr_db / 20)
     return (0.9 * mix / np.abs(mix).max()).astype(np.float32)
-
-
-def floor_db(a: np.ndarray) -> float:
-    f = a[: len(a) // 480 * 480].reshape(-1, 480)
-    rms = np.sqrt((f**2).mean(axis=1)) + 1e-9
-    return float(20 * np.log10(np.percentile(rms, 95) / np.percentile(rms, 10)))
 
 
 def main() -> None:
@@ -129,7 +124,7 @@ def main() -> None:
         return (
             float(np.mean([truth @ v for v in prints])),
             float(np.mean([measured @ v for v in prints])),
-            float(np.mean([floor_db(o) for o in outs])),
+            float(np.mean([noise_floor_db(o, OUT) for o in outs])),
         )
 
     t = time.time()

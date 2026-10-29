@@ -23,10 +23,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import config, improve, mics, obsidian, providers, settings, talk, transcript, tts
+from . import config, improve, mics, obsidian, providers, settings, transcript, tts
 from .ask import Asker
 from .audio import list_mics
 from .campaign import TYPES, Vault, mention_counts
+from .cloning import Cloning
 from .cloud import AutoBackup, Cloud, CloudError
 from .engine import OVERFLOW, SESSION_ID, Bus, Engine, sample_path, session_audio
 from .memory import Memory, spelling_suggestions
@@ -38,6 +39,7 @@ engine = Engine(bus)
 vault = Vault(engine.vault_dir)  # the open campaign's notes, looked up on every use
 engine.vault = vault
 memory = Memory(vault, bus, sessions_dir=engine.sessions_dir, seed=engine.known_names)
+cloning = Cloning(engine, llm=lambda: memory.llm, vault=vault, written_up=memory.written_up)
 asker = Asker(
     vault,
     bus,
@@ -1052,54 +1054,7 @@ def cancel_training():
     engine.cancel_training()
 
 
-# ------------------------------------------------------------------ voice clones (tts.py)
-
-
-def _require_clone(pid: str, in_their_words: bool) -> tuple[str, dict | None]:
-    """(name, their speech profile if in_their_words) once a say/read job may start."""
-    name = _call(engine.check_clone, pid)
-    if engine.clones.status(pid) is None:
-        raise HTTPException(400, f"Build {name}'s voice first.")
-    prof = engine.clones.profile(pid) if in_their_words else None
-    if in_their_words and prof is None:
-        raise HTTPException(400, f"Profile how {name} talks first.")
-    return name, prof
-
-
-def _known_names() -> list[str]:
-    """Names a restyle must keep and mustn't invent: the table's and the campaign glossary's."""
-    with engine.lock:
-        names = [n for p in engine.players.values() for n in (p.name, p.character) if n]
-    try:
-        names += [n for e in vault.entities() for n in e.names()]
-    except Exception:  # a broken vault never stops the voice; the numbers check still holds
-        log.exception("couldn't read the glossary for a restyle")
-    return names
-
-
-def _speak_work(pid: str, name: str, prof: dict | None, text: str, kind: str, title: str, source: dict):
-    """The say/read job: restyled like them first when there's a profile, then spoken."""
-
-    def work(job):
-        def emit() -> None:
-            memory.emit(job)
-
-        spoken, tempo, kept = text, 1.0, 0
-        if prof is not None:
-
-            def progress(done: int, total: int) -> None:
-                job.done, job.total, job.message = done, total, "Rewriting it in their words…"
-                emit()
-
-            own = _own_names(pid, name)
-            spoken, kept = talk.restyle(memory.llm, name, prof, text, _known_names(), own, progress)
-            tempo = talk.tempo(prof.get("wpm"), (engine.clones.status(pid) or {}).get("clone_wpm"))
-        restyled = spoken != text
-        engine.clones.speak(job, emit, pid, spoken, kind, title, source, tempo=tempo, in_their_words=restyled)
-        if kept:
-            job.message += f"; {kept} part{'s' if kept != 1 else ''} kept the original wording"
-
-    return work
+# ------------------------------------------------------------------ voice clones (cloning.py)
 
 
 @app.get("/api/clones")
@@ -1108,98 +1063,31 @@ def clones():
     return {"voices": engine.clones.voices(), "profiles": engine.clones.profiles(), "clips": engine.clones.clips()}
 
 
-def _own_names(pid: str, name: str) -> list[str]:
-    """The speaker's own names (theirs and their character's): they may say "I" instead."""
-    with engine.lock:
-        p = engine.players.get(pid)
-        return [n for n in (name, p.character if p else "") if n]
-
-
-def _make_profile(job, pid: str, name: str) -> dict:
-    """Count how they talk across every saved transcript, add the AI's description, save it."""
-    records = []
-    for path in sorted(engine.sessions_dir().glob("*/transcript.json")):
-        try:
-            records.append(json.loads(path.read_text()))
-        except (OSError, ValueError):
-            log.warning("skipping unreadable transcript %s", path)
-    job.message = f"Counting their lines in {len(records)} sessions…"
-    memory.emit(job)
-    prof = talk.profile(records, pid)
-    job.message = "Describing how they talk…"
-    memory.emit(job)
-    prof["description"] = talk.describe(memory.llm, name, prof)
-    engine.clones.save_profile(pid, prof)
-    return prof
-
-
 @app.post("/api/players/{pid}/profile", status_code=202)
 def build_profile(pid: str):
     """Profile how they talk from every saved transcript (a job: kind "profile"). Needs the clone opt-in."""
-    name = _call(engine.check_clone, pid, needs_idle=False)
-
-    def work(job):
-        prof = _make_profile(job, pid, name)
-        job.message = "Profile ready" + ("" if prof["description"] else " (the AI is offline: numbers only)")
-
+    name, work = _call(cloning.profile_job, pid)
     return memory.submit("profile", name, work, player_id=pid).to_json()
 
 
 @app.post("/api/players/{pid}/clone", status_code=202)
 def build_clone(pid: str):
-    """(Re)build their voice (a job: kind "clone"). The preview is ~20 s of something they would say,
-    written from their speech profile (made now if there isn't one), else the stock line."""
-    name = _call(engine.check_clone, pid)
-    _call(engine.clone_source, pid)  # fail now, not in the job, when there's no Train recording
-
-    def work(job):
-        prof = engine.clones.profile(pid)
-        if prof is None:
-            try:
-                prof = _make_profile(job, pid, name)
-            except ValueError:  # too few of their lines yet: the stock line will do
-                prof = None
-        text, kind = tts.PREVIEW, ""
-        if prof is not None:
-            job.message = "Writing something they'd say…"
-            memory.emit(job)
-            text, kind = talk.preview_text(memory.llm, name, prof, _known_names(), _own_names(pid, name))
-        job.message = "Finding the cleanest recordings of them…"
-        memory.emit(job)
-        candidates = engine.clone_candidates(pid)
-        engine.clones.build(
-            job,
-            lambda: memory.emit(job),
-            pid,
-            candidates,
-            lambda out, sr: engine.voice_likeness(pid, out, sr),
-            preview_text=text or tts.PREVIEW,
-            preview_kind=kind,
-        )
-
+    """(Re)build their voice (a job: kind "clone")."""
+    name, work = _call(cloning.build_job, pid)
     return memory.submit("clone", name, work, player_id=pid).to_json()
 
 
 @app.post("/api/players/{pid}/clone/say", status_code=202)
 def clone_say(pid: str, body: SayIn):
-    name, prof = _require_clone(pid, body.in_their_words)
-    title = body.text if len(body.text) <= 60 else body.text[:59] + "…"
-    return memory.submit("say", name, _speak_work(pid, name, prof, body.text, "say", title, {}), player_id=pid).to_json()
+    name, work = _call(cloning.say_job, pid, body.text, body.in_their_words)
+    return memory.submit("say", name, work, player_id=pid).to_json()
 
 
 @app.post("/api/players/{pid}/clone/read", status_code=202)
 def clone_read(pid: str, body: ReadIn):
-    """Read a session's write-up page aloud in their voice."""
-    name, prof = _require_clone(pid, body.in_their_words)
-    page = memory.written_up().get(body.session)
-    if page is None:
-        raise HTTPException(404, "that session has no write-up")
-    text = tts.speakable((vault.root / page).read_text(encoding="utf-8"))
-    if len(text) > tts.READ_MAX_CHARS:
-        raise HTTPException(400, "That page is too long to read aloud.")
-    source = {"session": body.session, "note": page}
-    title = page.rsplit("/", 1)[-1].removesuffix(".md")
-    return memory.submit("read", body.session, _speak_work(pid, name, prof, text, "read", title, source), player_id=pid).to_json()
+    """Read a session's write-up page aloud in their voice (a job: kind "read", note = the page)."""
+    title, page, work = _call(cloning.read_job, pid, body.session, body.in_their_words)
+    return memory.submit("read", title, work, player_id=pid, note=page).to_json()
 
 
 @app.get("/api/clones/{pid}/{name}.wav")

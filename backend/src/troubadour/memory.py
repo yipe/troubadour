@@ -951,11 +951,22 @@ class Job:
     created: list[str] = field(default_factory=list)
     updated: list[str] = field(default_factory=list)
     suggested: int = 0
-    note: str | None = None  # vault-relative path of the note it wrote
+    note: str | None = None  # vault-relative path of the note it wrote (a read-aloud job: the note it reads)
     player_id: str | None = None  # voice-clone jobs: whose voice
+    # Called after every update(): Memory.submit points it at the campaign.job event. Not sent.
+    on_change: Callable[[], None] = field(default=lambda: None, repr=False, compare=False)
 
     def to_json(self) -> dict:
-        return dict(self.__dict__)
+        return {k: v for k, v in self.__dict__.items() if k != "on_change"}
+
+    def update(self, **fields) -> None:
+        """Set any of done, total, message (...) and tell the UI."""
+        for key, value in fields.items():
+            setattr(self, key, value)
+        self.on_change()
+
+    def advance(self) -> None:
+        self.update(done=self.done + 1)
 
 
 class Memory:
@@ -982,9 +993,10 @@ class Memory:
             log.exception("couldn't write Glossary.md")
         self.bus.emit("campaign.updated", {})
 
-    def submit(self, kind: str, title: str, work, player_id: str | None = None) -> Job:
+    def submit(self, kind: str, title: str, work, player_id: str | None = None, note: str | None = None) -> Job:
         """Queue work(job) on the job thread (one job at a time); progress goes out as campaign.job."""
-        job = Job(id=uuid.uuid4().hex[:8], kind=kind, title=title, player_id=player_id)
+        job = Job(id=uuid.uuid4().hex[:8], kind=kind, title=title, player_id=player_id, note=note)
+        job.on_change = lambda: self.emit(job)
         with self._lock:
             self.jobs[job.id] = job
             for old in sorted(self.jobs.values(), key=lambda j: j.id)[:-20]:
