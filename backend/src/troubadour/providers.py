@@ -567,6 +567,7 @@ class Accounts:
                 audience=client_id,
                 issuer=OPENAI_ISSUER,
                 options={"require": ["exp", "iat", "sub", "aud", "iss"]},
+                leeway=60,  # this Mac's clock a little ahead of or behind OpenAI's must not break sign-in
             )
         except (jwt.PyJWTError, StopIteration) as e:
             raise ProviderError(f"ChatGPT's sign-in couldn't be verified ({type(e).__name__}).") from None

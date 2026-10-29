@@ -174,8 +174,9 @@ class MemoryLLM:
         return providers.anthropic_text(r.json())
 
     def _post(self, path: str, payload: dict) -> httpx.Response:
-        """One request, tried again on a server error or dropped connection: a write-up is a few dozen
-        calls over 20 minutes, and one LM Studio hiccup (a 500, seen in practice) used to sink it all."""
+        """One request, tried again on a server error, a rate limit or a dropped connection: a write-up is a few
+        dozen calls over 20 minutes (four at once), and one LM Studio hiccup (a 500, seen in practice) or a hosted
+        provider's 429 used to sink it all."""
         for attempt in range(LLM_RETRIES + 1):
             try:
                 r = self.client.post(f"{self.url}{path}", headers=self._headers(), json=payload)
@@ -183,7 +184,7 @@ class MemoryLLM:
                 if attempt == LLM_RETRIES:
                     raise
             else:
-                if r.status_code < 500 or attempt == LLM_RETRIES:
+                if not _try_again(r) or attempt == LLM_RETRIES:
                     return r
                 log.warning("model server error %s; trying again", r.status_code)
             time.sleep(LLM_RETRY_WAIT_S)
@@ -214,12 +215,19 @@ class MemoryLLM:
                 rejected = token
             elif r.status_code == 400 and "text" in payload and "subscription_sharing_unsupported_capability" in r.text:
                 payload.pop("text")
-            elif r.status_code < 500 or attempt == LLM_RETRIES:
+            elif not _try_again(r) or attempt == LLM_RETRIES:
                 raise providers.ProviderError(providers.http_error(r))
             else:
                 log.warning("ChatGPT error %s; trying again", r.status_code)
                 time.sleep(LLM_RETRY_WAIT_S)
         raise providers.ProviderError(providers.http_error(r))
+
+
+def _try_again(r: httpx.Response) -> bool:
+    """A server error or a rate limit, but not a used-up ChatGPT plan: waiting seconds won't bring that back."""
+    if r.status_code == 429:
+        return "subscription_sharing_usage_limit_exceeded" not in r.text
+    return r.status_code >= 500
 
 
 def _raise_for(r: httpx.Response) -> None:

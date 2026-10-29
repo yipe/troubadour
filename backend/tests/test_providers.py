@@ -40,6 +40,7 @@ class FakeOpenAI:
         self.revoked: list[str] = []
         self.registrations = 0
         self.nonce_override: str | None = None
+        self.clock_skew = 0  # seconds OpenAI's clock is ahead of this Mac's
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
@@ -72,7 +73,7 @@ class FakeOpenAI:
         return {"code": code, "state": q["state"], **back}
 
     def id_token(self, client: str, nonce: str) -> str:
-        now = int(time.time())
+        now = int(time.time()) + self.clock_skew
         claims = {"iss": ISSUER, "aud": client, "sub": self.sub, "email": self.email, "iat": now, "exp": now + 3600}
         claims["nonce"] = self.nonce_override or nonce
         return jwt.encode(claims, self.key, algorithm="RS256", headers={"kid": "k1"})
@@ -307,6 +308,32 @@ def test_chatgpt_plan_requests_stream_without_storing(monkeypatch):
     assert not {"temperature", "max_output_tokens", "max_tokens"} & payload.keys()
 
 
+def test_a_rate_limit_is_waited_out_but_a_used_up_plan_is_not(monkeypatch):
+    monkeypatch.setattr(mem, "LLM_RETRY_WAIT_S", 0)
+    replies = [
+        httpx.Response(429, json={"error": {"message": "slow down"}}),
+        httpx.Response(200, json={"choices": [{"message": {"content": '{"ok": 1}'}}]}),
+    ]
+    llm = mem.MemoryLLM(url="https://openrouter.test/api/v1", model="m", api_key="k")
+    llm.client = httpx.Client(transport=httpx.MockTransport(lambda r: replies.pop(0)))
+    assert llm.json("s", "u", {}) == {"ok": 1}
+    sent = []
+
+    def used_up(request):
+        sent.append(request)
+        return httpx.Response(429, json={"error": {"code": "subscription_sharing_usage_limit_exceeded"}})
+
+    with pytest.raises(ProviderError, match="settings/usage"):
+        chatgpt_llm(used_up, []).json("s", "u", {})
+    assert len(sent) == 1
+
+
+def test_a_clock_a_little_off_still_signs_in(openai):
+    fake, accounts = openai
+    fake.clock_skew = 30  # OpenAI's clock 30 s ahead of this Mac's: the ID token is "issued in the future"
+    assert sign_in(fake, accounts) is True
+
+
 def test_chatgpt_usage_limit_says_where_to_manage_it():
     failed = {"type": "response.failed", "response": {"error": {"code": "subscription_sharing_usage_limit_exceeded"}}}
     llm = chatgpt_llm(
@@ -385,6 +412,8 @@ def api(dirs, monkeypatch):
     monkeypatch.setattr(server, "_installed_llms", list)  # never this Mac's LM Studio
     events = []
     monkeypatch.setattr(server.bus, "emit", lambda kind, data: events.append((kind, data)))
+    # Never a real health check from these tests; record that one was asked for.
+    monkeypatch.setattr(server, "_recheck_llm_soon", lambda: events.append(("recheck", None)))
     llms = (server.engine.cleanup_llm, server.memory.llm, server.asker.llm)
     before = [dict(vars(llm)) for llm in llms]
     yield TestClient(server.app, base_url=LOCAL), fake, events
@@ -404,10 +433,23 @@ def test_a_provider_needs_a_sign_in_or_key_before_it_is_chosen(api):
     assert client.put("/api/settings/models", json={"provider": "elsewhere"}).status_code == 400
 
 
+def test_chatgpt_needs_both_models_chosen(api):
+    client, fake, _ = api
+    sign_in(fake, server.accounts)
+    r = client.put("/api/settings/models", json={"provider": "openai"})  # ChatGPT has no default models
+    assert r.status_code == 400
+    assert "Choose both models for ChatGPT plan" in r.json()["detail"]
+    r = client.put("/api/settings/models", json={"provider": "openai", "hosted": {"openai": {"llm": "gpt-a"}}})
+    assert r.status_code == 400
+    r = client.put("/api/settings/models", json={"provider": "openai", "hosted": {"openai": {"llm": "a", "memory": "b"}}})
+    assert r.status_code == 200
+
+
 def test_a_key_moves_every_llm_to_the_provider_and_signing_out_brings_it_home(api):
     client, _, events = api
     r = client.put("/api/llm/anthropic/key", json={"key": "sk-ant-secret-9876"})
     assert r.status_code == 200
+    assert ("recheck", None) in events  # the header's status follows the new key without waiting 30 s
     assert next(p for p in r.json() if p["id"] == "anthropic")["account"] == "key …9876"
     r = client.put("/api/settings/models", json={"provider": "anthropic", "hosted": {"anthropic": {"memory": "claude-big"}}})
     assert r.status_code == 200, r.text

@@ -370,9 +370,15 @@ def get_models():
 
 @app.put("/api/settings/models")
 def put_models(body: ModelsIn):
-    if body.provider in PROVIDERS and not accounts.connected(body.provider):
-        verb = "Sign in to" if PROVIDERS[body.provider].sign_in else "Add a key for"
-        raise HTTPException(400, f"{verb} {PROVIDERS[body.provider].label} first.")
+    if body.provider in PROVIDERS:
+        p = PROVIDERS[body.provider]
+        if not accounts.connected(body.provider):
+            raise HTTPException(400, f"{'Sign in to' if p.sign_in else 'Add a key for'} {p.label} first.")
+        pair = settings.current()["hosted"][body.provider] | {
+            role: model for role, model in (body.hosted or {}).get(body.provider, HostedModelsIn()).model_dump().items() if model
+        }
+        if not (pair["llm"] and pair["memory"]):  # ChatGPT has no defaults: "" would fail every call quietly
+            raise HTTPException(400, f"Choose both models for {p.label}.")
     patch = body.model_dump(exclude={"hosted"})
     if body.hosted is not None:
         patch["hosted"] = {pid: models.model_dump() for pid, models in body.hosted.items()}
@@ -381,7 +387,14 @@ def put_models(body: ModelsIn):
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     _apply_models(chosen)
+    _recheck_llm_soon()
     return _models_response(chosen)
+
+
+def _recheck_llm_soon() -> None:
+    """The header's LLM status follows a switch now, not at the next 30 s health check (off the request thread:
+    a hosted provider can take seconds to answer)."""
+    threading.Thread(target=engine.recheck_llm, name="llm-recheck", daemon=True).start()
 
 
 @app.get("/api/llm/models")
@@ -416,6 +429,7 @@ def _llm_changed() -> list[dict]:
     if chosen["provider"] != providers.LOCAL and not accounts.connected(chosen["provider"]):
         chosen = settings.update({"provider": providers.LOCAL})  # signed out of the one in use: back to this Mac
     _apply_models(chosen)
+    _recheck_llm_soon()
     status = _llm_providers()
     bus.emit("llm.updated", {"provider": chosen["provider"], "providers": status})
     return status
