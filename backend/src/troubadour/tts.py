@@ -10,6 +10,9 @@ references (the Train recording, then the cleanest stretches of the player's own
 recordings: `solo_lines`, `noise_floor_db`, `pick_sessions`), cleans each with DeepFilterNet, and
 keeps the one whose clone sounds most like their voiceprint (`Clones.build`).
 
+A player can have more than one voice: TABLE, how they talk as themselves, and one per character they
+voice (in character, by the voices panel or as the AI reads their lines), each its own clone.
+
 This module is audio, text and files; the jobs that feed it are cloning.py. See PLAN.md "Voice clones".
 """
 
@@ -28,7 +31,6 @@ from . import asr, config
 from .audio import read_wav, wav_bytes
 from .audio import tempo as stretch
 from .campaign import write_atomic
-from .transcript import character_voices
 
 OUT_SR = 24000  # Chatterbox's output rate
 REF_S = 10.0  # Chatterbox reads no more of the reference than this
@@ -54,7 +56,7 @@ LINE_S = (2.5, 12.0)
 LINE_CONFIDENCE = 0.75
 MAX_LINES = 300  # measured per build (an ffmpeg seek and an embedding each)
 SESSION_REFS = 3  # sessions tried, the cleanest first (one session: one mic position and room)
-SELF_LIKENESS = 0.5  # a line must sound this much like their voiceprint to count as theirs
+SELF_LIKENESS = 0.5  # a line must sound this much like the voice it's labelled with to clone from
 # Text in (mirrored in web/src/components/setup/VoiceCloneDialog.tsx) and kept on a clip.
 SAY_MAX_CHARS = 2000
 READ_MAX_CHARS = 30000  # about half an hour read aloud
@@ -62,6 +64,16 @@ CLIP_TEXT_CHARS = 300
 # Session page sections that don't read well aloud: name lists, links, and copies of the scenes.
 SKIP_SECTIONS = {"mentioned", "transcript", "highlights", "table moments", "facts", "suggested facts"}
 ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+# A player's voices: TABLE (how they talk as themselves; the Train recording's) and one per character
+# they voice (as/<key>/), keyed by persona_key(character name).
+TABLE = "table"
+PERSONA = re.compile(r"[a-z0-9-]{1,40}")
+
+
+def persona_key(character: str) -> str:
+    """ "Morvath the Grey" -> "morvath-the-grey"; never TABLE."""
+    key = re.sub(r"[^a-z0-9]+", "-", character.lower()).strip("-")[:40].strip("-") or "character"
+    return f"{key}-1" if key == TABLE else key
 
 
 # ------------------------------------------------------------------ audio
@@ -114,26 +126,24 @@ def noise_floor_db(audio: np.ndarray, rate: int) -> float:
 # ------------------------------------------------------------------ references from sessions
 
 
-def solo_lines(record: dict, pid: str) -> list[tuple[float, float]]:
-    """(start, end) of their lines in a saved record fit to clone from: in their own voice (not a
-    character voice), settled and confident, 2.5-12 s, with nobody else talking just before, during
-    or after."""
+def solo_lines(record: dict, pid: str) -> list[int]:
+    """Indexes in record["messages"] of their lines fit to clone from: settled and confident, 2.5-12 s,
+    with nobody else talking just before, during or after. In any of their voices: which voice a line
+    belongs to (table talk, or a character) is the caller's to decide."""
     messages = record["messages"]
-    characters = character_voices(record)
     others = [(m["t_start"], m["t_end"]) for m in messages if m.get("player_id") != pid]
     out = []
-    for m in messages:
+    for i, m in enumerate(messages):
         t0, t1 = m["t_start"], m["t_end"]
         if (
             m.get("player_id") != pid
-            or m.get("voice_id") in characters
             or m.get("provisional")
             or (m.get("confidence") or 0) < LINE_CONFIDENCE
             or not LINE_S[0] <= t1 - t0 <= LINE_S[1]
             or any(s < t1 + SOLO_GAP_S and e > t0 - SOLO_GAP_S for s, e in others)
         ):
             continue
-        out.append((t0, t1))
+        out.append(i)
     return out
 
 
@@ -320,7 +330,8 @@ def _url(pid: str, name: str) -> str:
 
 class Clones:
     """data/clones/<player id>/: reference.wav (what Chatterbox clones), preview.wav, voice.json,
-    profile.json (talk.py) and clips/<clip id>.wav + .json.
+    profile.json (talk.py) and clips/<clip id>.wav + .json; a character voice's reference, preview
+    and voice.json under as/<persona key>/.
 
     `allowed(pid)` is the player's opt-in, checked again under the lock forget() takes before anything
     is written, so turning it off mid-job leaves nothing. `wait_idle(job)` holds a job while a live
@@ -347,6 +358,15 @@ class Clones:
             raise KeyError(pid)
         return self.root() / pid
 
+    @staticmethod
+    def _prefix(persona: str) -> str:
+        """Where a persona's files sit in the player's folder."""
+        if persona == TABLE:
+            return ""
+        if not PERSONA.fullmatch(persona):
+            raise KeyError(persona)
+        return f"as/{persona}/"
+
     def _read_json(self, pid: str, name: str) -> dict | None:
         try:
             return json.loads((self._dir(pid) / name).read_text())
@@ -360,8 +380,20 @@ class Clones:
         return {pid: item for pid, item in found if item}
 
     def status(self, pid: str) -> dict | None:
+        """Their table voice, with `characters`: the character voices built with it (by label)."""
         meta = self._read_json(pid, "voice.json")
-        return meta and meta | {"preview_url": f"{_url(pid, 'preview')}?v={meta['built_at']}"}
+        if meta is None:
+            return None
+        characters = []
+        for path in sorted((self._dir(pid) / "as").glob("*/voice.json")):
+            if char := self._read_json(pid, f"as/{path.parent.name}/voice.json"):
+                characters.append(self._with_preview(pid, path.parent.name, char))
+        return self._with_preview(pid, TABLE, meta) | {"characters": sorted(characters, key=lambda c: c["label"])}
+
+    @staticmethod
+    def _with_preview(pid: str, persona: str, meta: dict) -> dict:
+        name = "preview" if persona == TABLE else f"preview_{persona}"
+        return meta | {"preview_url": f"{_url(pid, name)}?v={meta['built_at']}"}
 
     def voices(self) -> dict[str, dict]:
         return self._each(self.status)
@@ -384,10 +416,13 @@ class Clones:
         return sorted(out, key=lambda c: c["created_at"], reverse=True)
 
     def file(self, pid: str, name: str) -> Path:
-        """preview.wav or a clip's WAV; KeyError for anything else (no traversal)."""
+        """A preview ("preview", "preview_<persona key>") or a clip's WAV; KeyError for anything else."""
         if not ID.fullmatch(name):
             raise KeyError(name)
-        path = self._dir(pid) / ("preview.wav" if name == "preview" else f"clips/{name}.wav")
+        if name == "preview" or name.startswith("preview_"):
+            path = self._dir(pid) / f"{self._prefix(name.removeprefix('preview').lstrip('_') or TABLE)}preview.wav"
+        else:
+            path = self._dir(pid) / f"clips/{name}.wav"
         if not path.is_file():
             raise KeyError(name)
         return path
@@ -405,8 +440,15 @@ class Clones:
     def save_profile(self, pid: str, prof: dict) -> None:
         self._write(pid, {"profile.json": json.dumps(prof).encode()})
 
+    def prune(self, pid: str, keep: set[str]) -> None:
+        """Delete their character voices other than `keep` (a rebuild that no longer finds one)."""
+        with self._lock:
+            for folder in (self._dir(pid) / "as").glob("*"):
+                if folder.name not in keep:
+                    shutil.rmtree(folder, ignore_errors=True)
+
     def delete_clip(self, pid: str, cid: str) -> None:
-        if cid == "preview":
+        if cid.startswith("preview"):
             raise KeyError(cid)
         path = self.file(pid, cid)
         with self._lock:
@@ -455,25 +497,30 @@ class Clones:
         likeness: Callable[[np.ndarray, int], float | None],
         preview_text: str = "",
         preview_kind: str = "",
+        persona: str = TABLE,
+        label: str = "",
     ) -> dict:
         """Their voice from whichever candidate reference clones closest. candidates: (label, speech,
         rate). Every reference goes through DeepFilterNet first: the voice should sound clean, and the
         likeness (measured against a table-mic voiceprint) would rather keep the room, so it isn't
         asked. Each is judged on PREVIEW_RUNS readings of the preview's first sentences; the winner
         then reads the whole preview once. preview_text: ~20 s of something they would say
-        (talk.preview_text), made by preview_kind ("ai" | "their lines"); empty: the stock PREVIEW."""
+        (talk.preview_text), made by preview_kind ("ai" | "their lines"); empty: the stock PREVIEW.
+        persona: TABLE, or a character voice's key (persona_key), named `label`."""
+        prefix = self._prefix(persona)
         self._check_allowed(pid)
-        candidates = [(label, a, r) for label, a, r in candidates if len(a) >= MIN_REF_S * r]
+        candidates = [(source, a, r) for source, a, r in candidates if len(a) >= MIN_REF_S * r]
         if not candidates:
             raise ValueError(f"No recording of them has {MIN_REF_S:.0f} s of speech; train again.")
         parts = chunks(preview_text)
         if not parts:
             preview_text, preview_kind, parts = PREVIEW, "", chunks(PREVIEW)
         trial = chunks(preview_text, max_chars=TRIAL_CHARS)[0][0]
-        job.update(done=0, total=len(candidates) * PREVIEW_RUNS + len(parts), message="Loading the voice model…")
+        voice_name = label or "voice"
+        job.update(done=0, total=len(candidates) * PREVIEW_RUNS + len(parts), message=f"{voice_name}: loading the voice model…")
         tried, best = [], None
-        for label, audio, rate in candidates:
-            job.update(message=f"Trying the {label}…")
+        for source, audio, rate in candidates:
+            job.update(message=f"{voice_name}: trying the {source}…")
             self.wait_idle(job)
             clean, clean_rate = self.synth.denoise(audio, rate)
             clean = normalize(clean)
@@ -484,16 +531,18 @@ class Clones:
                 job.advance()
             known = [s for s in scores if s is not None]
             score = float(np.mean(known)) if known else None
-            tried.append({"source": label, "likeness": None if score is None else round(score, 3)})
+            tried.append({"source": source, "likeness": None if score is None else round(score, 3)})
             if best is None or (-1.0 if score is None else score) > (-1.0 if best[0] is None else best[0]):
-                best = (score, label, clean, clean_rate, voice)
-        score, label, ref, rate, voice = best
-        job.update(message=f"Recording the preview with the {label}…")
+                best = (score, source, clean, clean_rate, voice)
+        score, source, ref, rate, voice = best
+        job.update(message=f"{voice_name}: recording the preview with the {source}…")
         preview = self._read(job, preview_text, voice)
         meta = {
             "player_id": pid,
+            "persona": persona,
+            "label": label,
             "built_at": int(time.time()),
-            "source": label,
+            "source": source,
             "tried": tried,
             "likeness": None if score is None else round(score, 3),
             "reference_s": round(len(ref) / rate, 1),
@@ -505,13 +554,14 @@ class Clones:
         self._write(
             pid,
             {
-                "reference.wav": wav_bytes(ref, rate, bits=24),
-                "preview.wav": wav_bytes(preview, OUT_SR),
-                "voice.json": json.dumps(meta).encode(),
+                f"{prefix}reference.wav": wav_bytes(ref, rate, bits=24),
+                f"{prefix}preview.wav": wav_bytes(preview, OUT_SR),
+                f"{prefix}voice.json": json.dumps(meta).encode(),
             },
         )
-        job.update(message=f"Voice ready from the {label}" + ("" if score is None else f" (likeness {score:.2f})"))
-        return self.status(pid) or meta
+        likeness_note = "" if score is None else f" (likeness {score:.2f})"
+        job.update(message=f"{voice_name.capitalize()} ready from the {source}{likeness_note}")
+        return self._with_preview(pid, persona, meta)
 
     def speak(
         self,
@@ -523,12 +573,13 @@ class Clones:
         source: dict,
         tempo: float = 1.0,
         in_their_words: bool = False,
+        persona: str = TABLE,
     ) -> dict:
-        """Read `text` in their voice into a new clip. kind: "say" | "read". tempo: time-stretch the
-        result (talk.tempo); in_their_words: the text was restyled like them (recorded on the clip)."""
+        """Read `text` in one of their voices (persona) into a new clip. kind: "say" | "read". tempo:
+        time-stretch the result (talk.tempo); in_their_words: the text was restyled like them."""
         self._check_allowed(pid)
         try:
-            ref, rate = read_wav(self._dir(pid) / "reference.wav")
+            ref, rate = read_wav(self._dir(pid) / f"{self._prefix(persona)}reference.wav")
         except FileNotFoundError:
             raise ValueError("Build this player's voice first.") from None
         parts = chunks(text)
@@ -547,6 +598,7 @@ class Clones:
             "text": text[:CLIP_TEXT_CHARS],
             "source": source,
             "in_their_words": in_their_words,
+            "persona": persona,
             "seconds": round(len(audio) / OUT_SR, 1),
             "created_at": time.time(),
         }

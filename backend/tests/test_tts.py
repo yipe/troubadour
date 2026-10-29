@@ -96,12 +96,12 @@ def record(*messages, character_voices=("v-elara",)):
     return {"voices": voices, "messages": list(messages)}
 
 
-def test_solo_lines_are_their_own_settled_voice_with_nobody_else_near():
+def test_solo_lines_are_their_settled_lines_with_nobody_else_near():
     r = record(
         line("p1", 0.0, 4.0),
         line("p2", 4.1, 6.0, voice="v-p2"),  # talks right after: 0.1 s is within the gap
         line("p1", 10.0, 14.0),  # ok
-        line("p1", 20.0, 24.0, voice="v-elara"),  # a character voice
+        line("p1", 20.0, 24.0, voice="v-elara"),  # ok: in any of their voices
         line("p1", 30.0, 34.0, provisional=True),
         line("p1", 40.0, 44.0, confidence=0.5),
         line("p1", 50.0, 51.0),  # too short
@@ -109,14 +109,7 @@ def test_solo_lines_are_their_own_settled_voice_with_nobody_else_near():
         line("p1", 90.0, 94.0),
         line("p2", 93.0, 95.0, voice="v-p2"),  # talks over the end
     )
-    assert tts.solo_lines(r, "p1") == [(10.0, 14.0)]
-
-
-def test_a_seat_character_is_not_a_character_voice():
-    # Saved lines show the seat's character for a player with no separate character voice; those
-    # lines are still their own voice, the best ones to clone from.
-    r = record(line("p1", 0.0, 4.0, character="Elara"), character_voices=())
-    assert tts.solo_lines(r, "p1") == [(0.0, 4.0)]
+    assert tts.solo_lines(r, "p1") == [2, 3]
 
 
 def test_pick_sessions_takes_the_cleanest_session_first_up_to_ten_seconds_each():
@@ -224,7 +217,7 @@ def test_build_keeps_the_reference_that_clones_closest_and_always_cleans_it(clon
 
     status = clones.build(j, "p1", candidates, lambda out, sr: -float(out[0]))
     assert status["source"] == "Train recording"
-    assert clones.voices() == {"p1": status}
+    assert clones.voices() == {"p1": status | {"characters": []}}
 
 
 def test_build_judges_a_reference_on_its_mean_likeness(clones):
@@ -266,6 +259,47 @@ def test_every_model_call_waits_out_a_live_session(clones):
     assert len(waited) == 2 + tts.PREVIEW_RUNS + 1
     clones.speak(job(), "p1", "Hello there.", "say", "Hello", {})
     assert len(waited) == 2 + tts.PREVIEW_RUNS + 1 + 2
+
+
+# ------------------------------------------------------------- character voices
+
+
+def test_persona_keys_are_safe_folder_names():
+    assert tts.persona_key("Morvath the Grey") == "morvath-the-grey"
+    assert tts.persona_key("Élara!") == "lara"
+    assert tts.persona_key("???") == "character"
+    assert tts.persona_key("Table") == "table-1"  # never the table voice's
+
+
+def test_a_character_voice_has_its_own_reference_preview_and_clips(clones):
+    built(clones)
+    elara = clones.build(job(), "p1", [FLAT], lambda out, sr: 0.4, "Hold, traveller.", "their lines", "elara", "Elara")
+    assert (elara["persona"], elara["label"]) == ("elara", "Elara")
+    assert elara["preview_url"].startswith("/api/clones/p1/preview_elara.wav?v=")
+    status = clones.voices()["p1"]
+    assert status["persona"] == "table"
+    assert [c["label"] for c in status["characters"]] == ["Elara"]
+    assert clones.file("p1", "preview_elara") == clones.root() / "p1" / "as" / "elara" / "preview.wav"
+    with pytest.raises(KeyError):
+        clones.file("p1", "preview_morvath")
+
+    clones.synth.said.clear()
+    clip = clones.speak(job(), "p1", "Hold, traveller.", "say", "Hold", {}, persona="elara")
+    assert clip["persona"] == "elara"
+    with pytest.raises(KeyError):
+        clones.delete_clip("p1", "preview_elara")
+    with pytest.raises(ValueError, match="Build this player's voice first"):
+        clones.speak(job(), "p1", "Hi.", "say", "Hi", {}, persona="morvath")
+    with pytest.raises(KeyError):
+        clones.speak(job(), "p1", "Hi.", "say", "Hi", {}, persona="../x")
+
+
+def test_prune_drops_character_voices_a_rebuild_no_longer_finds(clones):
+    built(clones)
+    for key in ("elara", "morvath"):
+        clones.build(job(), "p1", [FLAT], lambda out, sr: 0.4, persona=key, label=key.title())
+    clones.prune("p1", {"table", "elara"})
+    assert [c["persona"] for c in clones.voices()["p1"]["characters"]] == ["elara"]
 
 
 # ------------------------------------------------------------- consent

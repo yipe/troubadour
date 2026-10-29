@@ -418,6 +418,20 @@ use, like Whisper, then run locally. Code: `tts.py` (audio, text, `Clones`: the 
   table-mic voiceprint, prefers keeping the room, so it isn't asked), speaks the preview 3 times,
   and is judged on the mean likeness (one generation varies by ~0.1). `voice.json` keeps `source`
   and every candidate's score (`tried`).
+- **Character voices.** A player can have more than one clone: their table voice (above) and one
+  per character they voice, each built the same way from its own lines (no Train recording) and
+  judged against the centroid of those lines' voiceprints, and lines far from that centroid (cos
+  < 0.5) are dropped as mislabelled: a performance can sound like someone else entirely (the GM's
+  troll), so their table voiceprint can't judge it. Which voice a candidate line is: a voice
+  named with a character in the voices panel is that character's (so the GM gets one per named
+  NPC voice); otherwise, for a player (not the GM, whose NPCs the AI can't tell apart), the memory
+  LLM reads it with the two lines before it (`talk.classify_lines`, 25 per call, labels checked):
+  in character goes to their seat's character, table talk or unsure to the table voice. Local
+  check (gemma-4-26b, 7 made-up lines incl. "I attack the goblin", "Can I roll intimidation?",
+  dialogue to an innkeeper and an oath to a child): 7/7. A character's preview is something they'd
+  say in character (`talk.character_text`, same checks as the table preview), else their longest
+  such line. Files under `as/<persona key>/`; a rebuild drops characters it no longer finds. Say
+  and Read aloud take `persona`; "in their words" is their table talk's style, so table voice only.
 - **Measurements** (`spike/clone_reference.py`, synthetic `say` voices, M5 Max, 3 generations per
   row; truth = cosine to the voice's clean centroid): a noisy 15 dB table-mic reference 0.55–0.65;
   the same voice from a quiet recording 0.84. Averaging Chatterbox's two speaker embeddings (voice
@@ -441,14 +455,16 @@ use, like Whisper, then run locally. Code: `tts.py` (audio, text, `Clones`: the 
 - Jobs (`campaign.job`, `player_id` set): `profile`, `clone`, `say`, `read` (titled with the page;
   `note` is its vault path). API: `GET /api/clones` (`{voices, profiles, clips}`, voices and
   profiles by player id), `POST /api/players/{id}/profile`, `POST /api/players/{id}/clone`,
-  `POST /api/players/{id}/clone/say {text ≤ 2000, in_their_words}`,
-  `POST /api/players/{id}/clone/read {session, in_their_words}` (that session's write-up page),
-  `GET /api/clones/{player}/{preview|clip}.wav`, `DELETE /api/clones/{player}/clips/{clip}`,
+  `POST /api/players/{id}/clone/say {text ≤ 2000, in_their_words, persona}`,
+  `POST /api/players/{id}/clone/read {session, in_their_words, persona}` (that session's write-up page),
+  `GET /api/clones/{player}/{preview|preview_<persona>|clip}.wav`, `DELETE /api/clones/{player}/clips/{clip}`,
   `PATCH /api/players/{id} {clone_ok}`.
 - **The preview is something they'd say.** ~20 s at their pace (`talk.preview_text`): the memory
   LLM writes table talk in their style from their speech profile (made on the way if missing), with
   the word count checked (0.6–1.5× the target) and no names they never used; if it's offline or
-  writes junk, their own example lines stitched to length; with too few lines, the stock line.
+  writes junk, their longest single stretch of talk (`talk.monologue`: consecutive lines, nobody
+  else between; good lines from different evenings stitched together read as nonsense); with too
+  few lines, the stock line.
   Candidates are judged on its first sentences (≤ 140 characters, 3 tries each); the winner reads
   the whole line once. Scratch smoke (gemma-4-26b, made-up transcripts): 65 words, 20.2 s, in their
   phrases; the whole build including the profile took 25 s. `voice.json`: `preview_text`, `preview_kind`.

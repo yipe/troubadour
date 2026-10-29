@@ -158,11 +158,11 @@ export const api = {
   /** Count how they talk from every saved transcript, plus an AI description (job "profile"). */
   buildProfile: (id: string) => req<CampaignJob>("POST", `/api/players/${id}/profile`),
   /** Speak typed text in their voice (job "say"); in_their_words: restyled like them first. */
-  cloneSay: (id: string, text: string, in_their_words = false) =>
-    req<CampaignJob>("POST", `/api/players/${id}/clone/say`, { text, in_their_words }),
+  cloneSay: (id: string, text: string, in_their_words = false, persona = "table") =>
+    req<CampaignJob>("POST", `/api/players/${id}/clone/say`, { text, in_their_words, persona }),
   /** Read a session's write-up aloud in their voice (job "read"). */
-  cloneRead: (id: string, session: string, in_their_words = false) =>
-    req<CampaignJob>("POST", `/api/players/${id}/clone/read`, { session, in_their_words }),
+  cloneRead: (id: string, session: string, in_their_words = false, persona = "table") =>
+    req<CampaignJob>("POST", `/api/players/${id}/clone/read`, { session, in_their_words, persona }),
   deleteClip: (id: string, clip: string) => req<void>("DELETE", `/api/clones/${id}/clips/${clip}`),
   assignVoice: (id: string, player_id: string, character?: string | null) =>
     req<{ voice: Voice; merged_into: string | null }>("POST", `/api/voices/${id}/assign`, {

@@ -390,24 +390,50 @@ def restyle(
     return "\n\n".join(out), kept
 
 
+def _written_sample(llm, system: str, brief: str, target: int, samples: list[str], names, own) -> str:
+    """An LLM-written line of about `target` words, or "" if it's offline or wrote junk: a word count
+    outside PREVIEW_WORDS, or a known name that's in none of the samples (nor theirs)."""
+    try:
+        text = _ask(llm, system, f"{brief}\n\nWrite about {target} words.", max_tokens=800)
+    except Exception:
+        return ""
+    names = list(names)
+    lo, hi = PREVIEW_WORDS
+    allowed = _found(names, " ".join(samples)) | set(own)
+    return text if lo * target <= len(tokens(text)) <= hi * target and _found(names, text) <= allowed else ""
+
+
 def preview_text(
     llm, name: str, prof: dict, names: Iterable[str], own: Iterable[str] = (), seconds: float = PREVIEW_S
 ) -> tuple[str, str]:
     """(about `seconds` of something they would say, how it was made). "ai": the LLM wrote it from their
-    profile; "their lines": the LLM was offline or wrote junk (wrong length, a name they never used),
-    so it's their longest stretch of talk from the transcripts (monologue); "" if there is none."""
+    profile; "their lines": the LLM was offline or wrote junk, so it's their longest stretch of talk
+    from the transcripts (monologue); "" if there is none."""
     target = round(seconds * (prof.get("wpm") or DEFAULT_WPM) / 60)
-    try:
-        text = _ask(llm, PREVIEW_SYSTEM, f"{_brief(name, prof)}\n\nWrite about {target} words.", max_tokens=800)
-    except Exception:
-        text = ""
-    names = list(names)
-    allowed = _found(names, " ".join(prof["examples"])) | set(own)
-    lo, hi = PREVIEW_WORDS
-    if lo * target <= len(tokens(text)) <= hi * target and _found(names, text) <= allowed:
+    if text := _written_sample(llm, PREVIEW_SYSTEM, _brief(name, prof), target, prof["examples"], names, own):
         return text, "ai"
     passage = prof.get("monologue") or ""
     return passage, "their lines" if passage else ""
+
+
+CHARACTER_SYSTEM = (
+    "Write something this character might say, in character, in a tabletop role-playing game: their "
+    "voice, phrasing and manner from the sample lines. Dialogue only: no narration, no stage directions, "
+    "no rules talk, no names except ones in the sample lines. Plain spoken text only."
+)
+
+
+def character_text(
+    llm, player: str, character: str, lines: list[str], names: Iterable[str], own: Iterable[str] = (), wpm=None
+) -> tuple[str, str]:
+    """(about PREVIEW_S of something `character` would say, how it was made) for a character voice,
+    from the lines they spoke as them: "ai", else their longest such line ("their lines"), else ""."""
+    target = round(PREVIEW_S * (wpm or DEFAULT_WPM) / 60)
+    samples = sorted(lines, key=lambda line: -len(tokens(line)))[:MAX_EXAMPLES]
+    brief = f"Character: {character} (played by {player})\nSample lines:\n" + "\n".join(f"- {s}" for s in samples)
+    if text := _written_sample(llm, CHARACTER_SYSTEM, brief, target, samples, names, own):
+        return text, "ai"
+    return (samples[0], "their lines") if samples else ("", "")
 
 
 def tempo(player_wpm: float | None, clone_wpm: float | None) -> float:
@@ -416,3 +442,65 @@ def tempo(player_wpm: float | None, clone_wpm: float | None) -> float:
         return 1.0
     lo, hi = TEMPO_RANGE
     return round(min(max(player_wpm / clone_wpm, lo), hi), 3)
+
+
+# ------------------------------------------------------------------ in character, or table talk
+
+CLASSIFY_BATCH = 25  # lines per LLM call
+CONTEXT_CHARS = 200  # of each line of context; the line itself gets twice that
+CLASSIFY_SYSTEM = (
+    "You sort one tabletop role-playing player's lines into in-character speech and table talk. In "
+    "character: words spoken as their character, in the story, to other characters or NPCs (dialogue, "
+    "a battle cry, a threat, a prayer). Table talk: everything else said as themselves: rules and dice, "
+    "plans and questions to the GM, describing what their character does ('I attack', 'she runs'), "
+    "jokes and chat between players. Each line comes with the lines just before it for context. Label "
+    "every numbered line."
+)
+CLASSIFY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "labels": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"n": {"type": "integer"}, "label": {"type": "string", "enum": ["character", "table"]}},
+                "required": ["n", "label"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["labels"],
+    "additionalProperties": False,
+}
+
+
+def classify_lines(
+    llm,
+    name: str,
+    character: str,
+    lines: list[dict],
+    progress: Callable[[int, int], None] = lambda done, total: None,
+) -> list[bool | None]:
+    """For each of their lines ({"text", "context": [(speaker, text), ...]} with the lines just before):
+    True when it's spoken in character, False for table talk, None when the LLM didn't say (or is
+    down). Untrusted: a label counts only for a line number that exists, with a known label."""
+    out: list[bool | None] = [None] * len(lines)
+    who = f"{name}, who plays {character}" if character else name
+    for start in range(0, len(lines), CLASSIFY_BATCH):
+        progress(start, len(lines))
+        batch = lines[start : start + CLASSIFY_BATCH]
+        parts = [f"The player: {who}."]
+        for n, line in enumerate(batch, 1):
+            context = "".join(f"  {s}: {t[:CONTEXT_CHARS]}\n" for s, t in line.get("context", []))
+            parts.append(f"Line {n}:\n{context}  > {name}: {line['text'][: 2 * CONTEXT_CHARS]}")
+        try:
+            reply = llm.json(CLASSIFY_SYSTEM, "\n\n".join(parts), CLASSIFY_SCHEMA, max_tokens=60 * len(batch) + 200)
+        except Exception:
+            break  # the LLM is down: the rest stay unknown
+        labels = reply.get("labels")
+        for item in labels if isinstance(labels, list) else []:
+            n = item.get("n") if isinstance(item, dict) else None
+            if isinstance(n, int) and 1 <= n <= len(batch) and item.get("label") in ("character", "table"):
+                out[start + n - 1] = item["label"] == "character"
+    progress(len(lines), len(lines))
+    return out

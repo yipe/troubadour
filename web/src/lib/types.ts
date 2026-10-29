@@ -253,9 +253,12 @@ export interface CampaignJob {
   note: string | null /* vault-relative path it wrote */
   player_id: string | null /* clone / say / read / profile: whose voice */
 }
-/** A player's built voice clone (GET /api/clones). */
+/** A player's built voice clone (GET /api/clones): their table voice, with `characters` beside it. */
 export interface CloneVoice {
   player_id: string
+  persona?: string /* "table", or a character voice's key; absent on older voices: "table" */
+  label?: string /* the character's name; "" for the table voice */
+  characters?: CloneVoice[] /* on the table voice: a voice per character they voice in the sessions */
   built_at: number /* epoch s */
   /* What the reference came from ("Train recording", "recording of 2026-10-12"), cleaned of room noise;
    * the build tries the Train recording and the cleanest session recordings and keeps the closest.
@@ -280,6 +283,7 @@ export interface CloneClip {
   text: string /* the first 300 characters */
   source: { session?: string; note?: string }
   in_their_words: boolean /* restyled like them (text is what was spoken) and at their pace */
+  persona?: string /* which of their voices; absent: "table" */
   seconds: number
   created_at: number /* epoch s */
   url: string

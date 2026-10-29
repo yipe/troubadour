@@ -290,3 +290,37 @@ def test_monologue_is_one_stretch_of_their_talk_not_lines_from_all_over():
     )
     assert talk.monologue(records, AL, max_words=8) == "Lone line much later on its own here."  # whole lines, fit
     assert talk.monologue(records, BO, max_words=50) == "The guard looks up."
+
+
+# ------------------------------------------------------------- in character, or table talk
+
+
+def test_classify_lines_trusts_only_known_labels_for_lines_that_exist():
+    lines = [{"text": f"line {i}", "context": [("GM", "The ogre roars.")]} for i in range(30)]
+    llm = ScriptedLLM(
+        {"labels": [{"n": 1, "label": "character"}, {"n": 2, "label": "table"}, {"n": 3, "label": "maybe"}, {"n": 26}]},
+        {"labels": "nope"},  # junk: the second batch stays unknown
+    )
+    steps = []
+    out = talk.classify_lines(llm, "Al", "Elara", lines, lambda d, t: steps.append(d))
+    assert out[:4] == [True, False, None, None]
+    assert out[25:] == [None] * 5
+    assert len(llm.prompts) == 2  # batches of CLASSIFY_BATCH
+    assert "The player: Al, who plays Elara." in llm.prompts[0]
+    assert "  GM: The ogre roars.\n  > Al: line 0" in llm.prompts[0]
+    assert steps == [0, 25, 30]
+
+
+def test_classify_lines_with_the_llm_down_says_nothing():
+    lines = [{"text": "Hi.", "context": []}] * 30
+    assert talk.classify_lines(ScriptedLLM(ConnectionError("down")), "Al", "", lines) == [None] * 30
+
+
+def test_character_text_writes_in_character_or_uses_their_longest_line():
+    said = ["Hold.", "None pass the ford without paying the toll, traveller.", "Begone!"]
+    written = "Hold there, traveller, none pass this ford without paying the river toll. " * 4
+    text, kind = talk.character_text(ScriptedLLM({"text": written}), "Al", "Elara", said, ["Marla"], wpm=150)
+    assert (text, kind) == (written.strip(), "ai")
+    junk = talk.character_text(ScriptedLLM({"text": "Marla! " * 50}), "Al", "Elara", said, ["Marla"])
+    assert junk == ("None pass the ford without paying the toll, traveller.", "their lines")
+    assert talk.character_text(ScriptedLLM(), "Al", "Elara", [], []) == ("", "")

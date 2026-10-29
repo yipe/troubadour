@@ -25,9 +25,21 @@ export function ReadAloud({ sessionId, page }: { sessionId: string; page: string
   }, [])
 
   if (!clones) return null
-  const voiced = players.filter((p) => p.clone_ok && clones.voices[p.id])
-  const pick = voiced.find((p) => p.id === reader) ?? voiced[0]
-  const profiled = !!pick && !!clones.profiles[pick.id]
+  // Every voice that can read: each player's own, then each character they voice.
+  const readers = players
+    .filter((p) => p.clone_ok && clones.voices[p.id])
+    .flatMap((p) => [
+      { key: p.id, player: p, persona: "table", name: p.name },
+      ...(clones.voices[p.id].characters ?? []).map((c) => ({
+        key: `${p.id}/${c.persona}`,
+        player: p,
+        persona: c.persona ?? "table",
+        name: `${p.name} as ${c.label}`,
+      })),
+    ])
+  const pick = readers.find((r) => r.key === reader) ?? readers[0]
+  const own = pick?.persona === "table"
+  const profiled = !!pick && own && !!clones.profiles[pick.player.id]
   const running = !!job && jobActive(job)
   const clip = clones.clips.find((c) => c.kind === "read" && c.source.session === sessionId)
 
@@ -42,10 +54,10 @@ export function ReadAloud({ sessionId, page }: { sessionId: string; page: string
     <div className="flex w-full flex-col items-start gap-2">
       {pick && (
         <div className="flex flex-wrap items-center gap-2">
-          <NativeSelect aria-label="Read by" value={pick.id} onChange={(e) => setReader(e.target.value)}>
-            {voiced.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
+          <NativeSelect aria-label="Read by" value={pick.key} onChange={(e) => setReader(e.target.value)}>
+            {readers.map((r) => (
+              <option key={r.key} value={r.key}>
+                {r.name}
               </option>
             ))}
           </NativeSelect>
@@ -55,7 +67,9 @@ export function ReadAloud({ sessionId, page }: { sessionId: string; page: string
             disabled={running || !idle}
             title={idle ? undefined : "Stop the session first"}
             onClick={() =>
-              void campaignActions.startJob(() => api.cloneRead(pick.id, sessionId, theirWords && profiled))
+              void campaignActions.startJob(() =>
+                api.cloneRead(pick.player.id, sessionId, theirWords && profiled, pick.persona),
+              )
             }
           >
             {running ? <Loader2 className="animate-spin" /> : <Speech />}
@@ -66,7 +80,7 @@ export function ReadAloud({ sessionId, page }: { sessionId: string; page: string
             profiled={profiled}
             checked={theirWords}
             onChange={setTheirWords}
-            missing="Profile how they talk first (Setup)"
+            missing={own ? "Profile how they talk first (Setup)" : "For their own voice"}
           />
         </div>
       )}

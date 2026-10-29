@@ -152,12 +152,14 @@ describe("Voice clone dialog", () => {
 
     state.clones = { voices: { p1: VOICE }, profiles: {}, clips: [] }
     job({ id: "j1", kind: "clone", title: "Alice", player_id: "p1", state: "done" })
-    await waitFor(() => expect(screen.getByLabelText("Preview")).toHaveAttribute("src", VOICE.preview_url))
-    expect(screen.getByLabelText("Preview")).toHaveAttribute("preload", "none") // never autoplays
+    await waitFor(() =>
+      expect(screen.getByLabelText("Preview: Their own voice")).toHaveAttribute("src", VOICE.preview_url),
+    )
+    expect(screen.getByLabelText("Preview: Their own voice")).toHaveAttribute("preload", "none") // never autoplays
     expect(screen.getByText("“Okay so you know what, I check the door for traps?”")).toBeInTheDocument()
     expect(screen.getByText(/Written in their style/)).toBeInTheDocument()
     expect(
-      screen.getByText("Likeness 0.81 · from the recording of 2026-10-12, best of 2"),
+      screen.getByText(/· likeness 0.81 · from the recording of 2026-10-12, best of 2/),
     ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /Rebuild voice/ })).toBeEnabled()
   })
@@ -178,7 +180,11 @@ describe("Voice clone dialog", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: /Speak/ }))
     await waitFor(() => expect(writes().map((c) => c.url)).toEqual(["/api/players/p1/clone/say"]))
-    expect(bodyOf(writes()[0])).toEqual({ text: "Roll for initiative!", in_their_words: false })
+    expect(bodyOf(writes()[0])).toEqual({
+      text: "Roll for initiative!",
+      in_their_words: false,
+      persona: "table",
+    })
     await waitFor(() => expect(screen.getByLabelText("Something for Alice to say")).toHaveValue(""))
 
     state.clones = { voices: { p1: VOICE }, profiles: {}, clips: [CLIP] }
@@ -199,7 +205,7 @@ describe("Voice clone dialog", () => {
       clone_ok: false,
     }))
     await open(alice)
-    await waitFor(() => expect(screen.getByLabelText("Preview")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByLabelText("Preview: Their own voice")).toBeInTheDocument())
 
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false)
     fireEvent.click(screen.getByRole("switch", { name: /agrees to a voice clone/ }))
@@ -265,7 +271,40 @@ describe("Voice clone dialog", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: /Speak/ }))
     await waitFor(() => expect(writes()).toHaveLength(1))
-    expect(bodyOf(writes()[0])).toEqual({ text: "I open the door.", in_their_words: true })
+    expect(bodyOf(writes()[0])).toEqual({ text: "I open the door.", in_their_words: true, persona: "table" })
+  })
+
+  it("shows each character voice and can speak in one", async () => {
+    const alice = player({ id: "p1", name: "Alice", trained: true, clone_ok: true })
+    load(alice)
+    const elara = {
+      ...VOICE,
+      persona: "elara",
+      label: "Elara",
+      likeness: 0.66,
+      preview_url: "/api/clones/p1/preview_elara.wav?v=2",
+      preview_text: "Hold, traveller.",
+      preview_kind: "their lines" as const,
+    }
+    const state: { clones: Clones } = {
+      clones: { voices: { p1: { ...VOICE, characters: [elara] } }, profiles: { p1: PROFILE }, clips: [] },
+    }
+    const { writes } = server(state, () =>
+      campaignJob({ id: "s1", kind: "say", title: "Alice", player_id: "p1" }),
+    )
+    await open(alice)
+    expect(screen.getByLabelText("Preview: As Elara")).toHaveAttribute("src", elara.preview_url)
+    expect(screen.getByText("“Hold, traveller.”")).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Voice" }), { target: { value: "elara" } })
+    // In their words is their table talk's style: not for a character's voice.
+    expect(screen.getByRole("switch", { name: /In their words/ })).toHaveAttribute("aria-disabled", "true")
+    fireEvent.change(screen.getByLabelText("Something for Alice to say"), {
+      target: { value: "Hold, traveller." },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /Speak/ }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(bodyOf(writes()[0])).toEqual({ text: "Hold, traveller.", in_their_words: false, persona: "elara" })
   })
 
   it("holds off while a session runs", async () => {

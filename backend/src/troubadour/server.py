@@ -122,14 +122,19 @@ class TrainIn(BaseModel):
     seconds: float = Field(20.0, ge=5, le=60)
 
 
+Persona = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{1,40}$")]
+
+
 class SayIn(BaseModel):
     text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=tts.SAY_MAX_CHARS)]
     in_their_words: bool = False  # restyle it like them first (talk.restyle) and match their pace
+    persona: Persona = "table"  # which of their voices: "table", or a character voice's key
 
 
 class ReadIn(BaseModel):
     session: str = Field(max_length=60)
     in_their_words: bool = False
+    persona: Persona = "table"
 
 
 class AssignIn(BaseModel):
@@ -1079,14 +1084,14 @@ def build_clone(pid: str):
 
 @app.post("/api/players/{pid}/clone/say", status_code=202)
 def clone_say(pid: str, body: SayIn):
-    name, work = _call(cloning.say_job, pid, body.text, body.in_their_words)
+    name, work = _call(cloning.say_job, pid, body.text, body.in_their_words, body.persona)
     return memory.submit("say", name, work, player_id=pid).to_json()
 
 
 @app.post("/api/players/{pid}/clone/read", status_code=202)
 def clone_read(pid: str, body: ReadIn):
     """Read a session's write-up page aloud in their voice (a job: kind "read", note = the page)."""
-    title, page, work = _call(cloning.read_job, pid, body.session, body.in_their_words)
+    title, page, work = _call(cloning.read_job, pid, body.session, body.in_their_words, body.persona)
     return memory.submit("read", title, work, player_id=pid, note=page).to_json()
 
 

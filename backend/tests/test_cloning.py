@@ -156,40 +156,84 @@ def test_wait_for_models_says_why_they_are_missing(engine):
 # ------------------------------------------------------------- references from sessions
 
 
-def test_candidates_add_the_cleanest_session_recordings(engine, cloning):
+def by_voice(cloning, pid: str, name: str = "Alice") -> dict:
+    return cloning._scored(job(), pid, cloning._lines(job(), pid, name))
+
+
+def test_table_references_are_the_cleanest_session_recordings(engine, cloning):
     pid = seat(engine)
     lines = [message(pid, 1.0, 5.0), message(pid, 7.0, 11.0), message(pid, 13.0, 17.0)]
     save_session("2026-10-01_190000-aaaa", lines, recording(20, 0.03))
     save_session("2026-10-02_190000-bbbb", lines, recording(20, 0.001))
     save_session("2026-10-03_190000-cccc", [message(pid, 1.0, 5.0)])  # a replay: no recording of its own
-    found = cloning._candidates(job(), pid)
-    assert [label for label, _, _ in found] == ["Train recording", "recording of 2026-10-02", "recording of 2026-10-01"]
-    assert [r for _, _, r in found] == [SR, RATE, RATE]
-    assert len(found[1][1]) / RATE == pytest.approx(10 + 2 * tts.REF_GAP_S, abs=0.05)  # 10 s of speech
+    cloning.llm_now = ScriptedLLM(*[{"labels": [{"n": n, "label": "table"} for n in range(1, 7)]}])
+    found = cloning._references(by_voice(cloning, pid)[tts.TABLE])
+    assert [label for label, _, _ in found] == ["recording of 2026-10-02", "recording of 2026-10-01"]
+    assert [r for _, _, r in found] == [RATE, RATE]
+    assert len(found[0][1]) / RATE == pytest.approx(10 + 2 * tts.REF_GAP_S, abs=0.05)  # 10 s of speech
 
 
-def test_candidates_use_lines_under_a_seat_character(engine, cloning):
-    # Saved lines carry the seat character for a player with no character voice: still their own voice.
+def test_the_ai_sorts_a_players_lines_into_their_character_and_table_voices(engine, cloning):
     pid = seat(engine)
-    lines = [message(pid, 1.0, 5.0, character="Elara"), message(pid, 7.0, 11.0, character="Elara")]
+    engine.update_player(pid, {"character": "Elara"})
+    lines = [
+        message(pid, 1.0, 5.0, text="Stand aside, cur, or taste my blade!", character="Elara"),
+        message(pid, 7.0, 11.0, text="Can I roll for that, do I add my strength?", character="Elara"),
+    ]
     save_session("2026-10-01_190000-aaaa", lines, recording(20, 0.001))
-    assert [label for label, _, _ in cloning._candidates(job(), pid)][1:] == ["recording of 2026-10-01"]
+    cloning.llm_now = llm = ScriptedLLM(
+        {"labels": [{"n": 1, "label": "character"}, {"n": 2, "label": "table"}, {"n": 9, "label": "character"}]}
+    )
+    voices = by_voice(cloning, pid)
+    assert [line.text for line in voices["elara"]] == ["Stand aside, cur, or taste my blade!"]
+    assert voices["elara"][0].label == "Elara"
+    assert [line.text for line in voices[tts.TABLE]] == ["Can I roll for that, do I add my strength?"]
+    assert "Alice, who plays Elara" in llm.prompts[0]
 
 
-def test_candidates_skip_character_voices_and_lines_that_dont_sound_like_them(engine, cloning):
+def test_an_unsure_or_offline_ai_leaves_lines_as_table_talk(engine, cloning):
     pid = seat(engine)
-    voices = [{"id": "v-elara", "player_id": pid, "character": "Elara"}]
-    in_character = [message(pid, 1.0, 5.0, voice="v-elara"), message(pid, 7.0, 11.0, voice="v-elara")]
-    save_session("2026-10-01_190000-aaaa", in_character, recording(20, 0.001), voices)
+    save_session("2026-10-01_190000-aaaa", [message(pid, 1.0, 5.0), message(pid, 7.0, 11.0)], recording(20, 0.001))
+    cloning.llm_now = ScriptedLLM(ConnectionError("down"))
+    assert set(by_voice(cloning, pid)) == {tts.TABLE}
+
+
+def test_voices_named_with_a_character_need_no_ai_and_the_gm_gets_one_per_npc(engine, cloning):
+    pid = seat(engine)
+    engine.update_player(pid, {"is_gm": True})
+    voices = [
+        {"id": "v-morvath", "player_id": pid, "character": "Morvath"},
+        {"id": "v-pip", "player_id": pid, "character": "Pip"},
+    ]
+    lines = [
+        message(pid, 1.0, 5.0, voice="v-morvath"),
+        message(pid, 7.0, 11.0, voice="v-pip"),
+        message(pid, 13.0, 17.0),  # narration: the GM's lines aren't read by the AI
+    ]
+    save_session("2026-10-01_190000-aaaa", lines, recording(20, 0.001), voices)
+    cloning.llm_now = llm = ScriptedLLM()
+    found = by_voice(cloning, pid)
+    assert {k: [line.label for line in v] for k, v in found.items()} == {
+        tts.TABLE: [""],
+        "morvath": ["Morvath"],
+        "pip": ["Pip"],
+    }
+    assert llm.prompts == []
+
+
+def test_lines_that_dont_sound_like_them_are_skipped(engine, cloning):
+    pid = seat(engine)
     save_session("2026-10-02_190000-bbbb", [message(pid, 1.0, 5.0), message(pid, 7.0, 11.0)], recording(20, 0.001, 2500))
-    assert [label for label, _, _ in cloning._candidates(job(), pid)] == ["Train recording"]
+    cloning.llm_now = ScriptedLLM({"labels": [{"n": 1, "label": "table"}, {"n": 2, "label": "table"}]})
+    assert by_voice(cloning, pid)[tts.TABLE] == []
 
 
-def test_likeness_is_the_cosine_to_their_train_voiceprint(engine, cloning):
+def test_likeness_is_the_cosine_to_a_voiceprint(engine, cloning):
     pid = seat(engine)
-    assert cloning._likeness(pid, tone(ALICE, 2), SR) == pytest.approx(1.0, abs=0.01)
-    assert cloning._likeness(pid, tone(2500, 2), SR) < 0.5
-    assert cloning._likeness("p-nobody", tone(ALICE, 2), SR) is None
+    match = cloning._match(engine.train_voiceprint(pid))
+    assert match(tone(ALICE, 2), SR) == pytest.approx(1.0, abs=0.01)
+    assert match(tone(2500, 2), SR) < 0.5
+    assert cloning._match(None)(tone(ALICE, 2), SR) is None
 
 
 # ------------------------------------------------------------- jobs
@@ -201,6 +245,35 @@ def test_build_needs_a_train_clip_without_listening_to_it(engine, cloning, monke
     monkeypatch.setattr(engine_module, "speech_spans", lambda a: pytest.fail("the request mustn't run the VAD"))
     with pytest.raises(ValueError, match="Train them first"):
         cloning.build_job(pid)
+
+
+def test_build_makes_a_character_voice_and_drops_one_no_longer_found(engine, cloning):
+    pid = seat(engine)
+    engine.update_player(pid, {"character": "Elara"})
+    stale = config.DATA_DIR / "clones" / pid / "as" / "old-npc"
+    stale.mkdir(parents=True)
+    voices = [{"id": "v-elara", "player_id": pid, "character": "Elara"}]
+    lines = [message(pid, 1.0, 5.0, voice="v-elara"), message(pid, 7.0, 11.0, voice="v-elara")]
+    save_session("2026-10-01_190000-aaaa", lines, recording(20, 0.001), voices)
+    cloning.llm_now = ScriptedLLM(
+        {"text": "Hold, traveller. None pass the river ford without paying the toll, and none ever will while I stand."}
+    )
+    j = job()
+    cloning.build_job(pid)[1](j)
+    status = engine.clones.status(pid)
+    [elara] = status["characters"]
+    assert (elara["label"], elara["source"], elara["preview_kind"]) == ("Elara", "recording of 2026-10-01", "their lines")
+    assert not stale.exists()
+    assert j.message.startswith("Ready: table voice")
+    assert "as Elara" in j.message
+
+    _, work = cloning.say_job(pid, "Hold, traveller.", in_their_words=False, persona="elara")
+    work(job())
+    assert engine.clones.clips()[0]["persona"] == "elara"
+    with pytest.raises(KeyError, match="no voice"):
+        cloning.say_job(pid, "Hi.", in_their_words=False, persona="morvath")
+    with pytest.raises(ValueError, match="for their own voice"):
+        cloning.say_job(pid, "Hi.", in_their_words=True, persona="elara")
 
 
 def test_say_in_their_words_rewrites_then_matches_their_pace(engine, cloning):
@@ -321,6 +394,7 @@ def test_api_refuses_without_consent_or_training(api, engine):
 def test_api_validates_text(api, engine):
     pid = alice(api, engine)
     assert api.post(f"/api/players/{pid}/clone/say", json={"text": "   "}).status_code == 422
+    assert api.post(f"/api/players/{pid}/clone/say", json={"text": "Hi.", "persona": "../x"}).status_code == 422
     assert api.post(f"/api/players/{pid}/clone/say", json={"text": "x" * (tts.SAY_MAX_CHARS + 1)}).status_code == 422
 
 

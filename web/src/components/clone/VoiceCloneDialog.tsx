@@ -3,6 +3,7 @@ import { Loader2, Speech, Trash2, WandSparkles } from "lucide-react"
 import { JobStatus } from "@/components/campaign/JobProgress"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { NativeSelect } from "@/components/ui/native-select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
@@ -68,7 +69,8 @@ export function VoiceCloneDialog({
           <DialogTitle>{player.name}&apos;s voice clone</DialogTitle>
           <DialogDescription>
             Troubadour can speak in {player.name}&apos;s voice, copied from their Train recording or the
-            cleanest stretch of their talk in your sessions. It all stays on this Mac.
+            cleanest stretch of their talk in your sessions, and in each character they voice. It all stays on
+            this Mac.
           </DialogDescription>
         </DialogHeader>
 
@@ -88,7 +90,15 @@ export function VoiceCloneDialog({
                 Train {player.name} first: the clone needs their Train recording.
               </p>
             )}
-            {voice && <SayBox player={player} profiled={!!profile} job={saying} blocked={blocked} />}
+            {voice && (
+              <SayBox
+                player={player}
+                characters={voice.characters ?? []}
+                profiled={!!profile}
+                job={saying}
+                blocked={blocked}
+              />
+            )}
             {clips.length > 0 && <ClipList player={player} clips={clips} />}
           </div>
         )}
@@ -108,43 +118,47 @@ function BuildVoice({
   job: CampaignJob | undefined
   blocked: string | undefined
 }) {
-  const tried = (voice?.tried ?? []).map((t) => `${t.source}: ${t.likeness?.toFixed(2) ?? "?"}`)
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!!blocked}
-          title={blocked}
-          onClick={() => void campaignActions.startJob(() => api.buildClone(player.id))}
-        >
-          {job && jobActive(job) ? <Loader2 className="animate-spin" /> : <WandSparkles />}
-          {voice ? "Rebuild voice" : "Build voice"}
-        </Button>
-        {voice?.likeness != null && (
-          <span
-            className="text-xs text-muted-foreground tabular-nums"
-            title={[LIKENESS_HELP, ...tried].join("\n")}
-          >
-            Likeness {voice.likeness.toFixed(2)}
-            {voice.source && ` · from the ${voice.source}`}
-            {tried.length > 1 && `, best of ${tried.length}`}
-          </span>
-        )}
-      </div>
+    <div className="space-y-3">
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!!blocked}
+        title={blocked}
+        onClick={() => void campaignActions.startJob(() => api.buildClone(player.id))}
+      >
+        {job && jobActive(job) ? <Loader2 className="animate-spin" /> : <WandSparkles />}
+        {voice ? "Rebuild voices" : "Build voice"}
+      </Button>
       <JobStatus job={job} working="Building…" failed="Building the voice failed" />
-      {voice && (
-        <audio
-          key={voice.preview_url}
-          aria-label="Preview"
-          controls
-          preload="none"
-          src={voice.preview_url}
-          className="h-8 w-full"
-        />
-      )}
-      {voice?.preview_text && voice.preview_kind && (
+      {voice && <VoicePreview voice={voice} name="Their own voice" />}
+      {voice?.characters?.map((c) => (
+        <VoicePreview key={c.persona} voice={c} name={`As ${c.label}`} />
+      ))}
+    </div>
+  )
+}
+
+/** One of their voices: its likeness (the hover lists every reference tried), preview and what it says. */
+function VoicePreview({ voice, name }: { voice: CloneVoice; name: string }) {
+  const tried = (voice.tried ?? []).map((t) => `${t.source}: ${t.likeness?.toFixed(2) ?? "?"}`)
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-muted-foreground tabular-nums" title={[LIKENESS_HELP, ...tried].join("\n")}>
+        <span className="font-medium text-foreground">{name}</span>
+        {voice.likeness != null && ` · likeness ${voice.likeness.toFixed(2)}`}
+        {voice.source && ` · from the ${voice.source}`}
+        {tried.length > 1 && `, best of ${tried.length}`}
+      </p>
+      <audio
+        key={voice.preview_url}
+        aria-label={`Preview: ${name}`}
+        controls
+        preload="none"
+        src={voice.preview_url}
+        className="h-8 w-full"
+      />
+      {voice.preview_text && voice.preview_kind && (
         <p className="text-xs text-muted-foreground">
           {voice.preview_kind === "ai" ? "Written in their style: " : "From their own lines: "}
           <span className="italic">“{voice.preview_text}”</span>
@@ -156,17 +170,21 @@ function BuildVoice({
 
 function SayBox({
   player,
+  characters,
   profiled,
   job,
   blocked,
 }: {
   player: Player
+  characters: CloneVoice[]
   profiled: boolean
   job: CampaignJob | undefined
   blocked: string | undefined
 }) {
   const [text, setText] = useState("")
   const [theirWords, setTheirWords] = useState(false)
+  const [persona, setPersona] = useState("table")
+  const own = persona === "table"
   const label = `Something for ${player.name} to say`
   return (
     <form
@@ -174,7 +192,7 @@ function SayBox({
       onSubmit={async (e) => {
         e.preventDefault()
         const j = await campaignActions.startJob(() =>
-          api.cloneSay(player.id, text.trim(), theirWords && profiled),
+          api.cloneSay(player.id, text.trim(), own && theirWords && profiled, persona),
         )
         if (j) setText("")
       }}
@@ -191,11 +209,21 @@ function SayBox({
         <Button size="sm" type="submit" disabled={!text.trim() || !!blocked} title={blocked}>
           {job && jobActive(job) ? <Loader2 className="animate-spin" /> : <Speech />} Speak
         </Button>
+        {characters.length > 0 && (
+          <NativeSelect aria-label="Voice" value={persona} onChange={(e) => setPersona(e.target.value)}>
+            <option value="table">Their own voice</option>
+            {characters.map((c) => (
+              <option key={c.persona} value={c.persona}>
+                As {c.label}
+              </option>
+            ))}
+          </NativeSelect>
+        )}
         <TheirWordsSwitch
-          profiled={profiled}
+          profiled={profiled && own}
           checked={theirWords}
           onChange={setTheirWords}
-          missing="Profile how they talk first"
+          missing={own ? "Profile how they talk first" : "For their own voice"}
         />
         <JobStatus job={job} working="Speaking…" failed="Speaking failed" />
       </div>
@@ -213,6 +241,9 @@ function ClipList({ player, clips }: { player: Player; clips: CloneClip[] }) {
               {c.title}
             </span>
             {c.in_their_words && <span className="text-xs text-muted-foreground">in their words</span>}
+            {c.persona && c.persona !== "table" && (
+              <span className="text-xs text-muted-foreground">in character</span>
+            )}
             <span className="text-xs text-muted-foreground tabular-nums">{Math.round(c.seconds)}s</span>
             <Button
               size="icon-sm"

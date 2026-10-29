@@ -124,7 +124,7 @@ describe("History viewer: write up for campaign", () => {
     fireEvent.click(screen.getByRole("button", { name: /Read aloud/ }))
     await act(async () => {})
     expect(writes().map((c) => c.url)).toEqual(["/api/players/p1/clone/read"])
-    expect(bodyOf(writes()[0])).toEqual({ session: ID, in_their_words: false })
+    expect(bodyOf(writes()[0])).toEqual({ session: ID, in_their_words: false, persona: "table" })
     act(() =>
       applyEvent({
         type: "campaign.job",
@@ -199,7 +199,37 @@ describe("History viewer: write up for campaign", () => {
     fireEvent.click(screen.getByRole("switch", { name: /In their words/ }))
     fireEvent.click(screen.getByRole("button", { name: /Read aloud/ }))
     await act(async () => {})
-    expect(bodyOf(writes()[0])).toEqual({ session: ID, in_their_words: true })
+    expect(bodyOf(writes()[0])).toEqual({ session: ID, in_their_words: true, persona: "table" })
+  })
+
+  it("can read it in a character's voice", async () => {
+    useStore.setState({ players: [player({ id: "p1", name: "Alice", clone_ok: true })] })
+    const elara = {
+      player_id: "p1",
+      persona: "elara",
+      label: "Elara",
+      built_at: 2,
+      likeness: 0.6,
+      reference_s: 10,
+      preview_url: "/y",
+      clone_wpm: 150,
+    }
+    const voice = {
+      player_id: "p1",
+      built_at: 1,
+      likeness: 0.8,
+      reference_s: 10,
+      preview_url: "/x",
+      clone_wpm: 150,
+      characters: [elara],
+    }
+    const clones = { current: { voices: { p1: voice }, profiles: {}, clips: [] } as Clones }
+    const { writes } = server(campaign({ written_up: { [ID]: PAGE } }), clones)
+    await renderViewer()
+    fireEvent.change(screen.getByRole("combobox", { name: "Read by" }), { target: { value: "p1/elara" } })
+    fireEvent.click(screen.getByRole("button", { name: /Read aloud/ }))
+    await act(async () => {})
+    expect(bodyOf(writes()[0])).toEqual({ session: ID, in_their_words: false, persona: "elara" })
   })
 
   it("points to Setup when nobody has a voice clone yet", async () => {
