@@ -4,7 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useCampaign } from "@/lib/campaignStore"
 import { applyEvent, useStore } from "@/lib/store"
-import type { Fix, ImprovedInfo, RetranscribedInfo, SavedSession, SpellingInfo } from "@/lib/types"
+import type {
+  Fix,
+  ImprovedInfo,
+  InCharacterInfo,
+  RetranscribedInfo,
+  SavedSession,
+  SpellingInfo,
+} from "@/lib/types"
 import { campaign, campaignJob, recordMessage, savedSession, sessionRecord } from "@/test/fixtures"
 import { mockFetch } from "@/test/mockFetch"
 import { SessionViewer } from "./SessionViewer"
@@ -20,6 +27,7 @@ function server(state: {
   improved?: ImprovedInfo
   spelling?: SpellingInfo
   retranscribed?: RetranscribedInfo
+  inCharacter?: InCharacterInfo
   fixes?: Fix[]
 }) {
   return mockFetch((c) => {
@@ -29,7 +37,18 @@ function server(state: {
     if (c.url === RECORD) {
       const r = sessionRecord({
         id: ID,
-        messages: [recordMessage({ id: "m1", speaker: "Nora", text: state.text, fixes: state.fixes })],
+        players: [{ id: "p1", name: "Nora", character: "Pip", is_gm: false }],
+        messages: [
+          recordMessage({
+            id: "m1",
+            t_end: 4,
+            speaker: "Nora",
+            player_id: "p1",
+            text: state.text,
+            fixes: state.fixes,
+            in_character: state.inCharacter ? true : undefined,
+          }),
+        ],
       })
       return {
         ...r,
@@ -38,6 +57,7 @@ function server(state: {
           improved: state.improved,
           spelling: state.spelling,
           retranscribed: state.retranscribed,
+          in_character: state.inCharacter,
         },
       }
     }
@@ -47,6 +67,8 @@ function server(state: {
       return campaignJob({ id: "s1", kind: "spelling", title: ID, state: "queued" })
     if (c.url === `/api/sessions/${ID}/retranscribe`)
       return campaignJob({ id: "r1", kind: "retranscribe", title: ID, state: "queued" })
+    if (c.url === `/api/sessions/${ID}/in-character`)
+      return campaignJob({ id: "c1", kind: "incharacter", title: ID, state: "queued" })
     if (c.url === `/api/sessions/${ID}/restore`) {
       state.improved = undefined
       state.text = "Dilara waves."
@@ -195,6 +217,30 @@ describe("Improve transcript", () => {
     openTranscript()
     expect(screen.getByRole("button", { name: /Restore original/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /Fix spellings/ })).toBeEnabled()
+  })
+
+  it("Estimate in-character time posts the job, then the talk-time box shows the share", async () => {
+    const state: { text: string; inCharacter?: InCharacterInfo } = { text: "Stand aside, cur!" }
+    const { writes } = server(state)
+    await renderViewer(savedSession({ id: ID, replayable: false }))
+    expect(screen.queryByTestId("in-character")).toBeNull()
+    openTranscript()
+    fireEvent.click(screen.getByRole("button", { name: /Estimate in-character time/ }))
+    await act(async () => {})
+    expect(writes()).toEqual([{ method: "POST", url: `/api/sessions/${ID}/in-character`, body: undefined }])
+
+    const icJob = (st: "running" | "done", extra = {}) =>
+      applyEvent({
+        type: "campaign.job",
+        data: campaignJob({ id: "c1", kind: "incharacter", title: ID, state: st, ...extra }),
+      })
+    act(() => icJob("running", { done: 25, total: 60 }))
+    expect(screen.getByRole("button", { name: /Estimate in-character time/ })).toHaveTextContent("25/60")
+
+    state.inCharacter = { at: 1, lines: 1, in_character: 1, by_voice: 0, by_ai: 1, unread: 0 }
+    await act(async () => icJob("done", { message: "100% of the players' lines in character" }))
+    await waitFor(() => expect(screen.getByTestId("in-character")).toHaveTextContent("~100% in character"))
+    expect(screen.getByText("In character · 100% of lines")).toBeInTheDocument()
   })
 
   it("Retranscribe warns before it posts, because hand-fixed speakers can move", async () => {

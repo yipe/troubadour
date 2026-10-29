@@ -418,6 +418,13 @@ use, like Whisper, then run locally. Code: `tts.py` (audio, text, `Clones`: the 
   table-mic voiceprint, prefers keeping the room, so it isn't asked), speaks the preview 3 times,
   and is judged on the mean likeness (one generation varies by ~0.1). `voice.json` keeps `source`
   and every candidate's score (`tried`).
+- **Estimate in-character time** (History viewer tool, `POST /api/sessions/{sid}/in-character`, job
+  kind `incharacter`): `talk.label_in_character` saves `in_character` on every player's line. Named
+  character voice → yes; the GM's other lines → no (text can't split narration from NPCs); other
+  players' lines of 3+ words → the memory LLM (`classify_lines`, 25 per call, two lines of
+  context); short or unanswered lines count as table talk, so it errs low. Nothing answered →
+  error, nothing written. Saved labels win over voices in the talk-time boxes and the speech
+  profile, and a voice rebuild reuses them instead of asking again. Restore original undoes it.
 - **Character voices.** A player can have more than one clone: their table voice (above) and one
   per character they voice, each built the same way from its own lines (no Train recording) and
   judged against the centroid of those lines' voiceprints, and lines far from that centroid (cos

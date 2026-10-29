@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import asr, cleanup, config, transcript
+from . import asr, cleanup, config, talk, transcript
 from .audio import load_audio
 from .campaign import Corrector
 from .engine import PROVISIONAL_BELOW, Engine, session_audio
@@ -249,6 +249,23 @@ def fix_spellings(job, engine: Engine, sid: str, emit: Callable[[], None]) -> No
     new["session"] = new["session"] | {"spelling": {"at": time.time(), "fixed": fixed}}
     save(folder, new)
     job.message = f"{fixed} spellings fixed"
+
+
+def label_in_character(job, engine: Engine, sid: str, llm) -> None:
+    """The job: which of each player's lines were in character (talk.label_in_character), saved on the
+    lines for the talk-time boxes, the speech profile and character voices. The original is kept."""
+    folder = engine.sessions_dir() / sid
+    record = json.loads((folder / "transcript.json").read_text())
+
+    def progress(done: int, total: int) -> None:
+        job.update(done=done, total=total, message=f"Reading {done} of {total} lines")
+
+    new, counts = talk.label_in_character(llm, record, progress)
+    new["session"] = new["session"] | {"in_character": {"at": time.time()} | counts}
+    save(folder, new)
+    share = counts["in_character"] / counts["lines"] if counts["lines"] else 0.0
+    unread = f"; {counts['unread']} the AI didn't label" if counts["unread"] else ""
+    job.update(message=f"{share:.0%} of the players' lines in character{unread}")
 
 
 def restore(folder: Path) -> bool:

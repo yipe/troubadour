@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react"
-import { AlertCircle, AudioLines, Loader2, SpellCheck, Undo2, Wand2 } from "lucide-react"
+import { AlertCircle, AudioLines, Drama, Loader2, SpellCheck, Undo2, Wand2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { api } from "@/lib/api"
 import { jobActive, jobCount } from "@/lib/campaign"
 import { attempt, campaignActions, useCampaign } from "@/lib/campaignStore"
-import type { CampaignJob, ImprovedInfo, RetranscribedInfo, SavedSession, SpellingInfo } from "@/lib/types"
+import type {
+  CampaignJob,
+  ImprovedInfo,
+  InCharacterInfo,
+  RetranscribedInfo,
+  SavedSession,
+  SpellingInfo,
+} from "@/lib/types"
 
-type ToolKind = "improve" | "spelling" | "retranscribe"
+type ToolKind = "improve" | "spelling" | "retranscribe" | "incharacter"
+const KINDS: ToolKind[] = ["improve", "spelling", "retranscribe", "incharacter"]
 
 const TOOLS: Record<
   ToolKind,
@@ -45,6 +53,14 @@ const TOOLS: Record<
     failed: "Retranscribe failed",
     start: api.retranscribeSession,
   },
+  incharacter: {
+    label: "Estimate in-character time",
+    tip: "The AI reads each player's lines (not the GM's) and marks the ones spoken as their character. About one AI call per 25 lines; the original is kept.",
+    icon: <Drama />,
+    done: "In-character time estimated",
+    failed: "Estimating in-character time failed",
+    start: api.estimateInCharacter,
+  },
 }
 
 /**
@@ -57,6 +73,7 @@ export function TranscriptTools({
   improved,
   spelling,
   retranscribed,
+  inCharacter = null,
   onReload,
 }: {
   summary: SavedSession
@@ -66,6 +83,8 @@ export function TranscriptTools({
   spelling: SpellingInfo | null
   /** From the loaded record; null when speakers were never reassigned. */
   retranscribed: RetranscribedInfo | null
+  /** From the loaded record; null when in-character time was never estimated. */
+  inCharacter?: InCharacterInfo | null
   /** Reload the record (and the session summary) after the transcript changed. */
   onReload: () => void
 }) {
@@ -78,21 +97,18 @@ export function TranscriptTools({
   // The latest job of each kind for this session (insertion order; job ids are random).
   const latest = useMemo(() => {
     const mine = Object.values(jobs).filter((j) => j.title === summary.id)
-    return {
-      improve: mine.filter((j) => j.kind === "improve").at(-1),
-      spelling: mine.filter((j) => j.kind === "spelling").at(-1),
-      retranscribe: mine.filter((j) => j.kind === "retranscribe").at(-1),
-    }
+    return Object.fromEntries(KINDS.map((k) => [k, mine.filter((j) => j.kind === k).at(-1)])) as Record<
+      ToolKind,
+      CampaignJob | undefined
+    >
   }, [jobs, summary.id])
-  const running = (["improve", "spelling", "retranscribe"] as const).filter(
-    (k) => latest[k] && jobActive(latest[k]),
-  )
+  const running = KINDS.filter((k) => latest[k] && jobActive(latest[k]))
   const anyRunning = running.length > 0
 
   // Only jobs seen running here count as "just finished" (not a done job from an earlier visit).
   const watched = useRef(new Set<string>())
   useEffect(() => {
-    for (const kind of ["improve", "spelling", "retranscribe"] as const) {
+    for (const kind of KINDS) {
       const job = latest[kind]
       if (!job) continue
       if (jobActive(job)) watched.current.add(job.id)
@@ -173,7 +189,8 @@ export function TranscriptTools({
         </div>
       )}
       {action("spelling")}
-      {(improved || spelling || retranscribed) && !anyRunning && (
+      {action("incharacter")}
+      {(improved || spelling || retranscribed || inCharacter) && !anyRunning && (
         <div className="border-t px-2 pt-2">
           {confirmRestore ? (
             <div className="flex gap-2">
@@ -198,14 +215,14 @@ export function TranscriptTools({
           </span>
         ) : null,
       )}
-      {(["improve", "spelling", "retranscribe"] as const).map((kind) =>
+      {KINDS.map((kind) =>
         latest[kind]?.state === "error" ? (
           <span key={kind} role="alert" className="inline-flex items-center gap-1 text-destructive">
             <AlertCircle className="size-3.5" /> {latest[kind].message || TOOLS[kind].failed}
           </span>
         ) : null,
       )}
-      {(improved || spelling) && !anyRunning && (
+      {(improved || spelling || inCharacter) && !anyRunning && (
         <span className="text-muted-foreground">
           {improved && (
             <span>
@@ -214,6 +231,14 @@ export function TranscriptTools({
           )}
           {improved && spelling && <span aria-hidden> · </span>}
           {spelling && <span>Spellings fixed · {spelling.fixed}</span>}
+          {(improved || spelling) && inCharacter && <span aria-hidden> · </span>}
+          {inCharacter && (
+            <span>
+              In character ·{" "}
+              {inCharacter.lines ? Math.round((inCharacter.in_character / inCharacter.lines) * 100) : 0}% of
+              lines
+            </span>
+          )}
         </span>
       )}
       <Dialog open={reportOpen && retranscribed != null} onOpenChange={setReportOpen}>

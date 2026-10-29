@@ -1,5 +1,13 @@
 import { speakerKey } from "./speaker"
-import type { Fix, ImprovedInfo, RecordPlayer, RetranscribedInfo, SessionRecord, SpellingInfo } from "./types"
+import type {
+  Fix,
+  ImprovedInfo,
+  InCharacterInfo,
+  RecordPlayer,
+  RetranscribedInfo,
+  SessionRecord,
+  SpellingInfo,
+} from "./types"
 
 /** The backend's player palette; records saved before colors were stored fall back to it by index. */
 export const PLAYER_PALETTE = [
@@ -35,8 +43,9 @@ export interface ViewerLine {
   /** The speaker's player, or a stand-in when the id isn't in the roster; null for unnamed voices. */
   player: ViewerPlayer | null
   character: string | null
-  /** Spoken in a character voice: one named with a character in the voices panel. Not `character`,
-   * which also shows a player's seat character on lines in their own voice. */
+  /** Spoken in character: as "Estimate in-character time" labelled it, else in a voice named with a
+   * character in the voices panel. Not `character`, which also shows a player's seat character on
+   * lines in their own voice. */
   in_character: boolean
   /** `speakerKey` of the line; consecutive lines with the same non-null key render as one turn. */
   speaker_key: string | null
@@ -54,6 +63,8 @@ export interface LoadedRecord {
   spelling: SpellingInfo | null
   /** Present once Retranscribe reassigned speakers. */
   retranscribed: RetranscribedInfo | null
+  /** Present once "Estimate in-character time" read it. */
+  inCharacter: InCharacterInfo | null
 }
 
 function viewerPlayer(p: RecordPlayer, index: number): ViewerPlayer {
@@ -96,7 +107,7 @@ export function loadRecord(record: SessionRecord): LoadedRecord {
         player_id: m.player_id ?? null,
         player,
         character: m.character || null,
-        in_character: m.voice_id != null && characterVoices.has(m.voice_id),
+        in_character: m.in_character ?? (m.voice_id != null && characterVoices.has(m.voice_id)),
         speaker_key: speakerKey(m.player_id ?? null, m.voice_id ?? null, m.character || null),
         uncertain: !!m.provisional || (m.confidence ?? 1) < 0.5,
         text,
@@ -111,5 +122,6 @@ export function loadRecord(record: SessionRecord): LoadedRecord {
     improved: record.session?.improved ?? null,
     spelling: record.session?.spelling ?? null,
     retranscribed: record.session?.retranscribed ?? null,
+    inCharacter: record.session?.in_character ?? null,
   }
 }

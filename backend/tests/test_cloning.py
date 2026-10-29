@@ -461,3 +461,55 @@ def test_api_build_writes_a_line_they_would_say(api, engine, monkeypatch):
     clones = api.get("/api/clones").json()
     assert pid in clones["profiles"]  # made on the way, from their transcripts
     assert (clones["voices"][pid]["preview_text"], clones["voices"][pid]["preview_kind"]) == (line, "ai")
+
+
+def test_saved_in_character_labels_need_no_second_reading(engine, cloning):
+    pid = seat(engine)
+    engine.update_player(pid, {"character": "Elara"})
+    lines = [
+        message(pid, 1.0, 5.0, text="Stand aside, cur!", in_character=True),
+        message(pid, 7.0, 11.0, text="Can I roll for that?", in_character=False),
+    ]
+    save_session("2026-10-01_190000-aaaa", lines, recording(20, 0.001))
+    cloning.llm_now = llm = ScriptedLLM()
+    voices = by_voice(cloning, pid)
+    assert [line.text for line in voices["elara"]] == ["Stand aside, cur!"]
+    assert [line.text for line in voices[tts.TABLE]] == ["Can I roll for that?"]
+    assert llm.prompts == []
+
+
+def test_api_estimates_in_character_time_for_a_saved_session(api, engine, monkeypatch):
+    from troubadour.transcript import build
+
+    pid = alice(api, engine)
+    sid = "2026-10-08_140000-abcd"
+    players = [{"id": pid, "name": "Alice", "character": "Elara", "is_gm": False, "color": "#000"}]
+    voices = [{"id": "v-own", "label": "Voice 1", "status": "named", "player_id": pid, "character": None, "trained": True}]
+    said = ["Stand aside, cur, or taste my blade!", "Can I roll intimidation for that?"]
+    messages = [
+        {
+            "id": f"m{i}",
+            "voice_id": "v-own",
+            "text": t,
+            "t_start": 4.0 * i,
+            "t_end": 4.0 * i + 3,
+            "confidence": 0.9,
+            "provisional": False,
+        }
+        for i, t in enumerate(said)
+    ]
+    record = build({"id": sid, "started_at": 1, "source": None, "duration_s": 8}, players, voices, messages)
+    folder = config.DATA_DIR / "sessions" / sid
+    folder.mkdir(parents=True)
+    (folder / "transcript.json").write_text(json.dumps(record))
+    (folder / "meta.json").write_text(json.dumps(record["session"]))
+    monkeypatch.setattr(
+        server.memory, "llm", ScriptedLLM({"labels": [{"n": 1, "label": "character"}, {"n": 2, "label": "table"}]})
+    )
+    j = finished(api.post(f"/api/sessions/{sid}/in-character").json())
+    assert (j["state"], j["message"]) == ("done", "50% of the players' lines in character")
+    saved = json.loads((folder / "transcript.json").read_text())
+    assert [m["in_character"] for m in saved["messages"]] == [True, False]
+    assert saved["session"]["in_character"]["by_ai"] == 2
+    assert (folder / "transcript.orig.json").exists()  # Restore original undoes it
+    assert api.post("/api/sessions/2026-10-09_140000-ffff/in-character").status_code == 404

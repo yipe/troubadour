@@ -57,7 +57,7 @@ export function PlayerBox({
               <div
                 data-testid="in-character"
                 className="text-xs text-muted-foreground tabular-nums"
-                title={`About ${talkDuration(inCharacter)} of their ${talkDuration(seconds)} was in a character voice (an estimate: voices named with a character in the voices panel)`}
+                title={`About ${talkDuration(inCharacter)} of their ${talkDuration(seconds)} was in a character voice (an estimate: voices named with a character, and lines the AI read as in character)`}
               >
                 ~{sharePct(inCharacter, seconds)} in character
               </div>

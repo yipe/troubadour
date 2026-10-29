@@ -155,6 +155,7 @@ export function SessionViewer({ summary, onBack }: { summary: SavedSession; onBa
                       improved={state.record.improved}
                       spelling={state.record.spelling}
                       retranscribed={state.record.retranscribed ?? null}
+                      inCharacter={state.record.inCharacter}
                       onReload={reload}
                     />
                   </div>

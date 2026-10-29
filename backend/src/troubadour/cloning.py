@@ -42,6 +42,7 @@ class Line:
     context: list[tuple[str, str]]  # (speaker, text) of the lines just before
     persona: str | None  # tts.TABLE or a character voice's key; None until decided
     label: str  # the character's name ("" for table talk)
+    labelled: bool | None = None  # in character, as talk.label_in_character saved it (None: not read)
     vec: np.ndarray | None = None
     floor_db: float = 0.0
 
@@ -216,15 +217,19 @@ class Cloning:
                         context,
                         tts.persona_key(character) if character else None,
                         character or "",
+                        m.get("in_character"),
                     )
                 )
         lines = sorted(lines, key=lambda line: line.start - line.end)[: tts.MAX_LINES]  # longest first
         with self.engine.lock:
             player = self.engine.players.get(pid)
             is_gm, seat = (player.is_gm, player.character) if player else (False, "")
+        label = seat or "In character"
+        for line in lines:  # sessions already read for in-character time need no second reading
+            if line.persona is None and line.labelled is not None:
+                line.persona, line.label = (tts.persona_key(label), label) if line.labelled else (tts.TABLE, "")
         unread = [line for line in lines if line.persona is None]
         if unread and not is_gm:
-            label = seat or "In character"
             in_character = talk.classify_lines(
                 self.llm(),
                 name,

@@ -324,3 +324,49 @@ def test_character_text_writes_in_character_or_uses_their_longest_line():
     junk = talk.character_text(ScriptedLLM({"text": "Marla! " * 50}), "Al", "Elara", said, ["Marla"])
     assert junk == ("None pass the ford without paying the toll, traveller.", "their lines")
     assert talk.character_text(ScriptedLLM(), "Al", "Elara", [], []) == ("", "")
+
+
+def session_record():
+    def m(pid, voice, text, speaker):
+        return {"player_id": pid, "voice_id": voice, "speaker": speaker, "text": text, "t_start": 0.0, "t_end": 2.0}
+
+    return {
+        "session": {"id": "s"},
+        "players": [
+            {"id": "gm", "name": "Rook", "character": "", "is_gm": True},
+            {"id": "al", "name": "Al", "character": "Elara", "is_gm": False},
+        ],
+        "voices": [{"id": "v-npc", "player_id": "gm", "character": "Morvath"}],
+        "messages": [
+            m("gm", "v-gm", "The bandit sneers at you from the bridge.", "Rook"),
+            m("gm", "v-npc", "Pay the toll or turn back, fools.", "Rook"),
+            m("al", "v-al", "Stand aside, cur, or taste my blade!", "Al"),
+            m("al", "v-al", "Can I roll intimidation for that?", "Al"),
+            m("al", "v-al", "Yeah.", "Al"),  # too short to tell
+            m(None, None, "Who is that?", "Voice 3"),
+        ],
+    }
+
+
+def test_label_in_character_by_voice_then_by_the_ai_for_players_only():
+    llm = ScriptedLLM({"labels": [{"n": 1, "label": "character"}, {"n": 2, "label": "table"}]})
+    steps = []
+    new, counts = talk.label_in_character(llm, session_record(), lambda d, t: steps.append((d, t)))
+    assert [m.get("in_character") for m in new["messages"]] == [False, True, True, False, False, None]
+    assert counts == {"by_voice": 1, "by_ai": 2, "in_character": 2, "lines": 5, "unread": 0}
+    assert len(llm.prompts) == 1  # only Al's two longer lines were read
+    assert "Al, who plays Elara" in llm.prompts[0]
+    assert "  Rook: Pay the toll or turn back, fools.\n  > Al: Stand aside" in llm.prompts[0]
+    assert steps[-1] == (2, 2)
+
+
+def test_label_in_character_with_the_llm_down_changes_nothing():
+    with pytest.raises(RuntimeError, match="didn't label any lines"):
+        talk.label_in_character(ScriptedLLM(ConnectionError("down")), session_record())
+
+
+def test_profile_counts_saved_labels_before_voices():
+    records = table()
+    for m in records[0]["messages"][:20]:
+        m["in_character"] = True  # read by label_in_character: Al's lines of the first session
+    assert talk.profile(records, AL)["in_character"] == 0.5

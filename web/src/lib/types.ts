@@ -100,6 +100,15 @@ export interface RetranscribedInfo {
   rematch: number
   backup: string
 }
+/** Set on a saved record once "Estimate in-character time" read it. */
+export interface InCharacterInfo {
+  at: number /* epoch seconds */
+  lines: number /* players' lines */
+  in_character: number
+  by_voice: number /* in a voice named with a character */
+  by_ai: number /* labelled by the AI */
+  unread: number /* the AI didn't answer for these: counted as table talk */
+}
 /** Set on a saved record once "Fix spellings" ran over it. */
 export interface SpellingInfo {
   at: number /* epoch seconds */
@@ -242,6 +251,7 @@ export interface CampaignJob {
     | "say" /* speak typed text in it */
     | "read" /* read a session's write-up aloud in it */
     | "profile" /* count how they talk from the transcripts */
+    | "incharacter" /* label a saved session's lines in character or table talk */
   title: string /* notes title; the session id for a write-up / improve / read; the player for clone / say / profile */
   state: "queued" | "running" | "done" | "error"
   done: number
@@ -394,11 +404,13 @@ export interface RecordMessage {
   /** Records saved before mechanics were removed also carry `annotations`; ignored. */
   fixes?: Fix[] /* absent in records saved before the spelling cleanup */
   level_db?: number | null
+  in_character?: boolean /* set once "Estimate in-character time" read the session */
 }
 export interface SessionRecord {
   version: number
   session: Omit<SavedSession, "audio" | "replayable" | "restorable" | "quality"> & {
     improved?: ImprovedInfo
+    in_character?: InCharacterInfo
     spelling?: SpellingInfo
     retranscribed?: RetranscribedInfo
   }

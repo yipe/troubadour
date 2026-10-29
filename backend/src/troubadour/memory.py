@@ -942,7 +942,7 @@ def glossary_brief(vault: Vault, limit: int = 300) -> str:
 @dataclass
 class Job:
     id: str
-    kind: str  # "import" | "writeup" | "facts" | "improve" | "spelling" | "retranscribe" | "backup" | "restore" | "clone" | "say" | "read" | "profile"
+    kind: str  # "import" | "writeup" | "facts" | "improve" | "spelling" | "retranscribe" | "backup" | "restore" | "clone" | "say" | "read" | "profile" | "incharacter"
     title: str
     state: str = "queued"  # queued | running | done | error
     done: int = 0

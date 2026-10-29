@@ -613,6 +613,16 @@ def fix_spellings(sid: str):
         ).to_json()
 
 
+@app.post("/api/sessions/{sid}/in-character")
+def estimate_in_character(sid: str):
+    """Which of each player's lines were in character, read by the memory LLM (a background job;
+    the original is kept)."""
+    _call(engine.session_file, sid, "json")
+    with campaign_gate:
+        _require_open_campaign(sid)
+        return memory.submit("incharacter", sid, lambda job: improve.label_in_character(job, engine, sid, memory.llm)).to_json()
+
+
 @app.post("/api/sessions/{sid}/restore")
 def restore_transcript(sid: str):
     """Undo improvements: put the session's original transcript back."""

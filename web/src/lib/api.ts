@@ -107,6 +107,9 @@ export const api = {
   mergeSessions: (ids: [string, string]) => req<SavedSession>("POST", "/api/sessions/merge", { ids }),
   sessionRecord: (id: string) => req<SessionRecord>("GET", transcriptUrl("json", id)),
   /** Re-transcribe a saved session with the current glossary (background job). */
+  /** Label which of each player's lines were in character (background job, kind "incharacter"). */
+  estimateInCharacter: (id: string) =>
+    req<CampaignJob>("POST", `/api/sessions/${encodeURIComponent(id)}/in-character`),
   improveSession: (id: string) => req<CampaignJob>("POST", `/api/sessions/${encodeURIComponent(id)}/improve`),
   /** Re-assign speakers on a saved recording. Overwrites hand-corrected speakers; the first original is kept. */
   retranscribeSession: (id: string) =>

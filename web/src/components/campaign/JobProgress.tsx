@@ -27,7 +27,9 @@ export function JobChip({ job: j }: { job: CampaignJob }) {
                       ? `Reading ${j.title} aloud`
                       : j.kind === "profile"
                         ? `Speech profile: ${j.title}`
-                        : j.title || "Import"
+                        : j.kind === "incharacter"
+                          ? `In-character time ${j.title}`
+                          : j.title || "Import"
   if (j.state === "error")
     return (
       <span

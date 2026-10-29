@@ -172,7 +172,9 @@ def profile(records: list[dict], pid: str) -> dict:
         characters = character_voices(r)
         for m in r["messages"]:
             if m.get("player_id") == pid:
-                mine.append(m | {"session": r["session"]["id"], "in_character": m.get("voice_id") in characters})
+                labelled = m.get("in_character")  # label_in_character's, when it has read this session
+                in_character = labelled if labelled is not None else m.get("voice_id") in characters
+                mine.append(m | {"session": r["session"]["id"], "in_character": in_character})
             elif m.get("player_id") is not None:
                 others.append(m)
     words = sum(len(tokens(m["text"])) for m in mine)
@@ -504,3 +506,56 @@ def classify_lines(
                 out[start + n - 1] = item["label"] == "character"
     progress(len(lines), len(lines))
     return out
+
+
+MIN_LABEL_WORDS = 3  # "yeah", "ok", "nice": too short to tell, counted as table talk
+
+
+def label_in_character(llm, record: dict, progress: Callable[[int, int], None] = lambda done, total: None) -> tuple[dict, dict]:
+    """(the record with `in_character` on every player's line, counts). A voice named with a character
+    in the voices panel says yes. The GM's other lines say no (narration and NPCs in their own voice
+    can't be told apart from the text). Each other player's lines go to the LLM with the lines before
+    them (classify_lines); short lines and lines it didn't label count as table talk, so the estimate
+    errs low. counts: {by_voice, by_ai, in_character, lines, unread}. Raises if the LLM answered nothing."""
+    characters = character_voices(record)
+    players = {p["id"]: p for p in record.get("players", [])}
+    messages = [dict(m) for m in record["messages"]]
+    to_read: dict[str, list[int]] = {}
+    counts = {"by_voice": 0, "by_ai": 0, "in_character": 0, "lines": 0, "unread": 0}
+    for i, m in enumerate(messages):
+        pid = m.get("player_id")
+        if pid is None:
+            continue
+        counts["lines"] += 1
+        m["in_character"] = m.get("voice_id") in characters
+        if m["in_character"]:
+            counts["by_voice"] += 1
+        elif not players.get(pid, {}).get("is_gm") and len(tokens(m.get("text", ""))) >= MIN_LABEL_WORDS:
+            to_read.setdefault(pid, []).append(i)
+    total, done = sum(map(len, to_read.values())), 0
+    for pid, indexes in to_read.items():
+        p = players.get(pid, {})
+        lines = [
+            {
+                "text": messages[i]["text"],
+                "context": [(c.get("speaker") or "?", c.get("text", "")) for c in messages[max(0, i - 2) : i]],
+            }
+            for i in indexes
+        ]
+        labels = classify_lines(
+            llm,
+            p.get("name") or messages[indexes[0]].get("speaker", "?"),
+            p.get("character") or "",
+            lines,
+            lambda d, t, base=done: progress(base + d, total),
+        )
+        for i, ic in zip(indexes, labels, strict=True):
+            messages[i]["in_character"] = bool(ic)
+            counts["by_ai"] += ic is not None
+            counts["unread"] += ic is None
+        done += len(indexes)
+    if total and counts["by_ai"] == 0:
+        raise RuntimeError("The AI didn't label any lines (is it running?). Nothing was changed.")
+    counts["in_character"] = sum(1 for m in messages if m.get("in_character"))
+    progress(total, total)
+    return record | {"messages": messages}, counts
