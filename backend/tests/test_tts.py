@@ -172,9 +172,9 @@ def test_build_keeps_the_reference_that_clones_closest_and_always_cleans_it(clon
     assert status["source"] == "recording of 2026-10-12"
     assert status["likeness"] == pytest.approx(0.9, abs=1e-3)
     assert [t["source"] for t in status["tried"]] == ["Train recording", "recording of 2026-10-12"]
-    assert (j.done, j.total) == (2 * tts.PREVIEW_RUNS, 2 * tts.PREVIEW_RUNS)
+    assert (j.done, j.total) == (2 * tts.PREVIEW_RUNS + 1, 2 * tts.PREVIEW_RUNS + 1)  # + the preview itself
     assert len(clones.synth.denoised) == 2  # every reference is cleaned: the clone copies the room
-    assert len(clones.synth.said) == 2 * tts.PREVIEW_RUNS  # several tries each: one is luck
+    assert len(clones.synth.said) == 2 * tts.PREVIEW_RUNS + 1  # several tries each: one is luck
     assert status["preview_url"].startswith("/api/clones/p1/preview.wav?v=")
     assert read_wav(clones.root() / "p1" / "reference.wav")[1] == 48000
     assert clones.file("p1", "preview").is_file()
@@ -575,3 +575,21 @@ def test_clone_candidates_wait_for_the_models(engine, monkeypatch):
     engine.load_error = "Models failed to load"
     with pytest.raises(RuntimeError, match="Models failed to load"):
         engine.clone_candidates("p-anyone")
+
+
+def test_build_scores_on_the_first_part_then_reads_their_whole_line(clones):
+    audio, rate, spans = train_clip()
+    first = "Okay so here's the thing, I don't trust that ferryman, not one bit, not after the last time we crossed."
+    rest = "Can I check his boat for anything weird before we get on it? I want to look under the tarp."
+    clones.build(job(), lambda: None, "p1", cands(audio, rate, spans), lambda out, sr: 0.5, f"{first} {rest}", "ai")
+    said = clones.synth.said
+    assert said[: tts.PREVIEW_RUNS] == [first] * tts.PREVIEW_RUNS  # judged on the first part
+    assert said[tts.PREVIEW_RUNS :] == [f"{first} {rest}"]  # then the whole line, once
+    status = clones.voices()["p1"]
+    assert (status["preview_text"], status["preview_kind"]) == (f"{first} {rest}", "ai")
+
+
+def test_build_without_a_line_of_theirs_uses_the_stock_one(clones):
+    audio, rate, spans = train_clip()
+    status = clones.build(job(), lambda: None, "p1", cands(audio, rate, spans), lambda out, sr: 0.5, "   ", "ai")
+    assert (status["preview_text"], status["preview_kind"]) == (tts.PREVIEW, "")

@@ -251,12 +251,14 @@ def test_api_profile_then_say_in_their_words(api, engine, monkeypatch):  # noqa:
     from troubadour import server
 
     pid = alice(api, engine)
-    _transcripts(pid, "p-gm")
     r = api.post(f"/api/players/{pid}/clone/say", json={"text": "Hi.", "in_their_words": True})
     assert r.status_code == 400  # no voice yet
-    assert finished(api, api.post(f"/api/players/{pid}/clone").json())["state"] == "done"
+    j = finished(api, api.post(f"/api/players/{pid}/clone").json())  # no transcripts: the stock preview line
+    assert j["state"] == "done"
+    assert api.get("/api/clones").json()["voices"][pid]["preview_kind"] == ""
     r = api.post(f"/api/players/{pid}/clone/say", json={"text": "Hi.", "in_their_words": True})
     assert r.json()["detail"] == "Profile how Alice talks first."
+    _transcripts(pid, "p-gm")
 
     llm = LLM({"description": "Asks before acting; opens with okay."}, {"text": "Okay you know what, I open the door."})
     monkeypatch.setattr(server.memory, "llm", llm)
@@ -296,3 +298,55 @@ def test_profile_needs_consent_to_be_saved(tmp_path):
     with pytest.raises(ValueError, match="off for this player"):
         clones.save_profile("p1", {"player_id": "p1"})
     assert clones.profiles() == {}
+
+
+# ------------------------------------------------------------- the voice's sample line
+
+
+def test_preview_text_is_written_in_their_style_at_their_length():
+    prof = talk.profile(table(), AL)  # ~200 words a minute: 20 s is ~67 words
+    target = round(20 * prof["wpm"] / 60)
+    written = " ".join(["Okay so you know what, I check the door for traps?"] * 7)
+    llm = LLM({"text": written})
+    text, kind = talk.preview_text(llm, "Al", prof, ["Marla"])
+    assert (text, kind) == (written, "ai")
+    assert f"Write about {target} words." in llm.prompts[0]
+    assert "you know what" in llm.prompts[0]
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        {"text": "Okay so."},  # far too short
+        {"text": "Okay so Marla said " + "blah " * 60},  # a name they never used
+        {"text": 7},
+        ConnectionError("down"),
+    ],
+)
+def test_preview_text_falls_back_to_their_own_lines(reply):
+    prof = talk.profile(table(), AL)
+    text, kind = talk.preview_text(LLM(reply), "Al", prof, ["Marla"])
+    assert kind == "their lines"
+    assert text.startswith(prof["examples"][0])
+    assert len(talk.tokens(text)) >= round(20 * prof["wpm"] / 60)
+
+
+def test_preview_text_may_use_their_own_name():
+    prof = talk.profile(table(), AL)
+    written = "Okay so Al is going first, you know what? " * 8
+    assert talk.preview_text(LLM({"text": written}), "Al", prof, ["Al"], own=["Al"])[1] == "ai"
+    assert talk.preview_text(LLM({"text": written}), "Al", prof, ["Al"])[1] == "their lines"
+
+
+def test_api_build_writes_a_line_they_would_say(api, engine, monkeypatch):  # noqa: F811
+    from troubadour import server
+
+    pid = alice(api, engine)
+    _transcripts(pid, "p-gm")
+    line = " ".join(["Okay so you know what, I check the door for traps?"] * 7)
+    llm = LLM({"description": "Asks before acting."}, {"text": line})
+    monkeypatch.setattr(server.memory, "llm", llm)
+    assert finished(api, api.post(f"/api/players/{pid}/clone").json())["state"] == "done"
+    clones = api.get("/api/clones").json()
+    assert pid in clones["profiles"]  # made on the way, from their transcripts
+    assert (clones["voices"][pid]["preview_text"], clones["voices"][pid]["preview_kind"]) == (line, "ai")

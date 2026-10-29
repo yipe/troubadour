@@ -25,6 +25,8 @@ const VOICE = {
   reference_s: 10.4,
   preview_url: "/api/clones/p1/preview.wav?v=1",
   clone_wpm: 150,
+  preview_text: "Okay so you know what, I check the door for traps?",
+  preview_kind: "ai" as const,
 }
 const PROFILE: SpeechProfile = {
   player_id: "p1",
@@ -152,6 +154,8 @@ describe("Voice clone dialog", () => {
     job({ id: "j1", kind: "clone", title: "Alice", player_id: "p1", state: "done" })
     await waitFor(() => expect(screen.getByLabelText("Preview")).toHaveAttribute("src", VOICE.preview_url))
     expect(screen.getByLabelText("Preview")).toHaveAttribute("preload", "none") // never autoplays
+    expect(screen.getByText("“Okay so you know what, I check the door for traps?”")).toBeInTheDocument()
+    expect(screen.getByText(/Written in their style/)).toBeInTheDocument()
     expect(
       screen.getByText("Likeness 0.81 · from the recording of 2026-10-12, best of 2"),
     ).toBeInTheDocument()

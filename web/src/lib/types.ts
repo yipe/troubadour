@@ -262,6 +262,10 @@ export interface CloneVoice {
    * Absent on voices built before the search. */
   source?: string
   tried?: { source: string; likeness: number | null }[]
+  /* What the preview says: ~20 s written in their style from their speech profile ("ai"), their own
+   * lines from the transcripts ("their lines"), or the stock line (""). Absent on older voices. */
+  preview_text?: string
+  preview_kind?: "ai" | "their lines" | ""
   likeness: number | null /* cosine of the preview to their voiceprint (the speaker-ID model's view) */
   reference_s: number
   preview_url: string

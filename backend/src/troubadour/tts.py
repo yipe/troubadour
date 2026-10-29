@@ -42,6 +42,7 @@ PREVIEW = "Previously, on our adventure: the party crossed the river at dawn, an
 # Building a voice: each candidate reference speaks the preview this many times and is judged on the
 # mean likeness. One generation varies by ~0.1 (spike/clone_reference.py): one would pick by luck.
 PREVIEW_RUNS = 3
+TRIAL_CHARS = 140  # the part of the preview each candidate is judged on (~7 s): whole sentences
 # Candidate references from session recordings: solo lines of their own voice, confidently theirs.
 SOLO_GAP_S = 0.3  # nobody else talks within this of the line
 LINE_S = (2.5, 12.0)
@@ -402,6 +403,14 @@ class Clones:
             tries.append(audio)
         return min(tries, key=lambda a: abs(len(text) / max(len(a) / OUT_SR, 1e-3) - CPS_TYPICAL))
 
+    def _read(self, text: str, voice, step: Callable[[], None] = lambda: None) -> np.ndarray:
+        """`text` chunk by chunk (chunks), with the pauses between; step() after each chunk."""
+        pieces = []
+        for chunk, pause in chunks(text):
+            pieces += [self._speak(chunk, voice), np.zeros(int(pause * OUT_SR), np.float32)]
+            step()
+        return np.concatenate(pieces) if pieces else np.zeros(0, np.float32)
+
     def build(
         self,
         job,
@@ -409,17 +418,25 @@ class Clones:
         pid: str,
         candidates: list[tuple[str, np.ndarray, int]],
         likeness: Callable[[np.ndarray, int], float | None],
+        preview_text: str = PREVIEW,
+        preview_kind: str = "",
     ) -> dict:
         """Their voice from whichever candidate reference clones closest. candidates: (label, speech,
         rate): the Train recording's speech, then the cleanest stretches of session recordings. Every
         reference goes through DeepFilterNet first: the clone copies whatever room it hears, and the
         voice should sound clean (the likeness, measured against a table-mic voiceprint, would rather
-        keep the room: it isn't asked)."""
+        keep the room: it isn't asked). Each candidate is judged on PREVIEW_RUNS readings of the
+        preview's first sentences (TRIAL_CHARS); the winner then reads the whole preview (about 20 s of something they
+        would say: talk.preview_text) once."""
         self._check_allowed(pid)
         candidates = [(label, a, r) for label, a, r in candidates if len(a) >= MIN_REF_S * r]
         if not candidates:
             raise ValueError(f"No recording of them has {MIN_REF_S:.0f} s of speech; train again.")
-        job.done, job.total = 0, len(candidates) * PREVIEW_RUNS
+        parts = chunks(preview_text) or chunks(PREVIEW)
+        preview_text = " ".join(c for c, _ in parts)
+        preview_kind = preview_kind if preview_text != PREVIEW else ""
+        trial = chunks(preview_text, max_chars=TRIAL_CHARS)[0][0]
+        job.done, job.total = 0, len(candidates) * PREVIEW_RUNS + len(parts)
         job.message = "Loading the voice model (the first time downloads it)…"
         emit()
         tried, best = [], None
@@ -429,20 +446,25 @@ class Clones:
             clean, clean_rate = self.synth.denoise(audio, rate)
             clean = normalize(clean)
             voice = self.synth.voice(clean, clean_rate)
-            runs = []
+            scores = []
             for _ in range(PREVIEW_RUNS):
-                preview = self._speak(PREVIEW, voice)
-                runs.append((likeness(preview, OUT_SR), preview))
+                scores.append(likeness(self._speak(trial, voice), OUT_SR))
                 job.done += 1
                 emit()
-            scores = [s for s, _ in runs if s is not None]
-            score = float(np.mean(scores)) if scores else None
+            known = [s for s in scores if s is not None]
+            score = float(np.mean(known)) if known else None
             tried.append({"source": label, "likeness": None if score is None else round(score, 3)})
             if best is None or (score if score is not None else -1.0) > (best[0] if best[0] is not None else -1.0):
-                # The preview kept is this reference's closest generation.
-                preview = max(runs, key=lambda r: r[0] if r[0] is not None else -1.0)[1]
-                best = (score, label, clean, clean_rate, preview)
-        score, label, ref, rate, preview = best
+                best = (score, label, clean, clean_rate, voice)
+        score, label, ref, rate, voice = best
+        job.message = f"Recording the preview with the {label}…"
+        emit()
+
+        def step() -> None:
+            job.done += 1
+            emit()
+
+        preview = self._read(preview_text, voice, step)
         meta = {
             "player_id": pid,
             "built_at": int(time.time()),
@@ -450,8 +472,10 @@ class Clones:
             "tried": tried,
             "likeness": None if score is None else round(score, 3),
             "reference_s": round(len(ref) / rate, 1),
+            "preview_text": preview_text,
+            "preview_kind": preview_kind,  # "ai" (written in their style) | "their lines" | "" (the stock line)
             # The clone's own pace, so "in their words" can time-stretch it to the player's (talk.tempo).
-            "clone_wpm": round(60 * len(PREVIEW.split()) / max(speech_seconds(preview, OUT_SR), 1e-3)),
+            "clone_wpm": round(60 * len(preview_text.split()) / max(speech_seconds(preview, OUT_SR), 1e-3)),
         }
         folder = self._dir(pid)
         with self._lock:
@@ -489,12 +513,12 @@ class Clones:
         emit()
         voice = self.synth.voice(ref, rate)
         job.message = ""
-        pieces = []
-        for chunk, pause in parts:
-            pieces += [self._speak(chunk, voice), np.zeros(int(pause * OUT_SR), np.float32)]
+
+        def step() -> None:
             job.done += 1
             emit()
-        audio = stretch(np.concatenate(pieces), OUT_SR, tempo)
+
+        audio = stretch(self._read(text, voice, step), OUT_SR, tempo)
         cid = "c" + uuid.uuid4().hex[:10]
         meta = {
             "id": cid,

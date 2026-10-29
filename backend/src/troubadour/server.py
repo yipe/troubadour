@@ -1091,9 +1091,7 @@ def _speak_work(pid: str, name: str, prof: dict | None, text: str, kind: str, ti
                 job.done, job.total, job.message = done, total, "Rewriting it in their words…"
                 emit()
 
-            with engine.lock:
-                p = engine.players.get(pid)
-                own = [n for n in (name, p.character if p else "") if n]
+            own = _own_names(pid, name)
             spoken, kept = talk.restyle(memory.llm, name, prof, text, _known_names(), own, progress)
             tempo = talk.tempo(prof.get("wpm"), (engine.clones.status(pid) or {}).get("clone_wpm"))
         restyled = spoken != text
@@ -1110,25 +1108,38 @@ def clones():
     return {"voices": engine.clones.voices(), "profiles": engine.clones.profiles(), "clips": engine.clones.clips()}
 
 
+def _own_names(pid: str, name: str) -> list[str]:
+    """The speaker's own names (theirs and their character's): they may say "I" instead."""
+    with engine.lock:
+        p = engine.players.get(pid)
+        return [n for n in (name, p.character if p else "") if n]
+
+
+def _make_profile(job, pid: str, name: str) -> dict:
+    """Count how they talk across every saved transcript, add the AI's description, save it."""
+    records = []
+    for path in sorted(engine.sessions_dir().glob("*/transcript.json")):
+        try:
+            records.append(json.loads(path.read_text()))
+        except (OSError, ValueError):
+            log.warning("skipping unreadable transcript %s", path)
+    job.message = f"Counting their lines in {len(records)} sessions…"
+    memory.emit(job)
+    prof = talk.profile(records, pid)
+    job.message = "Describing how they talk…"
+    memory.emit(job)
+    prof["description"] = talk.describe(memory.llm, name, prof)
+    engine.clones.save_profile(pid, prof)
+    return prof
+
+
 @app.post("/api/players/{pid}/profile", status_code=202)
 def build_profile(pid: str):
     """Profile how they talk from every saved transcript (a job: kind "profile"). Needs the clone opt-in."""
     name = _call(engine.check_clone, pid, needs_idle=False)
 
     def work(job):
-        records = []
-        for path in sorted(engine.sessions_dir().glob("*/transcript.json")):
-            try:
-                records.append(json.loads(path.read_text()))
-            except (OSError, ValueError):
-                log.warning("skipping unreadable transcript %s", path)
-        job.message = f"Counting their lines in {len(records)} sessions…"
-        memory.emit(job)
-        prof = talk.profile(records, pid)
-        job.message = "Describing how they talk…"
-        memory.emit(job)
-        prof["description"] = talk.describe(memory.llm, name, prof)
-        engine.clones.save_profile(pid, prof)
+        prof = _make_profile(job, pid, name)
         job.message = "Profile ready" + ("" if prof["description"] else " (the AI is offline: numbers only)")
 
     return memory.submit("profile", name, work, player_id=pid).to_json()
@@ -1136,15 +1147,35 @@ def build_profile(pid: str):
 
 @app.post("/api/players/{pid}/clone", status_code=202)
 def build_clone(pid: str):
-    """(Re)build their voice from the Train recording (a job: kind "clone")."""
+    """(Re)build their voice (a job: kind "clone"). The preview is ~20 s of something they would say,
+    written from their speech profile (made now if there isn't one), else the stock line."""
     name = _call(engine.check_clone, pid)
     _call(engine.clone_source, pid)  # fail now, not in the job, when there's no Train recording
 
     def work(job):
+        prof = engine.clones.profile(pid)
+        if prof is None:
+            try:
+                prof = _make_profile(job, pid, name)
+            except ValueError:  # too few of their lines yet: the stock line will do
+                prof = None
+        text, kind = tts.PREVIEW, ""
+        if prof is not None:
+            job.message = "Writing something they'd say…"
+            memory.emit(job)
+            text, kind = talk.preview_text(memory.llm, name, prof, _known_names(), _own_names(pid, name))
         job.message = "Finding the cleanest recordings of them…"
         memory.emit(job)
         candidates = engine.clone_candidates(pid)
-        engine.clones.build(job, lambda: memory.emit(job), pid, candidates, lambda out, sr: engine.voice_likeness(pid, out, sr))
+        engine.clones.build(
+            job,
+            lambda: memory.emit(job),
+            pid,
+            candidates,
+            lambda out, sr: engine.voice_likeness(pid, out, sr),
+            preview_text=text or tts.PREVIEW,
+            preview_kind=kind,
+        )
 
     return memory.submit("clone", name, work, player_id=pid).to_json()
 

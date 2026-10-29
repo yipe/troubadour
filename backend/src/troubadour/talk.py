@@ -44,6 +44,9 @@ LENGTH_RANGE = (0.6, 1.6)  # a rewrite's length against the text's
 LENGTH_SLACK = 25  # characters: room for an "Okay so," on a short line
 RESTYLE_MIN_WORDS = 4  # headings and one-liners are read as written
 TEMPO_RANGE = (0.85, 1.15)  # beyond this, time-stretching starts to sound processed
+PREVIEW_S = 20.0  # the voice's sample: long enough to hear how they talk
+DEFAULT_WPM = 160
+PREVIEW_WORDS = (0.6, 1.5)  # a written sample's word count against the target
 
 # Discourse words are how people talk ("okay", "like", "literally"): they may be pet words. Other
 # function words ("the", "of") say nothing about style and are never one on their own.
@@ -342,6 +345,42 @@ def restyle(
         out.append(done or para)
     progress(len(paragraphs), len(paragraphs))
     return "\n\n".join(out), kept
+
+
+PREVIEW_SYSTEM = (
+    "Write something this tabletop role-playing player might say out loud at the table, in one go, as "
+    "them: their phrasing, sentence length, register, energy and pet phrases (lightly, never repeated). "
+    "Table talk about the game: a plan, a reaction, a question to the GM, a bit of banter. No stage "
+    "directions, no real-world personal details, and no names except ones in their sample lines. Plain "
+    "spoken text only."
+)
+
+
+def preview_text(
+    llm, name: str, prof: dict, names: Iterable[str], own: Iterable[str] = (), seconds: float = PREVIEW_S
+) -> tuple[str, str]:
+    """(about `seconds` of something they would say, how it was made). "ai": the LLM wrote it from their
+    profile; "their lines": the LLM was offline or wrote junk (wrong length, a name they never used),
+    so it's their own example lines from the transcripts, to length; "" if there are none."""
+    target = round(seconds * (prof.get("wpm") or DEFAULT_WPM) / 60)
+    try:
+        out = llm.json(PREVIEW_SYSTEM, f"{_brief(name, prof)}\n\nWrite about {target} words.", RESTYLE_SCHEMA, max_tokens=800)
+    except Exception:
+        out = {}
+    text = out.get("text") if isinstance(out.get("text"), str) else ""
+    text = " ".join(re.sub(r"[*_`#]", "", text).split()).strip('"“”')
+    names = list(names)
+    allowed = _found(names, " ".join(prof["examples"])) | set(own)
+    lo, hi = PREVIEW_WORDS
+    if lo * target <= len(tokens(text)) <= hi * target and _found(names, text) <= allowed:
+        return text, "ai"
+    lines, total = [], 0
+    for line in prof["examples"]:
+        if total >= target:
+            break
+        lines.append(line)
+        total += len(tokens(line))
+    return " ".join(lines), "their lines" if lines else ""
 
 
 def tempo(player_wpm: float | None, clone_wpm: float | None) -> float:

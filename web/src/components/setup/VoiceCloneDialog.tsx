@@ -153,6 +153,12 @@ export function VoiceCloneDialog({
                     className="h-8 w-full"
                   />
                 )}
+                {voice?.preview_text && voice.preview_kind && (
+                  <p className="text-xs text-muted-foreground">
+                    {voice.preview_kind === "ai" ? "Written in their style: " : "From their own lines: "}
+                    <span className="italic">“{voice.preview_text}”</span>
+                  </p>
+                )}
               </div>
             )}
 
