@@ -36,6 +36,10 @@ ASR_CONTEXT_LINES = 2
 # Spelling cleanup behind the transcriber (names, D&D terms; see cleanup.py). TROUBADOUR_CLEANUP=0: off.
 CLEANUP = env("CLEANUP", "1") != "0"
 DIARIZER = "pyannote/speaker-diarization-community-1"  # only its speaker-embedding model is used
+# Voice clones (tts.py): Chatterbox on MLX, zero-shot from a player's Train clip; DeepFilterNet cleans
+# that clip first. Downloaded from Hugging Face on first use, then local.
+TTS_MODEL = env("TTS", "mlx-community/chatterbox-multilingual-v3")
+DENOISE_MODEL = "mlx-community/DeepFilterNet-mlx"
 
 # Outside the repo so every checkout/worktree shares one set of players, recordings and vault.
 DATA_DIR = Path(env("DATA", str(Path.home() / "troubador")))

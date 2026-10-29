@@ -15,7 +15,16 @@ import type {
 } from "@/lib/types"
 
 export function player(p: Partial<Player> & { id: string }): Player {
-  return { name: p.id, character: "", avatar: null, color: "#f59e0b", trained: false, is_gm: false, ...p }
+  return {
+    name: p.id,
+    character: "",
+    avatar: null,
+    color: "#f59e0b",
+    trained: false,
+    is_gm: false,
+    clone_ok: false,
+    ...p,
+  }
 }
 
 /** The campaign fields every snapshot carries: one campaign, nobody in the library. */
@@ -136,6 +145,7 @@ export function campaignJob(j: Partial<CampaignJob> & { id: string }): CampaignJ
     updated: [],
     suggested: 0,
     note: null,
+    player_id: null,
     ...j,
   }
 }

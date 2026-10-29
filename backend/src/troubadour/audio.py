@@ -58,6 +58,22 @@ def wav_bytes(audio: np.ndarray, rate: int = SR, bits: int = 16) -> bytes:
     return buf.getvalue()
 
 
+def read_wav(path: Path | str) -> tuple[np.ndarray, int]:
+    """(mono float32, rate) of a 16- or 24-bit PCM WAV, at its own rate (load_audio resamples to 16 kHz)."""
+    with wave.open(str(path)) as w:
+        width, rate, channels = w.getsampwidth(), w.getframerate(), w.getnchannels()
+        raw = w.readframes(w.getnframes())
+    if width == 2:
+        ints = np.frombuffer(raw, "<i2").astype(np.int32) << 16
+    elif width == 3:
+        b = np.frombuffer(raw, np.uint8).reshape(-1, 3).astype(np.int32)
+        ints = b[:, 0] << 8 | b[:, 1] << 16 | b[:, 2] << 24
+    else:
+        raise ValueError(f"unsupported WAV sample width {width}")
+    audio = (ints / 2**31).astype(np.float32)
+    return audio.reshape(-1, channels).mean(axis=1), rate
+
+
 class Recorder:
     """Writes a session's audio at the mic's own rate to a mono 16-bit WAV (48 kHz: ~345 MB per
     hour; 16 bits sits ~40 dB below a table mic's own noise floor, so 24 would add nothing).

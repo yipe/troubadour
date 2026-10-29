@@ -7,6 +7,7 @@ export interface Player {
   color: string /* hex like #f59e0b */
   trained: boolean
   is_gm: boolean
+  clone_ok: boolean /* they agreed to a voice clone; turning it off deletes everything made from it */
 }
 /** Someone in the library who isn't playing in the open campaign (voice training kept). */
 export type LibraryPlayer = Omit<Player, "character" | "is_gm">
@@ -228,8 +229,19 @@ export interface CampaignAnswer {
 }
 export interface CampaignJob {
   id: string
-  kind: "import" | "writeup" | "facts" | "improve" | "spelling" | "retranscribe" | "backup" | "restore"
-  title: string /* notes title, or the session id for a write-up / improve */
+  kind:
+    | "import"
+    | "writeup"
+    | "facts"
+    | "improve"
+    | "spelling"
+    | "retranscribe"
+    | "backup"
+    | "restore"
+    | "clone" /* build a player's voice clone */
+    | "say" /* speak typed text in it */
+    | "read" /* read a session's write-up aloud in it */
+  title: string /* notes title; the session id for a write-up / improve / read; the player for clone / say */
   state: "queued" | "running" | "done" | "error"
   done: number
   total: number
@@ -238,6 +250,32 @@ export interface CampaignJob {
   updated: string[]
   suggested: number
   note: string | null /* vault-relative path it wrote */
+  player_id: string | null /* clone / say / read: whose voice */
+}
+/** A player's built voice clone (GET /api/clones). */
+export interface CloneVoice {
+  player_id: string
+  built_at: number /* epoch s */
+  cleaned: boolean /* the reference is the Train recording after noise removal */
+  likeness: number | null /* cosine of the preview to their voiceprint (the speaker-ID model's view) */
+  reference_s: number
+  preview_url: string
+}
+/** Audio made with a clone: typed text ("say") or a session page read aloud ("read"). */
+export interface CloneClip {
+  id: string
+  player_id: string
+  kind: "say" | "read"
+  title: string
+  text: string /* the first 300 characters */
+  source: { session?: string; note?: string }
+  seconds: number
+  created_at: number /* epoch s */
+  url: string
+}
+export interface Clones {
+  voices: Record<string, CloneVoice> /* by player id */
+  clips: CloneClip[] /* newest first */
 }
 /** The campaign folder in Obsidian's vault registry: the vault's id and the folder inside it ("" = the vault). */
 export interface ObsidianVault {

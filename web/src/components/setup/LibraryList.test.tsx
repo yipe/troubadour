@@ -7,7 +7,7 @@ import { bodyOf, mockFetch } from "@/test/mockFetch"
 import { SetupView } from "./SetupView"
 
 const initial = useStore.getState()
-const KRIS = { id: "p2", name: "Jun", avatar: null, color: "#3b82f6", trained: true }
+const KRIS = { id: "p2", name: "Jun", avatar: null, color: "#3b82f6", trained: true, clone_ok: false }
 
 function load(status: "idle" | "running" = "idle") {
   applyEvent({

@@ -19,7 +19,13 @@ export function JobChip({ job: j }: { job: CampaignJob }) {
               ? "Cloud backup"
               : j.kind === "restore"
                 ? "Restore from Troubadour Cloud"
-                : j.title || "Import"
+                : j.kind === "clone"
+                  ? `Voice clone: ${j.title}`
+                  : j.kind === "say"
+                    ? `Speaking as ${j.title}`
+                    : j.kind === "read"
+                      ? `Reading ${j.title} aloud`
+                      : j.title || "Import"
   if (j.state === "error")
     return (
       <span

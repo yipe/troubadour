@@ -6,6 +6,7 @@ import type {
   CloudStatus,
   CloudVault,
   Campaigns,
+  Clones,
   CampaignJob,
   LlmModel,
   LlmProvider,
@@ -48,7 +49,9 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   return (await res.json()) as T
 }
 
-export type PlayerPatch = Partial<Pick<Player, "name" | "character" | "avatar" | "is_gm" | "color">>
+export type PlayerPatch = Partial<
+  Pick<Player, "name" | "character" | "avatar" | "is_gm" | "color" | "clone_ok">
+>
 
 export type TranscriptFormat = "md" | "json"
 
@@ -148,6 +151,16 @@ export const api = {
   trainPlayer: (id: string, seconds?: number) =>
     req<void>("POST", `/api/players/${id}/train`, seconds === undefined ? {} : { seconds }),
   cancelTraining: () => req<void>("POST", "/api/train/cancel"),
+  /** Built voice clones and every clip made with them. */
+  clones: () => req<Clones>("GET", "/api/clones"),
+  /** (Re)build a player's voice clone from their Train recording (job "clone"). */
+  buildClone: (id: string) => req<CampaignJob>("POST", `/api/players/${id}/clone`),
+  /** Speak typed text in their voice (job "say"). */
+  cloneSay: (id: string, text: string) => req<CampaignJob>("POST", `/api/players/${id}/clone/say`, { text }),
+  /** Read a session's write-up aloud in their voice (job "read"). */
+  cloneRead: (id: string, session: string) =>
+    req<CampaignJob>("POST", `/api/players/${id}/clone/read`, { session }),
+  deleteClip: (id: string, clip: string) => req<void>("DELETE", `/api/clones/${id}/clips/${clip}`),
   assignVoice: (id: string, player_id: string, character?: string | null) =>
     req<{ voice: Voice; merged_into: string | null }>("POST", `/api/voices/${id}/assign`, {
       player_id,

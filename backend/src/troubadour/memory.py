@@ -942,7 +942,7 @@ def glossary_brief(vault: Vault, limit: int = 300) -> str:
 @dataclass
 class Job:
     id: str
-    kind: str  # "import" | "writeup" | "facts" | "improve" | "spelling" | "retranscribe" | "backup" | "restore"
+    kind: str  # "import" | "writeup" | "facts" | "improve" | "spelling" | "retranscribe" | "backup" | "restore" | "clone" | "say" | "read"
     title: str
     state: str = "queued"  # queued | running | done | error
     done: int = 0
@@ -952,6 +952,7 @@ class Job:
     updated: list[str] = field(default_factory=list)
     suggested: int = 0
     note: str | None = None  # vault-relative path of the note it wrote
+    player_id: str | None = None  # voice-clone jobs: whose voice
 
     def to_json(self) -> dict:
         return dict(self.__dict__)
@@ -981,9 +982,9 @@ class Memory:
             log.exception("couldn't write Glossary.md")
         self.bus.emit("campaign.updated", {})
 
-    def submit(self, kind: str, title: str, work) -> Job:
+    def submit(self, kind: str, title: str, work, player_id: str | None = None) -> Job:
         """Queue work(job) on the job thread (one job at a time); progress goes out as campaign.job."""
-        job = Job(id=uuid.uuid4().hex[:8], kind=kind, title=title)
+        job = Job(id=uuid.uuid4().hex[:8], kind=kind, title=title, player_id=player_id)
         with self._lock:
             self.jobs[job.id] = job
             for old in sorted(self.jobs.values(), key=lambda j: j.id)[:-20]:

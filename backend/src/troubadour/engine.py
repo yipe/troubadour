@@ -29,12 +29,12 @@ from pathlib import Path
 
 import numpy as np
 
-from . import asr, cleanup, config, levels, settings, transcript
-from .audio import FileSource, MicSource, Recorder, load_audio, wav_bytes
+from . import asr, cleanup, config, levels, settings, transcript, tts
+from .audio import FileSource, MicSource, Recorder, load_audio, read_wav, wav_bytes
 from .campaign import Corrector, Entity, english
 from .memory import MemoryLLM
 from .segment import SegmentConfig, Segmenter
-from .voices import VoiceMatcher, centroid, normalize
+from .voices import VoiceMatcher, centroid, embed_span, normalize
 
 
 def keep_awake() -> subprocess.Popen | None:
@@ -189,6 +189,7 @@ class Player:
     color: str = PALETTE[0]
     trained: bool = False
     is_gm: bool = False
+    clone_ok: bool = False  # they agreed to a voice clone (tts.py); off deletes everything made from it
 
     def to_json(self) -> dict:
         return dict(self.__dict__)
@@ -198,7 +199,7 @@ class Player:
         return {k: getattr(self, k) for k in PERSON_KEYS}
 
 
-PERSON_KEYS = ("id", "name", "avatar", "color", "trained")
+PERSON_KEYS = ("id", "name", "avatar", "color", "trained", "clone_ok")
 MAIN_CAMPAIGN = "main"  # everything from before campaigns existed: its players, sessions and vault
 STATE_VERSION = 2
 
@@ -491,6 +492,7 @@ class Engine:
         self._next_label = 1
         self._persisted_vecs: dict[str, np.ndarray] = {}  # voiceprints from state.json until the matcher exists
         self.vault = None  # campaign.Vault (set by the server): its glossary corrects new lines
+        self.clones = tts.Clones(lambda: config.DATA_DIR / "clones", allowed=self.clone_allowed)
         self._glossary: tuple = ((), 0.0, None, [], [])  # (signature, checked, fixer, names, entries)
         self._spell: tuple = (None, None)  # (key, Speller): rebuilt when the glossary or Setup changes
         self.cleanup_q: queue.Queue = queue.Queue()  # lines with names only the LLM can settle
@@ -1082,13 +1084,15 @@ class Engine:
         return out
 
     def update_player(self, pid: str, fields: dict) -> dict:
-        """fields: any of name, character, avatar (None clears), is_gm, color — already validated."""
+        """fields: any of name, character, avatar (None clears), is_gm, color, clone_ok — already validated."""
         with self.lock:
             p = self.players[pid]
-            for key in ("name", "character", "avatar", "is_gm", "color"):
+            for key in ("name", "character", "avatar", "is_gm", "color", "clone_ok"):
                 if key in fields and (fields[key] is not None or key == "avatar"):
                     setattr(p, key, fields[key])
             out = p.to_json()
+        if fields.get("clone_ok") is False:  # after the flag: a clone job checks it before it writes
+            self.clones.forget(pid)
         self._save_state()
         self.bus.emit("player.upserted", out)
         return out
@@ -1113,6 +1117,7 @@ class Engine:
             for c in self.campaigns.values():
                 c.roster.pop(pid, None)
                 c.left.pop(pid, None)
+        self.clones.forget(pid)
         self._save_state()
         if seated:
             self.bus.emit("player.removed", {"id": pid})
@@ -2282,3 +2287,65 @@ class Engine:
         self._save_state()
         self.refine_now.set()
         return f"Heard {speech:.0f}s of speech."
+
+    # ----------------------------------------------------------------- voice clones
+
+    def clone_allowed(self, pid: str) -> bool:
+        with self.lock:
+            p = self.players.get(pid) or self.bench.get(pid)
+            return bool(p and p.clone_ok)
+
+    def check_clone(self, pid: str) -> str:
+        """The player's name if a voice-clone job for them may start now; ValueError says why not."""
+        with self.lock:
+            p = self.players.get(pid)
+            if p is None:
+                raise KeyError(pid)
+            if not p.clone_ok:
+                raise ValueError(f"Turn on the voice clone for {p.name} first (they agree to it).")
+            if self.status != "idle":
+                raise ValueError("Stop the session first: the voice model would hold up the transcription.")
+            return p.name
+
+    def _train_voice(self, pid: str) -> Voice | None:
+        """Their own voice with a Train recording (lock held)."""
+        return next(
+            (
+                v
+                for v in self.voices.values()
+                if v.status == "named" and v.player_id == pid and v.character is None and v.sample_audio is not None
+            ),
+            None,
+        )
+
+    def clone_source(self, pid: str) -> tuple[np.ndarray, int, list[tuple[float, float]]]:
+        """(audio, rate, speech spans in seconds) of their Train clip: the lossless own-rate copy when
+        there is one. The spans come from the 16 kHz copy (Silero's rate); both hold the same seconds."""
+        import torch
+        from silero_vad import get_speech_timestamps, load_silero_vad
+
+        with self.lock:
+            v = self._train_voice(pid)
+            if v is None:
+                raise ValueError("Train them first: the voice clone copies the Train recording.")
+            audio, hq = v.sample_audio, self._voice_hq_path(v.id)
+        stamps = get_speech_timestamps(torch.from_numpy(audio), load_silero_vad(), sampling_rate=SR)
+        spans = [(s["start"] / SR, s["end"] / SR) for s in stamps]
+        if hq.is_file():
+            native, rate = read_wav(hq)
+            return native, rate, spans
+        return audio, SR, spans
+
+    def voice_likeness(self, pid: str, audio: np.ndarray, rate: int) -> float | None:
+        """How much `audio` sounds like them to the speaker-ID model: cosine to their Train voiceprint."""
+        import soxr
+
+        with self.lock:
+            v = self._train_voice(pid)
+            if v is None or self.matcher is None or v.id not in self.matcher.names:
+                return None
+            target = self.matcher.vector(v.id).copy()
+        x = soxr.resample(audio, rate, SR).astype(np.float32) if rate != SR else audio
+        with self.embed_lock:
+            vec = embed_span(self.embedder, x, 0.0, len(x) / SR)
+        return None if vec is None else float(target @ vec)

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react"
 import { toast } from "sonner"
-import { AudioWaveform, Camera, Crown, UserMinus } from "lucide-react"
+import { AudioWaveform, Camera, Crown, Speech, UserMinus } from "lucide-react"
 import { PlayerAvatar } from "@/components/PlayerAvatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,7 @@ import { fileToAvatar } from "@/lib/format"
 import { actions, useStore } from "@/lib/store"
 import type { Player } from "@/lib/types"
 import { TrainDialog } from "./TrainDialog"
+import { VoiceCloneDialog } from "./VoiceCloneDialog"
 
 async function patch(id: string, body: PlayerPatch) {
   try {
@@ -25,6 +26,7 @@ async function patch(id: string, body: PlayerPatch) {
 export function PlayerCard({ player }: { player: Player }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [training, setTraining] = useState(false)
+  const [cloning, setCloning] = useState(false)
   const trained = useStore(
     (s) =>
       player.trained ||
@@ -142,6 +144,15 @@ export function PlayerCard({ player }: { player: Player }) {
               <Button
                 size="icon-sm"
                 variant="ghost"
+                onClick={() => setCloning(true)}
+                title="Voice clone: speak in their voice"
+                aria-label="Voice clone"
+              >
+                <Speech />
+              </Button>
+              <Button
+                size="icon-sm"
+                variant="ghost"
                 onClick={onRemove}
                 disabled={!idle}
                 title={idle ? "Remove from this campaign (keeps voice training)" : "Stop the session first"}
@@ -154,6 +165,9 @@ export function PlayerCard({ player }: { player: Player }) {
         </div>
       </CardContent>
       {training && <TrainDialog player={player} open={training} onOpenChange={setTraining} />}
+      {cloning && (
+        <VoiceCloneDialog player={player} trained={trained} open={cloning} onOpenChange={setCloning} />
+      )}
     </Card>
   )
 }

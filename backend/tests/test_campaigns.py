@@ -288,7 +288,7 @@ def test_removing_from_a_campaign_keeps_the_training(engine):
     vid = named_voice(engine, p["id"], ALICE)
     idle(engine).bench_player(p["id"])
     assert p["id"] not in engine.players
-    assert engine.library_json() == [{k: p[k] for k in ("id", "name", "avatar", "color", "trained")}]
+    assert engine.library_json() == [{k: p[k] for k in ("id", "name", "avatar", "color", "trained", "clone_ok")}]
     assert vid in engine.parked
     assert vid not in engine.matcher.names
     engine.seat_player(p["id"])

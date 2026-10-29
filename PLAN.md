@@ -390,6 +390,44 @@ runs gave byte-identical pages) unless other requests share the GPU.
 5. A second gold session before trusting any change smaller than ~3 points.
 
 
+## Voice clones (say things, read write-ups aloud)
+
+`tts.py`: Chatterbox (multilingual v3, MLX port via `mlx-audio`, `TROUBADOUR_TTS` overrides it)
+speaks in a player's voice; DeepFilterNet (MLX) cleans the reference. Both download from Hugging
+Face on first use, like Whisper, then run locally.
+
+- **Consent first.** `Player.clone_ok` (library-level, off by default; Setup → player card →
+  Voice clone). Nothing is built or spoken until it's on. Turning it off, or deleting the
+  player, deletes `data/clones/<player>/` (reference, preview, every clip). A job checks the flag
+  again under the lock `forget` takes before it writes, so turning it off mid-job leaves nothing.
+- **No training.** Chatterbox is zero-shot and reads only the start of one reference clip (10 s
+  for the decoder, 6 s for the speech-token model), so more audio doesn't help; cleaner audio does.
+  The reference is the player's Train recording (`<voice>.hq.wav`, the mic's own rate, else the
+  16 kHz clip), silences cut by Silero, first 10 s of speech.
+- **Build picks by measurement.** The clone copies room and noise along with the voice. Building
+  tries the clip as recorded and after DeepFilterNet, speaks one preview line from each, and keeps
+  whichever the speaker-ID model scores closer to the player's voiceprint (`likeness`, shown).
+  Spike (2026-10-29, synthetic `say` voices, M5 Max): a clean reference cloned at 0.85 cosine
+  (another voice: 0.18–0.33); the same reference through a simulated far-field room with table
+  babble at 12 dB SNR dropped to 0.48, and denoising it first recovered 0.56 with a far cleaner
+  floor (clone SNR 29 → 51 dB). Whisper read the clones back word for word except fantasy names.
+  Speed: ~0.3–0.5× real time warm; first load ~35 s.
+- **Reading.** `speakable` turns a note into paragraphs (no frontmatter, links, tags, tables;
+  headings and list items become sentences; Mentioned, Transcript, Highlights and Table moments
+  are skipped). `chunks` packs whole sentences up to 280 characters, never across a paragraph
+  (Chatterbox drifts or stops early on long input); pauses 0.25 s between chunks, 0.6 s between
+  paragraphs. A reading of 40+ characters outside 6–30 characters per second is redone once.
+- **GPU.** Each model call holds Whisper's lock (one MLX model at a time). Jobs are refused while
+  a session runs; one that started before a session began delays its transcription by one chunk.
+- Jobs (`campaign.job`, `player_id` set): `clone`, `say`, `read`. API: `GET /api/clones`
+  (`{voices: {player id: status}, clips}`), `POST /api/players/{id}/clone`,
+  `POST /api/players/{id}/clone/say {text ≤ 2000}`, `POST /api/players/{id}/clone/read {session}`
+  (that session's write-up page), `GET /api/clones/{player}/{preview|clip}.wav`,
+  `DELETE /api/clones/{player}/clips/{clip}`, `PATCH /api/players/{id} {clone_ok}`.
+- UI: Setup → player card → Voice clone (consent, build, preview, Say box, clips); History →
+  Write-up tab → Read aloud (once the session is written up). Nothing autoplays.
+- Smoke test with real models and synthetic voices: `uv run spike/clone_smoke.py [out_dir]`.
+
 ## Troubadour Cloud (opt-in backup)
 
 Besides an opt-in hosted language model (next section), the one thing Troubadour sends off the Mac, and only

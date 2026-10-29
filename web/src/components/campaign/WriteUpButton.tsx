@@ -5,6 +5,7 @@ import { api } from "@/lib/api"
 import { jobActive, jobCount } from "@/lib/campaign"
 import { attempt, campaignActions, useCampaign } from "@/lib/campaignStore"
 import { ObsidianLink } from "./ObsidianLink"
+import { ReadAloud } from "./ReadAloud"
 
 /** History viewer: summarize this saved session into a campaign session page plus suggestions. */
 export function WriteUpButton({ sessionId }: { sessionId: string }) {
@@ -47,6 +48,7 @@ export function WriteUpButton({ sessionId }: { sessionId: string }) {
         </span>
       )}
       {page && <ObsidianLink relPath={page}>Session page</ObsidianLink>}
+      {page && <ReadAloud sessionId={sessionId} />}
     </span>
   )
 }

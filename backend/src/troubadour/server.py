@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import config, improve, mics, obsidian, providers, settings, transcript
+from . import config, improve, mics, obsidian, providers, settings, transcript, tts
 from .ask import Asker
 from .audio import list_mics
 from .campaign import TYPES, Vault, mention_counts
@@ -104,6 +104,7 @@ class PlayerPatch(BaseModel):
     avatar: Avatar | None = None
     is_gm: bool | None = None
     color: Color | None = None
+    clone_ok: bool | None = None  # they agree to a voice clone; False deletes everything made from it
 
 
 class SeatIn(BaseModel):
@@ -117,6 +118,14 @@ class CampaignIn(BaseModel):
 
 class TrainIn(BaseModel):
     seconds: float = Field(20.0, ge=5, le=60)
+
+
+class SayIn(BaseModel):
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=tts.SAY_MAX_CHARS)]
+
+
+class ReadIn(BaseModel):
+    session: str = Field(max_length=60)
 
 
 class AssignIn(BaseModel):
@@ -1039,6 +1048,79 @@ def train(pid: str, body: TrainIn | None = None):
 @app.post("/api/train/cancel", status_code=204)
 def cancel_training():
     engine.cancel_training()
+
+
+# ------------------------------------------------------------------ voice clones (tts.py)
+
+
+def _require_clone(pid: str) -> str:
+    name = _call(engine.check_clone, pid)
+    if engine.clones.status(pid) is None:
+        raise HTTPException(400, f"Build {name}'s voice first.")
+    return name
+
+
+@app.get("/api/clones")
+def clones():
+    """Built voices by player id, and every clip made with them (newest first)."""
+    return {"voices": engine.clones.voices(), "clips": engine.clones.clips()}
+
+
+@app.post("/api/players/{pid}/clone", status_code=202)
+def build_clone(pid: str):
+    """(Re)build their voice from the Train recording (a job: kind "clone")."""
+    name = _call(engine.check_clone, pid)
+    _call(engine.clone_source, pid)  # fail now, not in the job, when there's no Train recording
+
+    def work(job):
+        audio, rate, spans = engine.clone_source(pid)
+        engine.clones.build(
+            job, lambda: memory.emit(job), pid, audio, rate, spans, lambda out, sr: engine.voice_likeness(pid, out, sr)
+        )
+
+    return memory.submit("clone", name, work, player_id=pid).to_json()
+
+
+@app.post("/api/players/{pid}/clone/say", status_code=202)
+def clone_say(pid: str, body: SayIn):
+    name = _require_clone(pid)
+    title = body.text if len(body.text) <= 60 else body.text[:59] + "…"
+    return memory.submit(
+        "say",
+        name,
+        lambda job: engine.clones.speak(job, lambda: memory.emit(job), pid, body.text, "say", title, {}),
+        player_id=pid,
+    ).to_json()
+
+
+@app.post("/api/players/{pid}/clone/read", status_code=202)
+def clone_read(pid: str, body: ReadIn):
+    """Read a session's write-up page aloud in their voice."""
+    _require_clone(pid)
+    page = memory.written_up().get(body.session)
+    if page is None:
+        raise HTTPException(404, "that session has no write-up")
+    text = tts.speakable((vault.root / page).read_text(encoding="utf-8"))
+    if len(text) > tts.READ_MAX_CHARS:
+        raise HTTPException(400, "That page is too long to read aloud.")
+    source = {"session": body.session, "note": page}
+    title = page.rsplit("/", 1)[-1].removesuffix(".md")
+    return memory.submit(
+        "read",
+        body.session,
+        lambda job: engine.clones.speak(job, lambda: memory.emit(job), pid, text, "read", title, source),
+        player_id=pid,
+    ).to_json()
+
+
+@app.get("/api/clones/{pid}/{name}.wav")
+def clone_audio(pid: str, name: str):
+    return FileResponse(_call(engine.clones.file, pid, name), media_type="audio/wav")
+
+
+@app.delete("/api/clones/{pid}/clips/{cid}", status_code=204)
+def delete_clip(pid: str, cid: str):
+    _call(engine.clones.delete_clip, pid, cid)
 
 
 @app.post("/api/voices/{vid}/assign")

@@ -4,20 +4,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { SessionViewer } from "@/components/history/SessionViewer"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useCampaign } from "@/lib/campaignStore"
-import { applyEvent } from "@/lib/store"
-import type { Campaign } from "@/lib/types"
-import { campaign, campaignJob, savedSession, sessionRecord } from "@/test/fixtures"
-import { mockFetch } from "@/test/mockFetch"
+import { useClones } from "@/lib/cloneStore"
+import { applyEvent, useStore } from "@/lib/store"
+import type { Campaign, Clones } from "@/lib/types"
+import { campaign, campaignJob, player, savedSession, sessionRecord } from "@/test/fixtures"
+import { bodyOf, mockFetch } from "@/test/mockFetch"
 
 const ID = "2026-10-08_193401-eebf"
 const initial = useCampaign.getState()
+const initialStore = useStore.getState()
 
-function server(c: Campaign) {
+function server(c: Campaign, clones?: { current: Clones }) {
   return mockFetch((call) => {
     if (call.url === "/api/campaign") return c
     if (call.url === `/api/sessions/${ID}/transcript.json`) return sessionRecord({ id: ID })
     if (call.url === `/api/campaign/writeup/${ID}`)
       return campaignJob({ id: "w1", kind: "writeup", title: ID })
+    if (clones && call.url === "/api/clones") return clones.current
+    if (clones && call.url === "/api/players/p1/clone/read")
+      return campaignJob({ id: "r1", kind: "read", title: ID, player_id: "p1" })
     return new Response(null, { status: 500 })
   })
 }
@@ -35,7 +40,11 @@ async function renderViewer() {
   await act(async () => {}) // the tab loads the campaign on mount
 }
 
-beforeEach(() => useCampaign.setState(initial, true))
+beforeEach(() => {
+  useCampaign.setState(initial, true)
+  useStore.setState(initialStore, true)
+  useClones.setState({ clones: null })
+})
 afterEach(() => vi.restoreAllMocks())
 
 describe("History viewer: write up for campaign", () => {
@@ -91,5 +100,74 @@ describe("History viewer: write up for campaign", () => {
     expect(screen.queryByRole("link", { name: /Session page/ })).toBeNull()
     const hint = screen.getByText(/open the folder in Obsidian first/)
     expect(hint).toHaveAttribute("title", expect.stringContaining("Open folder as vault → /V"))
+  })
+
+  it("reads the session page aloud in a player's cloned voice", async () => {
+    const page = "Sessions/2026-10-08 The Desert Road.md"
+    useStore.setState({
+      players: [player({ id: "p1", name: "Alice", clone_ok: true }), player({ id: "p2", name: "Bob" })],
+    })
+    const voice = {
+      player_id: "p1",
+      built_at: 1,
+      cleaned: false,
+      likeness: 0.8,
+      reference_s: 10,
+      preview_url: "/x",
+    }
+    const clones = { current: { voices: { p1: voice }, clips: [] } as Clones }
+    const { writes } = server(campaign({ written_up: { [ID]: page } }), clones)
+    await renderViewer()
+    expect(screen.getByRole("combobox", { name: "Read by" })).toHaveDisplayValue("Alice") // Bob has no voice
+
+    fireEvent.click(screen.getByRole("button", { name: /Read aloud/ }))
+    await act(async () => {})
+    expect(writes().map((c) => c.url)).toEqual(["/api/players/p1/clone/read"])
+    expect(bodyOf(writes()[0])).toEqual({ session: ID })
+    act(() =>
+      applyEvent({
+        type: "campaign.job",
+        data: campaignJob({
+          id: "r1",
+          kind: "read",
+          title: ID,
+          player_id: "p1",
+          state: "running",
+          done: 3,
+          total: 9,
+        }),
+      }),
+    )
+    expect(screen.getByRole("button", { name: /Read aloud/ })).toHaveTextContent("3/9")
+
+    const clip = {
+      id: "c1",
+      player_id: "p1",
+      kind: "read" as const,
+      title: "2026-10-08 The Desert Road",
+      text: "",
+      source: { session: ID, note: page },
+      seconds: 80,
+      created_at: 1,
+      url: "/api/clones/p1/c1.wav",
+    }
+    clones.current = { voices: { p1: voice }, clips: [clip] }
+    act(() =>
+      applyEvent({
+        type: "campaign.job",
+        data: campaignJob({ id: "r1", kind: "read", title: ID, state: "done" }),
+      }),
+    )
+    await act(async () => {})
+    expect(screen.getByLabelText("Read aloud")).toHaveAttribute("src", clip.url)
+    expect(screen.getByLabelText("Read aloud")).toHaveAttribute("preload", "none")
+    expect(screen.getByText("Read by Alice")).toBeInTheDocument()
+  })
+
+  it("points to Setup when nobody has a voice clone yet", async () => {
+    server(campaign({ written_up: { [ID]: "Sessions/x.md" } }), { current: { voices: {}, clips: [] } })
+    await renderViewer()
+    expect(screen.getByText(/Build a player's voice clone in Setup/)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Read aloud/ })).toBeNull()
   })
 })
