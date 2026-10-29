@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import config, improve, mics, obsidian, providers, settings, transcript, tts
+from . import config, improve, mics, obsidian, providers, settings, talk, transcript, tts
 from .ask import Asker
 from .audio import list_mics
 from .campaign import TYPES, Vault, mention_counts
@@ -122,10 +122,12 @@ class TrainIn(BaseModel):
 
 class SayIn(BaseModel):
     text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=tts.SAY_MAX_CHARS)]
+    in_their_words: bool = False  # restyle it like them first (talk.restyle) and match their pace
 
 
 class ReadIn(BaseModel):
     session: str = Field(max_length=60)
+    in_their_words: bool = False
 
 
 class AssignIn(BaseModel):
@@ -1053,17 +1055,83 @@ def cancel_training():
 # ------------------------------------------------------------------ voice clones (tts.py)
 
 
-def _require_clone(pid: str) -> str:
+def _require_clone(pid: str, in_their_words: bool) -> tuple[str, dict | None]:
+    """(name, their speech profile if in_their_words) once a say/read job may start."""
     name = _call(engine.check_clone, pid)
     if engine.clones.status(pid) is None:
         raise HTTPException(400, f"Build {name}'s voice first.")
-    return name
+    prof = engine.clones.profile(pid) if in_their_words else None
+    if in_their_words and prof is None:
+        raise HTTPException(400, f"Profile how {name} talks first.")
+    return name, prof
+
+
+def _known_names() -> list[str]:
+    """Names a restyle must keep and mustn't invent: the table's and the campaign glossary's."""
+    with engine.lock:
+        names = [n for p in engine.players.values() for n in (p.name, p.character) if n]
+    try:
+        names += [n for e in vault.entities() for n in e.names()]
+    except Exception:  # a broken vault never stops the voice; the numbers check still holds
+        log.exception("couldn't read the glossary for a restyle")
+    return names
+
+
+def _speak_work(pid: str, name: str, prof: dict | None, text: str, kind: str, title: str, source: dict):
+    """The say/read job: restyled like them first when there's a profile, then spoken."""
+
+    def work(job):
+        def emit() -> None:
+            memory.emit(job)
+
+        spoken, tempo, kept = text, 1.0, 0
+        if prof is not None:
+
+            def progress(done: int, total: int) -> None:
+                job.done, job.total, job.message = done, total, "Rewriting it in their words…"
+                emit()
+
+            with engine.lock:
+                p = engine.players.get(pid)
+                own = [n for n in (name, p.character if p else "") if n]
+            spoken, kept = talk.restyle(memory.llm, name, prof, text, _known_names(), own, progress)
+            tempo = talk.tempo(prof.get("wpm"), (engine.clones.status(pid) or {}).get("clone_wpm"))
+        restyled = spoken != text
+        engine.clones.speak(job, emit, pid, spoken, kind, title, source, tempo=tempo, in_their_words=restyled)
+        if kept:
+            job.message += f"; {kept} part{'s' if kept != 1 else ''} kept the original wording"
+
+    return work
 
 
 @app.get("/api/clones")
 def clones():
-    """Built voices by player id, and every clip made with them (newest first)."""
-    return {"voices": engine.clones.voices(), "clips": engine.clones.clips()}
+    """Built voices and speech profiles by player id, and every clip made with them (newest first)."""
+    return {"voices": engine.clones.voices(), "profiles": engine.clones.profiles(), "clips": engine.clones.clips()}
+
+
+@app.post("/api/players/{pid}/profile", status_code=202)
+def build_profile(pid: str):
+    """Profile how they talk from every saved transcript (a job: kind "profile"). Needs the clone opt-in."""
+    name = _call(engine.check_clone, pid, needs_idle=False)
+
+    def work(job):
+        records = []
+        for path in sorted(engine.sessions_dir().glob("*/transcript.json")):
+            try:
+                records.append(json.loads(path.read_text()))
+            except (OSError, ValueError):
+                log.warning("skipping unreadable transcript %s", path)
+        job.message = f"Counting their lines in {len(records)} sessions…"
+        memory.emit(job)
+        prof = talk.profile(records, pid)
+        job.message = "Describing how they talk…"
+        memory.emit(job)
+        prof["description"] = talk.describe(memory.llm, name, prof)
+        engine.clones.save_profile(pid, prof)
+        job.message = "Profile ready" + ("" if prof["description"] else " (the AI is offline: numbers only)")
+
+    return memory.submit("profile", name, work, player_id=pid).to_json()
 
 
 @app.post("/api/players/{pid}/clone", status_code=202)
@@ -1083,20 +1151,15 @@ def build_clone(pid: str):
 
 @app.post("/api/players/{pid}/clone/say", status_code=202)
 def clone_say(pid: str, body: SayIn):
-    name = _require_clone(pid)
+    name, prof = _require_clone(pid, body.in_their_words)
     title = body.text if len(body.text) <= 60 else body.text[:59] + "…"
-    return memory.submit(
-        "say",
-        name,
-        lambda job: engine.clones.speak(job, lambda: memory.emit(job), pid, body.text, "say", title, {}),
-        player_id=pid,
-    ).to_json()
+    return memory.submit("say", name, _speak_work(pid, name, prof, body.text, "say", title, {}), player_id=pid).to_json()
 
 
 @app.post("/api/players/{pid}/clone/read", status_code=202)
 def clone_read(pid: str, body: ReadIn):
     """Read a session's write-up page aloud in their voice."""
-    _require_clone(pid)
+    name, prof = _require_clone(pid, body.in_their_words)
     page = memory.written_up().get(body.session)
     if page is None:
         raise HTTPException(404, "that session has no write-up")
@@ -1105,12 +1168,7 @@ def clone_read(pid: str, body: ReadIn):
         raise HTTPException(400, "That page is too long to read aloud.")
     source = {"session": body.session, "note": page}
     title = page.rsplit("/", 1)[-1].removesuffix(".md")
-    return memory.submit(
-        "read",
-        body.session,
-        lambda job: engine.clones.speak(job, lambda: memory.emit(job), pid, text, "read", title, source),
-        player_id=pid,
-    ).to_json()
+    return memory.submit("read", body.session, _speak_work(pid, name, prof, text, "read", title, source), player_id=pid).to_json()
 
 
 @app.get("/api/clones/{pid}/{name}.wav")

@@ -428,6 +428,41 @@ Face on first use, like Whisper, then run locally.
   Write-up tab → Read aloud (once the session is written up). Nothing autoplays.
 - Smoke test with real models and synthetic voices: `uv run spike/clone_smoke.py [out_dir]`.
 
+### Speech profile and "in their words"
+
+`talk.py`, under the same consent (stored as `data/clones/<player>/profile.json`, deleted with
+the clone). `POST /api/players/{id}/profile` (job `profile`, allowed mid-session: no voice model)
+reads every saved `transcript.json`, all campaigns (people are library-wide), and counts:
+
+- pace: words per minute over lines ≥ 1.5 s after taking off the VAD padding (0.2 s a side);
+  words per line; share of questions, exclamations, in-character lines; first words their lines
+  open with (≥ 5% of their lines and 1.3× the table's rate).
+- pet phrases: 1–3-word n-grams by log-odds with an informative Dirichlet prior (Monroe et al.
+  2008), against everyone else's lines: z ≥ 2, ≥ 2× the table's rate, ≥ 3 times in ≥ 3 lines.
+  Function words never count alone; discourse words ("okay", "like", "literally") can. A phrase
+  swallows the shorter ones inside it used about as often, and overlapping ones merge ("you know
+  what" + "know what I" → "you know what I"), up to 6 words.
+- up to 12 example lines (6–30 words, confidence ≥ 0.6, not provisional; pet-phrase lines first,
+  round robin over sessions), and a 2–4 sentence description from the memory LLM (plain text,
+  ≤ 600 characters; none if the LLM is down: the numbers stand alone).
+- Needs 30 lines and 300 words. Whisper drops most "um"s and filler-only lines aren't saved, so
+  hesitation isn't measured.
+
+**In their words** (`in_their_words` on say/read; needs a profile): the memory LLM rewrites the
+text paragraph by paragraph from the profile and examples (headings and paragraphs under 4 words
+are read as written). A rewrite must keep every number (each as often) and every known name
+(players, characters, glossary names and aliases) and add none, except the speaker's own name and
+character, which may become "I"; and be 0.6–1.6× the length (+25 characters). A refused rewrite is
+asked for once more with the reason (the LLM runs at temperature 0, so a plain retry repeats
+itself), then that paragraph keeps the original wording (the job says how many). Smoke test
+(made-up transcripts, gemma-4-26b): the first prompt overused pet phrases (one line came back 6×
+longer, the same sentence four times); with "use their habits lightly" plus the reason on retry,
+every paragraph of a short page passed. The checks can't catch tone shifts (a statement turned into
+"…?"). The
+clip is then time-stretched to their pace (ffmpeg `atempo`, pitch kept): their wpm over the
+clone's own (`clone_wpm`, measured on the preview at build), clamped to 0.85–1.15. Clips record
+`in_their_words`; `text` is what was spoken.
+
 ## Troubadour Cloud (opt-in backup)
 
 Besides an opt-in hosted language model (next section), the one thing Troubadour sends off the Mac, and only

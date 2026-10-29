@@ -24,6 +24,7 @@ import numpy as np
 
 from . import asr, config
 from .audio import read_wav, wav_bytes
+from .audio import tempo as stretch
 
 OUT_SR = 24000  # Chatterbox's output rate
 REF_S = 10.0  # Chatterbox reads no more of the reference than this
@@ -224,6 +225,12 @@ class Synth:
 # ------------------------------------------------------------------ clones on disk
 
 
+def speech_seconds(audio: np.ndarray, rate: int) -> float:
+    """Length without the silence before and after (under 2% of the peak)."""
+    loud = np.flatnonzero(np.abs(audio) >= 0.02 * (np.abs(audio).max() if len(audio) else 0.0))
+    return (loud[-1] - loud[0] + 1) / rate if len(loud) else 0.0
+
+
 def _write_atomic(path: Path, data: bytes) -> None:
     tmp = path.with_name(f".{path.name}.tmp")
     tmp.write_bytes(data)
@@ -257,6 +264,25 @@ class Clones:
         root = self.root()
         found = (self.status(d.name) for d in sorted(root.iterdir()) if d.is_dir()) if root.is_dir() else ()
         return {s["player_id"]: s for s in found if s}
+
+    def profile(self, pid: str) -> dict | None:
+        """Their speech profile (talk.py), if one has been made."""
+        try:
+            return json.loads((self._dir(pid) / "profile.json").read_text())
+        except (OSError, ValueError):
+            return None
+
+    def profiles(self) -> dict[str, dict]:
+        root = self.root()
+        found = (self.profile(d.name) for d in sorted(root.iterdir()) if d.is_dir()) if root.is_dir() else ()
+        return {p["player_id"]: p for p in found if p}
+
+    def save_profile(self, pid: str, prof: dict) -> None:
+        folder = self._dir(pid)
+        with self._lock:
+            self._check_allowed(pid)
+            folder.mkdir(parents=True, exist_ok=True)
+            _write_atomic(folder / "profile.json", json.dumps(prof).encode())
 
     def clips(self) -> list[dict]:
         out = []
@@ -339,6 +365,8 @@ class Clones:
             "cleaned": label == "cleaned",
             "likeness": None if score is None else round(score, 3),
             "reference_s": round(len(a) / r, 1),
+            # The clone's own pace, so "in their words" can time-stretch it to the player's (talk.tempo).
+            "clone_wpm": round(60 * len(PREVIEW.split()) / max(speech_seconds(preview, OUT_SR), 1e-3)),
         }
         folder = self._dir(pid)
         with self._lock:
@@ -350,8 +378,20 @@ class Clones:
         job.message = "Voice ready" + ("" if score is None else f" (likeness {score:.2f})")
         return self.status(pid) or meta
 
-    def speak(self, job, emit: Callable[[], None], pid: str, text: str, kind: str, title: str, source: dict) -> dict:
-        """Read `text` in their voice into a new clip. kind: "say" | "read"."""
+    def speak(
+        self,
+        job,
+        emit: Callable[[], None],
+        pid: str,
+        text: str,
+        kind: str,
+        title: str,
+        source: dict,
+        tempo: float = 1.0,
+        in_their_words: bool = False,
+    ) -> dict:
+        """Read `text` in their voice into a new clip. kind: "say" | "read". tempo: time-stretch the
+        result (talk.tempo); in_their_words: the text was restyled like them (recorded on the clip)."""
         self._check_allowed(pid)
         try:
             ref, rate = read_wav(self._dir(pid) / "reference.wav")
@@ -360,7 +400,7 @@ class Clones:
         parts = chunks(text)
         if not parts:
             raise ValueError("Nothing to read.")
-        job.total, job.message = len(parts), "Loading the voice model…"
+        job.done, job.total, job.message = 0, len(parts), "Loading the voice model…"
         emit()
         voice = self.synth.voice(ref, rate)
         job.message = ""
@@ -369,7 +409,7 @@ class Clones:
             pieces += [self._speak(chunk, voice), np.zeros(int(pause * OUT_SR), np.float32)]
             job.done += 1
             emit()
-        audio = np.concatenate(pieces)
+        audio = stretch(np.concatenate(pieces), OUT_SR, tempo)
         cid = "c" + uuid.uuid4().hex[:10]
         meta = {
             "id": cid,
@@ -378,6 +418,7 @@ class Clones:
             "title": title,
             "text": text[:CLIP_TEXT_CHARS],
             "source": source,
+            "in_their_words": in_their_words,
             "seconds": round(len(audio) / OUT_SR, 1),
             "created_at": time.time(),
         }

@@ -21,6 +21,7 @@ Run from `backend/`: `uv run troubadour` (server), `uv run pytest -q`, `uv run r
 | `improve.py` | Post-session jobs: re-transcribe (`run`), `fix_spellings`, restore. |
 | `dnd_terms.py` | D&D vocabulary: committed SRD list + an optional local list in `data/dnd_terms.json`. |
 | `tts.py` | Voice clones (opt-in per player): Chatterbox + DeepFilterNet on MLX, `Clones` (files under `data/clones/`), note → speakable text. |
+| `talk.py` | Speech profile from saved transcripts (pace, pet phrases by log-odds, openers, examples, LLM description) and "in their words" restyling with checks on numbers and names. |
 | `cloud.py` | Opt-in Troubadour Cloud backup: OAuth PKCE sign-in, vault scan, plan → signed uploads → commit. |
 | `providers.py` | Opt-in hosted LLMs: ChatGPT plan sign-in (OAuth + plan usage), OpenRouter sign-in, pasted keys, wire formats `MemoryLLM` uses. With `cloud.py`, the only network code besides the local LLM. |
 | `sim.py` | `troubadour-sim`: headless re-run of a saved session in a throwaway data dir, with a comparison. |

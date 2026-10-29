@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { AlertCircle, Loader2, Speech } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { NativeSelect } from "@/components/ui/native-select"
+import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
 import { jobActive, jobCount } from "@/lib/campaign"
 import { attempt, campaignActions, useCampaign } from "@/lib/campaignStore"
@@ -15,6 +16,7 @@ export function ReadAloud({ sessionId }: { sessionId: string }) {
   const idle = useStore((s) => (s.session?.status ?? "idle") === "idle")
   const jobs = useCampaign((s) => s.jobs)
   const [reader, setReader] = useState("")
+  const [theirWords, setTheirWords] = useState(false)
 
   useEffect(() => {
     void refreshClones()
@@ -22,6 +24,7 @@ export function ReadAloud({ sessionId }: { sessionId: string }) {
 
   const voiced = players.filter((p) => p.clone_ok && clones?.voices[p.id])
   const pick = voiced.find((p) => p.id === reader) ?? voiced[0]
+  const profiled = !!pick && !!clones?.profiles[pick.id]
   const job = Object.values(jobs)
     .filter((j) => j.kind === "read" && j.title === sessionId)
     .at(-1)
@@ -39,7 +42,7 @@ export function ReadAloud({ sessionId }: { sessionId: string }) {
   return (
     <div className="flex w-full flex-col items-start gap-2">
       {voiced.length > 0 && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <NativeSelect
             aria-label="Read by"
             value={pick?.id ?? ""}
@@ -57,7 +60,8 @@ export function ReadAloud({ sessionId }: { sessionId: string }) {
             disabled={running || !idle || !pick}
             title={idle ? undefined : "Stop the session first"}
             onClick={async () => {
-              const j = pick && (await attempt(() => api.cloneRead(pick.id, sessionId)))
+              const j =
+                pick && (await attempt(() => api.cloneRead(pick.id, sessionId, theirWords && profiled)))
               if (j) campaignActions.putJob(j)
             }}
           >
@@ -65,6 +69,20 @@ export function ReadAloud({ sessionId }: { sessionId: string }) {
             Read aloud
             {running && <span className="text-muted-foreground tabular-nums">{jobCount(job)}</span>}
           </Button>
+          <label
+            className="flex items-center gap-2"
+            title={
+              profiled ? "Reworded like them by the AI, at their pace" : "Profile how they talk first (Setup)"
+            }
+          >
+            <Switch
+              size="sm"
+              checked={theirWords && profiled}
+              disabled={!profiled}
+              onCheckedChange={(on: boolean) => setTheirWords(on)}
+            />
+            In their words
+          </label>
         </div>
       )}
       {job?.state === "error" && (

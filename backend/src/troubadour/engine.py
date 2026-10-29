@@ -2295,15 +2295,16 @@ class Engine:
             p = self.players.get(pid) or self.bench.get(pid)
             return bool(p and p.clone_ok)
 
-    def check_clone(self, pid: str) -> str:
-        """The player's name if a voice-clone job for them may start now; ValueError says why not."""
+    def check_clone(self, pid: str, needs_idle: bool = True) -> str:
+        """The player's name if a voice-clone job for them may start now; ValueError says why not.
+        needs_idle: it runs the voice model, which a live session's transcription must not wait on."""
         with self.lock:
             p = self.players.get(pid)
             if p is None:
                 raise KeyError(pid)
             if not p.clone_ok:
                 raise ValueError(f"Turn on the voice clone for {p.name} first (they agree to it).")
-            if self.status != "idle":
+            if needs_idle and self.status != "idle":
                 raise ValueError("Stop the session first: the voice model would hold up the transcription.")
             return p.name
 

@@ -241,7 +241,8 @@ export interface CampaignJob {
     | "clone" /* build a player's voice clone */
     | "say" /* speak typed text in it */
     | "read" /* read a session's write-up aloud in it */
-  title: string /* notes title; the session id for a write-up / improve / read; the player for clone / say */
+    | "profile" /* count how they talk from the transcripts */
+  title: string /* notes title; the session id for a write-up / improve / read; the player for clone / say / profile */
   state: "queued" | "running" | "done" | "error"
   done: number
   total: number
@@ -250,7 +251,7 @@ export interface CampaignJob {
   updated: string[]
   suggested: number
   note: string | null /* vault-relative path it wrote */
-  player_id: string | null /* clone / say / read: whose voice */
+  player_id: string | null /* clone / say / read / profile: whose voice */
 }
 /** A player's built voice clone (GET /api/clones). */
 export interface CloneVoice {
@@ -260,6 +261,7 @@ export interface CloneVoice {
   likeness: number | null /* cosine of the preview to their voiceprint (the speaker-ID model's view) */
   reference_s: number
   preview_url: string
+  clone_wpm: number | null /* the clone's own pace; "in their words" stretches it to theirs */
 }
 /** Audio made with a clone: typed text ("say") or a session page read aloud ("read"). */
 export interface CloneClip {
@@ -269,12 +271,31 @@ export interface CloneClip {
   title: string
   text: string /* the first 300 characters */
   source: { session?: string; note?: string }
+  in_their_words: boolean /* restyled like them (text is what was spoken) and at their pace */
   seconds: number
   created_at: number /* epoch s */
   url: string
 }
+/** How a player talks, counted from their saved transcripts (talk.py); same consent as the clone. */
+export interface SpeechProfile {
+  player_id: string
+  built_at: number /* epoch s */
+  sessions: number
+  lines: number
+  words: number
+  wpm: number | null /* words per minute of speech; null without enough timed lines */
+  words_per_line: number
+  questions: number /* share of lines, 0-1 */
+  exclamations: number
+  in_character: number
+  phrases: string[] /* pet phrases: said far more than by the rest of the table */
+  openers: string[] /* words their lines often start with */
+  examples: string[] /* typical lines, for the AI to imitate */
+  description: string | null /* the AI's short description; null when it was offline */
+}
 export interface Clones {
   voices: Record<string, CloneVoice> /* by player id */
+  profiles: Record<string, SpeechProfile> /* by player id */
   clips: CloneClip[] /* newest first */
 }
 /** The campaign folder in Obsidian's vault registry: the vault's id and the folder inside it ("" = the vault). */

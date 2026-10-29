@@ -1,0 +1,352 @@
+"""How a player talks, from their saved transcripts: a speech profile, and text restyled to sound like them.
+
+Part of the voice clone and under the same consent (`Player.clone_ok`); stored beside the voice
+(`data/clones/<player>/profile.json`), so turning the clone off deletes it.
+
+The numbers are counted, not guessed: pace (words per minute of speech), line length, how often
+lines are questions or exclamations, how much is in character, the words lines open with, and pet
+phrases (word sequences they use far more than everyone else at the table, by log-odds with an
+informative Dirichlet prior: Monroe, Colaresi & Quinn 2008, "Fightin' Words"). Whisper drops most
+"um"s and "uh"s and filler-only lines aren't saved, so hesitation can't be measured.
+
+The local LLM adds a short description, and "in their words" rewrites text paragraph by paragraph.
+Both are untrusted: a description is plain text with a length cap; a rewrite must keep every number
+and every campaign name it was given and add none, or that paragraph keeps the original wording.
+"""
+
+import math
+import re
+import time
+from collections import Counter
+from collections.abc import Callable, Iterable
+
+from . import ask
+
+MIN_LINES = 30
+MIN_WORDS = 300
+PAD_S = 0.2  # each saved line carries ~this much VAD padding at both ends (segment.SegmentConfig.pad_ms)
+MIN_PACE_S = 1.5  # shorter lines are mostly padding: their pace is noise
+MAX_N = 3  # pet phrases are 1-3 words
+MIN_PHRASE_COUNT = 3
+MIN_PHRASE_LINES = 3
+PRIOR = 500.0  # Dirichlet prior strength (alpha_0) for a big table; scaled down for a small one
+PHRASE_Z = 2.0  # log-odds z-score a pet phrase must reach (about p < 0.05)
+PHRASE_RATIO = 2.0  # and they must use it at least this many times as often as the others
+SAME_COUNT = 1.25  # counts this close are the same habit (a phrase and the words inside it)
+MAX_SAYING = 8  # words, once overlapping phrases are merged
+MAX_PHRASES = 8
+OPENER_SHARE = 0.05
+MAX_OPENERS = 3
+EXAMPLE_WORDS = (6, 30)
+MAX_EXAMPLES = 12
+DESCRIPTION_CHARS = 600
+LENGTH_RANGE = (0.6, 1.6)  # a rewrite's length against the text's
+LENGTH_SLACK = 25  # characters: room for an "Okay so," on a short line
+RESTYLE_MIN_WORDS = 4  # headings and one-liners are read as written
+TEMPO_RANGE = (0.85, 1.15)  # beyond this, time-stretching starts to sound processed
+
+# Discourse words are how people talk ("okay", "like", "literally"): they may be pet words. Other
+# function words ("the", "of") say nothing about style and are never one on their own.
+DISCOURSE = frozenset(
+    {"oh", "ok", "okay", "like", "just", "know", "yeah", "yes", "so", "well", "right", "actually", "literally"}
+    | {"basically", "really", "totally", "wait", "alright", "dude", "guys", "man", "wow", "hey", "huh"}
+)
+FUNCTION = ask.STOP - DISCOURSE
+WORD = re.compile(r"[a-z0-9]+(?:'[a-z]+)?")
+
+
+def tokens(text: str) -> list[str]:
+    return WORD.findall(text.lower())
+
+
+def ngrams(words: list[str]) -> Iterable[tuple[str, ...]]:
+    for n in range(1, MAX_N + 1):
+        for i in range(len(words) - n + 1):
+            gram = tuple(words[i : i + n])
+            if n == 1 and gram[0] in FUNCTION:
+                continue
+            yield gram
+
+
+def _line_counts(lines: list[str]) -> tuple[Counter, Counter]:
+    """(occurrences, lines containing it) of every n-gram."""
+    total, per_line = Counter(), Counter()
+    for line in lines:
+        grams = list(ngrams(tokens(line)))
+        total.update(grams)
+        per_line.update(set(grams))
+    return total, per_line
+
+
+def pet_phrases(mine: list[str], others: list[str], limit: int = MAX_PHRASES) -> list[str]:
+    """Word sequences this player says distinctly more than the rest of the table."""
+    y_i, lines_i = _line_counts(mine)
+    y_j, _ = _line_counts(others)
+    n_i, n_j = sum(y_i.values()), sum(y_j.values())
+    n = n_i + n_j
+    if not n_i:
+        return []
+    # A tenth of the counts, at most PRIOR: smooths rare words without swamping a small table's numbers.
+    prior = min(PRIOR, max(10.0, 0.1 * n))
+    scored = []
+    for gram, a in y_i.items():
+        if a < MIN_PHRASE_COUNT or lines_i[gram] < MIN_PHRASE_LINES:
+            continue
+        b = y_j.get(gram, 0)
+        alpha = prior * (a + b) / n
+        delta = math.log((a + alpha) / (n_i + prior - a - alpha)) - math.log((b + alpha) / (n_j + prior - b - alpha))
+        z = delta / math.sqrt(1 / (a + alpha) + 1 / (b + alpha))
+        rate_i, rate_j = a / n_i, (b + 1) / (n_j + 1)
+        if z >= PHRASE_Z and rate_i >= PHRASE_RATIO * rate_j:
+            scored.append((z, gram, a))
+    scored.sort(key=lambda s: (-s[0], -len(s[1]), s[1]))
+    picked: list[tuple[tuple[str, ...], int]] = []
+    for _, gram, count in scored:
+        # "you know what" says it; "you know" alone, used barely more, doesn't add anything.
+        if any(_contains(longer, gram) and count <= SAME_COUNT * c for longer, c in picked):
+            continue
+        picked = [(g, c) for g, c in picked if not (_contains(gram, g) and c <= SAME_COUNT * count)]
+        picked.append((gram, count))
+    said = [f" {' '.join(tokens(line))} " for line in mine]
+    return [" ".join(g) for g, _ in _merge_overlaps(picked, said)][:limit]
+
+
+def _merge_overlaps(picked: list[tuple[tuple[str, ...], int]], said: list[str]) -> list[tuple[tuple[str, ...], int]]:
+    """Overlapping picks said about as often are one longer saying, if they really are said together:
+    "you know what" + "know what I" + "what I mean" → "you know what I mean" (n-grams stop at MAX_N
+    words; sayings needn't). said: their lines as space-padded tokens."""
+    out = list(picked)
+    merged = True
+    while merged:
+        merged = False
+        for i, j in ((i, j) for i in range(len(out)) for j in range(len(out)) if i != j):
+            (p, pc), (q, qc) = out[i], out[j]
+            k = next((k for k in range(min(len(p), len(q)) - 1, 1, -1) if p[-k:] == q[:k]), 0)
+            if not k or len(p) + len(q) - k > MAX_SAYING:
+                continue
+            whole = p + q[k:]
+            count = sum(f" {' '.join(whole)} " in line for line in said)
+            if count >= MIN_PHRASE_LINES and min(pc, qc) <= SAME_COUNT * count:
+                out[i] = (whole, count)
+                del out[j]
+                merged = True
+                break
+    return out
+
+
+def _contains(longer: tuple[str, ...], shorter: tuple[str, ...]) -> bool:
+    k = len(shorter)
+    return len(longer) > k and any(longer[i : i + k] == shorter for i in range(len(longer) - k + 1))
+
+
+def openers(mine: list[str], others: list[str]) -> list[str]:
+    """First words that start a good share of their lines, more than they start everyone else's."""
+
+    def shares(lines: list[str]) -> Counter:
+        firsts = Counter(t[0] for t in map(tokens, lines) if t)
+        total = sum(firsts.values()) or 1
+        return Counter({w: c / total for w, c in firsts.items()})
+
+    mine_s, other_s = shares(mine), shares(others)
+    out = [w for w, s in mine_s.most_common() if s >= OPENER_SHARE and s >= 1.3 * other_s.get(w, 0.0)]
+    return out[:MAX_OPENERS]
+
+
+def _share(lines: list[dict], test: Callable[[dict], bool]) -> float:
+    return round(sum(map(test, lines)) / len(lines), 3)
+
+
+def profile(records: list[dict], pid: str) -> dict:
+    """Counted speech patterns of player `pid` across saved transcript records (transcript.build shape)."""
+    mine = [m | {"session": r["session"]["id"]} for r in records for m in r["messages"] if m.get("player_id") == pid]
+    others = [m for r in records for m in r["messages"] if m.get("player_id") not in (None, pid)]
+    words = sum(len(tokens(m["text"])) for m in mine)
+    if len(mine) < MIN_LINES or words < MIN_WORDS:
+        raise ValueError(
+            f"Not enough of their lines yet ({len(mine)} lines, {words} words; "
+            f"need {MIN_LINES} and {MIN_WORDS}). Profile them after another session."
+        )
+    timed = [(len(tokens(m["text"])), m["t_end"] - m["t_start"] - 2 * PAD_S) for m in mine]
+    timed = [(w, s) for w, s in timed if s >= MIN_PACE_S and w >= 3]
+    speech_s = sum(s for _, s in timed)
+    texts, other_texts = [m["text"] for m in mine], [m["text"] for m in others]
+    phrases = pet_phrases(texts, other_texts)
+    sessions = {m["session"] for m in mine}
+    return {
+        "player_id": pid,
+        "built_at": int(time.time()),
+        "sessions": len(sessions),
+        "lines": len(mine),
+        "words": words,
+        "wpm": round(60 * sum(w for w, _ in timed) / speech_s) if speech_s >= 30 else None,
+        "words_per_line": round(words / len(mine), 1),
+        "questions": _share(mine, lambda m: m["text"].rstrip().endswith("?")),
+        "exclamations": _share(mine, lambda m: m["text"].rstrip().endswith("!")),
+        "in_character": _share(mine, lambda m: bool(m.get("character"))),
+        "phrases": phrases,
+        "openers": openers(texts, other_texts),
+        "examples": examples(mine, phrases),
+        "description": None,
+    }
+
+
+def examples(mine: list[dict], phrases: list[str]) -> list[str]:
+    """Typical lines for the LLM to imitate: mid-length, confidently theirs, with a pet phrase first,
+    spread across sessions (round robin) so one evening doesn't set the tone."""
+    lo, hi = EXAMPLE_WORDS
+    good = [
+        m for m in mine if lo <= len(tokens(m["text"])) <= hi and not m.get("provisional") and (m.get("confidence") or 0) >= 0.6
+    ]
+    padded = [f" {' '.join(tokens(m['text']))} " for m in good]
+    ranked = sorted(range(len(good)), key=lambda i: (not any(f" {p} " in padded[i] for p in phrases), i))
+    by_session: dict[str, list[str]] = {}
+    for i in ranked:
+        by_session.setdefault(good[i].get("session", ""), []).append(good[i]["text"])
+    out: list[str] = []
+    while len(out) < MAX_EXAMPLES and any(by_session.values()):
+        for queue in by_session.values():
+            if queue and len(out) < MAX_EXAMPLES:
+                out.append(queue.pop(0))
+    return out
+
+
+# ------------------------------------------------------------------ LLM
+
+
+DESCRIBE_SYSTEM = (
+    "You describe how one tabletop role-playing player talks at the table, from counted statistics and "
+    "sample lines. Write 2-4 plain sentences about their speaking style only: pace, sentence length, "
+    "register, energy, humor, habits, and pet phrases. No judgments of the person, no guesses about who "
+    "they are or their life, no markdown, and no quotes longer than six words."
+)
+DESCRIBE_SCHEMA = {
+    "type": "object",
+    "properties": {"description": {"type": "string"}},
+    "required": ["description"],
+    "additionalProperties": False,
+}
+
+RESTYLE_SYSTEM = (
+    "Rewrite the text the way this player would say it out loud at the table: their phrasing, sentence "
+    "length and register. Use their habits lightly: at most one pet phrase every sentence or two, and "
+    "never repeat a sentence. Keep it about as long as the text. Keep every fact: the same events in the "
+    "same order, every name and every number exactly as written, each number once. Add no events, "
+    "questions, names or numbers. They are the one speaking, so their own name may become I. Plain "
+    "spoken text only: no markdown, stage directions or quotation marks around the whole thing."
+)
+RESTYLE_SCHEMA = {
+    "type": "object",
+    "properties": {"text": {"type": "string"}},
+    "required": ["text"],
+    "additionalProperties": False,
+}
+
+
+def _brief(name: str, prof: dict) -> str:
+    pace = f"{prof['wpm']} words per minute" if prof.get("wpm") else "unknown pace"
+    lines = [
+        f"Player: {name}",
+        f"Pace: {pace}; {prof['words_per_line']} words per line on average.",
+        f"Questions: {prof['questions']:.0%} of lines; exclamations: {prof['exclamations']:.0%}; "
+        f"in character: {prof['in_character']:.0%}.",
+        f"Pet phrases: {', '.join(prof['phrases']) or 'none stand out'}.",
+        f"Often starts lines with: {', '.join(prof['openers']) or 'nothing in particular'}.",
+    ]
+    if prof.get("description"):
+        lines.append(f"Style: {prof['description']}")
+    lines.append("Sample lines:")
+    lines += [f"- {e}" for e in prof["examples"]]
+    return "\n".join(lines)
+
+
+def describe(llm, name: str, prof: dict) -> str | None:
+    """A short plain-text description, or None if the LLM is down or answers junk."""
+    try:
+        out = llm.json(DESCRIBE_SYSTEM, _brief(name, prof), DESCRIBE_SCHEMA, max_tokens=400)
+    except Exception:
+        return None
+    text = out.get("description")
+    if not isinstance(text, str):
+        return None
+    text = " ".join(re.sub(r"[*_`#>]", "", text).split())
+    if len(text) < 20:
+        return None
+    if len(text) > DESCRIPTION_CHARS:  # cut at the last sentence that fits
+        cut = text[:DESCRIPTION_CHARS]
+        end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
+        text = cut[: end + 1] if end > 0 else cut.rstrip() + "…"
+    return text
+
+
+def _found(names: Iterable[str], text: str) -> set[str]:
+    low = f" {' '.join(tokens(text))} "
+    return {n for n in names if (t := " ".join(tokens(n))) and f" {t} " in low}
+
+
+def problem(original: str, rewritten: str, names: Iterable[str], own: Iterable[str] = ()) -> str | None:
+    """Why a rewrite can't be used, or None: it must keep every number and every known name, add
+    neither, and stay about as long. `own` (the speaker's names) may become "I"."""
+    if not rewritten.strip():
+        return "it was empty"
+    lo, hi = LENGTH_RANGE
+    if not lo * len(original) - LENGTH_SLACK <= len(rewritten) <= hi * len(original) + LENGTH_SLACK:
+        return f"it was {len(rewritten)} characters for a text of {len(original)}; keep it about as long"
+    before, after = sorted(re.findall(r"\d+", original)), sorted(re.findall(r"\d+", rewritten))
+    if before != after:
+        return f"the numbers changed (the text has {', '.join(before) or 'none'}; write each exactly once)"
+    names, own = list(names), set(own)
+    lost = _found(names, original) - _found(names, rewritten) - own
+    added = _found(names, rewritten) - _found(names, original) - own
+    if lost or added:
+        return f"names changed ({', '.join(sorted(lost | added))}); keep the text's names and add none"
+    return None
+
+
+def restyle(
+    llm,
+    name: str,
+    prof: dict,
+    text: str,
+    names: Iterable[str],
+    own: Iterable[str] = (),
+    progress: Callable[[int, int], None] = lambda done, total: None,
+) -> tuple[str, int]:
+    """(text in their words, paragraphs that kept the original wording). Paragraph by paragraph, so one
+    bad rewrite costs one paragraph. A rejected rewrite is asked for again with the reason (the LLM
+    runs at temperature 0: the same prompt would give the same answer). Headings and other short
+    paragraphs are read as written."""
+    names, own = list(names), list(own)
+    paragraphs = [p for p in re.split(r"\n\s*\n", text.strip()) if p.strip()]
+    brief = _brief(name, prof)
+    out, kept, down = [], 0, False
+    for i, para in enumerate(paragraphs):
+        progress(i, len(paragraphs))
+        if len(tokens(para)) < RESTYLE_MIN_WORDS:
+            out.append(para)
+            continue
+        done, prompt = None, f"{brief}\n\nText:\n{para}"
+        for _ in range(0 if down else 2):
+            try:
+                reply = llm.json(RESTYLE_SYSTEM, prompt, RESTYLE_SCHEMA, max_tokens=1200)
+            except Exception:
+                down = True  # the LLM is down: the rest is read as written, without waiting on it again
+                break
+            candidate = reply.get("text")
+            candidate = " ".join(re.sub(r"[*_`#]", "", candidate).split()).strip('"“”') if isinstance(candidate, str) else ""
+            why = problem(para, candidate, names, own)
+            if why is None:
+                done = candidate
+                break
+            prompt += f"\n\nYour last rewrite was not used: {why}. Rewrite the text again."
+        kept += done is None
+        out.append(done or para)
+    progress(len(paragraphs), len(paragraphs))
+    return "\n\n".join(out), kept
+
+
+def tempo(player_wpm: float | None, clone_wpm: float | None) -> float:
+    """Time-stretch factor that brings the clone to the player's pace (1.0 when either is unknown)."""
+    if not player_wpm or not clone_wpm:
+        return 1.0
+    lo, hi = TEMPO_RANGE
+    return round(min(max(player_wpm / clone_wpm, lo), hi), 3)

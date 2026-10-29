@@ -58,6 +58,20 @@ def wav_bytes(audio: np.ndarray, rate: int = SR, bits: int = 16) -> bytes:
     return buf.getvalue()
 
 
+def tempo(audio: np.ndarray, rate: int, factor: float) -> np.ndarray:
+    """Speech `factor` times as fast at the same pitch (ffmpeg's atempo, 0.5-2)."""
+    if abs(factor - 1) < 0.01:
+        return audio
+    out = subprocess.run(
+        ["ffmpeg", "-nostdin", "-v", "error", "-f", "f32le", "-ar", str(rate), "-ac", "1", "-i", "-"]
+        + ["-filter:a", f"atempo={factor:.4f}", "-f", "f32le", "-"],
+        input=np.asarray(audio, np.float32).tobytes(),
+        check=True,
+        capture_output=True,
+    ).stdout
+    return np.frombuffer(out, np.float32).copy()
+
+
 def read_wav(path: Path | str) -> tuple[np.ndarray, int]:
     """(mono float32, rate) of a 16- or 24-bit PCM WAV, at its own rate (load_audio resamples to 16 kHz)."""
     with wave.open(str(path)) as w:

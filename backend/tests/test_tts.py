@@ -301,6 +301,13 @@ def test_voice_likeness_is_the_cosine_to_their_voiceprint(engine):
 # ------------------------------------------------------------- API
 
 
+class OfflineLLM:
+    """LM Studio isn't running (tests never reach it)."""
+
+    def json(self, *a, **k):
+        raise ConnectionError("tests never call the real LLM")
+
+
 @pytest.fixture
 def api(engine, monkeypatch, tmp_path):
     import silero_vad
@@ -309,7 +316,7 @@ def api(engine, monkeypatch, tmp_path):
     engine.status = "idle"
     engine.clones.synth = FakeSynth()
     vault = server.Vault(lambda: tmp_path / "vault")
-    memory = server.Memory(vault, engine.bus, sessions_dir=engine.sessions_dir)
+    memory = server.Memory(vault, engine.bus, llm=OfflineLLM(), sessions_dir=engine.sessions_dir)
     monkeypatch.setattr(server, "engine", engine)
     monkeypatch.setattr(server, "vault", vault)
     monkeypatch.setattr(server, "memory", memory)
@@ -354,7 +361,7 @@ def test_api_build_say_listen_delete(api, engine):
     assert api.get(clip["url"]).status_code == 404
 
     api.patch(f"/api/players/{pid}", json={"clone_ok": False})
-    assert api.get("/api/clones").json() == {"voices": {}, "clips": []}
+    assert api.get("/api/clones").json() == {"voices": {}, "profiles": {}, "clips": []}
 
 
 def test_api_refuses_without_consent_or_training(api, engine):
@@ -433,3 +440,15 @@ def test_forget_waits_for_a_clip_being_written(clones):
     t.join(5)
     assert len(outcome) == 1
     assert not (clones.root() / "p1").exists()
+
+
+def test_build_measures_the_clones_own_pace_and_speak_can_match_another(clones):
+    audio, rate, spans = train_clip()
+    status = clones.build(job(), lambda: None, "p1", audio, rate, spans, lambda out, sr: 0.5)
+    # The fake reads 14 characters a second: PREVIEW's words over its length.
+    assert status["clone_wpm"] == round(60 * len(tts.PREVIEW.split()) / (len(tts.PREVIEW) / 14))
+    text = "The party crossed the drowned bridge at dawn and nobody fell in."
+    plain = clones.speak(job(), lambda: None, "p1", text, "say", "x", {})
+    faster = clones.speak(job(), lambda: None, "p1", text, "say", "x", {}, tempo=1.15, in_their_words=True)
+    assert faster["seconds"] == pytest.approx(plain["seconds"] / 1.15, abs=0.1)
+    assert (plain["in_their_words"], faster["in_their_words"]) == (False, True)

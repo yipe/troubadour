@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { useCampaign } from "@/lib/campaignStore"
 import { useClones } from "@/lib/cloneStore"
 import { applyEvent, useStore } from "@/lib/store"
-import type { CampaignJob, CloneClip, Clones, Player } from "@/lib/types"
+import type { CampaignJob, CloneClip, Clones, Player, SpeechProfile } from "@/lib/types"
 import { campaignJob, player, session, snapshotBase } from "@/test/fixtures"
 import { bodyOf, mockFetch } from "@/test/mockFetch"
 import { PlayerCard } from "./PlayerCard"
@@ -20,6 +20,23 @@ const VOICE = {
   likeness: 0.812,
   reference_s: 10.4,
   preview_url: "/api/clones/p1/preview.wav?v=1",
+  clone_wpm: 150,
+}
+const PROFILE: SpeechProfile = {
+  player_id: "p1",
+  built_at: 1,
+  sessions: 2,
+  lines: 40,
+  words: 370,
+  wpm: 170,
+  words_per_line: 9.2,
+  questions: 0.75,
+  exclamations: 0,
+  in_character: 0.1,
+  phrases: ["you know what"],
+  openers: ["okay", "so"],
+  examples: [],
+  description: "Quick and curious; asks before she acts.",
 }
 const CLIP: CloneClip = {
   id: "c1",
@@ -28,6 +45,7 @@ const CLIP: CloneClip = {
   title: "Roll for initiative!",
   text: "Roll for initiative!",
   source: {},
+  in_their_words: false,
   seconds: 1.6,
   created_at: 2,
   url: "/api/clones/p1/c1.wav",
@@ -76,7 +94,10 @@ describe("Voice clone dialog", () => {
   it("does nothing until the player agrees", async () => {
     const alice = player({ id: "p1", name: "Alice" })
     load(alice)
-    const { writes } = server({ clones: { voices: {}, clips: [] } }, () => ({ ...alice, clone_ok: true }))
+    const { writes } = server({ clones: { voices: {}, profiles: {}, clips: [] } }, () => ({
+      ...alice,
+      clone_ok: true,
+    }))
     await open(alice)
     expect(screen.queryByRole("button", { name: /Build voice/ })).toBeNull()
 
@@ -91,7 +112,7 @@ describe("Voice clone dialog", () => {
   it("asks for a Train recording before building", async () => {
     const alice = player({ id: "p1", name: "Alice", clone_ok: true })
     load(alice)
-    server({ clones: { voices: {}, clips: [] } })
+    server({ clones: { voices: {}, profiles: {}, clips: [] } })
     await open(alice)
     expect(screen.getByText(/Train Alice first/)).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /Build voice/ })).toBeNull()
@@ -100,7 +121,7 @@ describe("Voice clone dialog", () => {
   it("builds the voice, shows the job, then the preview and the likeness", async () => {
     const alice = player({ id: "p1", name: "Alice", trained: true, clone_ok: true })
     load(alice)
-    const state: { clones: Clones } = { clones: { voices: {}, clips: [] } }
+    const state: { clones: Clones } = { clones: { voices: {}, profiles: {}, clips: [] } }
     const { writes } = server(state, () =>
       campaignJob({ id: "j1", kind: "clone", title: "Alice", player_id: "p1" }),
     )
@@ -123,7 +144,7 @@ describe("Voice clone dialog", () => {
     expect(screen.getByText(/Trying the Train clip cleaned… 1\/3/)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /Build voice/ })).toBeDisabled()
 
-    state.clones = { voices: { p1: VOICE }, clips: [] }
+    state.clones = { voices: { p1: VOICE }, profiles: {}, clips: [] }
     job({ id: "j1", kind: "clone", title: "Alice", player_id: "p1", state: "done" })
     await waitFor(() => expect(screen.getByLabelText("Preview")).toHaveAttribute("src", VOICE.preview_url))
     expect(screen.getByLabelText("Preview")).toHaveAttribute("preload", "none") // never autoplays
@@ -134,7 +155,7 @@ describe("Voice clone dialog", () => {
   it("speaks typed text and lists the clip, which can be deleted", async () => {
     const alice = player({ id: "p1", name: "Alice", trained: true, clone_ok: true })
     load(alice)
-    const state: { clones: Clones } = { clones: { voices: { p1: VOICE }, clips: [] } }
+    const state: { clones: Clones } = { clones: { voices: { p1: VOICE }, profiles: {}, clips: [] } }
     const { writes } = server(state, (url) =>
       url.endsWith("/clone/say")
         ? campaignJob({ id: "s1", kind: "say", title: "Alice", player_id: "p1" })
@@ -147,14 +168,14 @@ describe("Voice clone dialog", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: /Speak/ }))
     await waitFor(() => expect(writes().map((c) => c.url)).toEqual(["/api/players/p1/clone/say"]))
-    expect(bodyOf(writes()[0])).toEqual({ text: "Roll for initiative!" })
+    expect(bodyOf(writes()[0])).toEqual({ text: "Roll for initiative!", in_their_words: false })
     await waitFor(() => expect(screen.getByLabelText("Something for Alice to say")).toHaveValue(""))
 
-    state.clones = { voices: { p1: VOICE }, clips: [CLIP] }
+    state.clones = { voices: { p1: VOICE }, profiles: {}, clips: [CLIP] }
     job({ id: "s1", kind: "say", title: "Alice", player_id: "p1", state: "done" })
     await waitFor(() => expect(screen.getByText("Roll for initiative!")).toBeInTheDocument())
 
-    state.clones = { voices: { p1: VOICE }, clips: [] }
+    state.clones = { voices: { p1: VOICE }, profiles: {}, clips: [] }
     fireEvent.click(screen.getByRole("button", { name: 'Delete "Roll for initiative!"' }))
     await waitFor(() => expect(screen.queryByText("Roll for initiative!")).toBeNull())
     expect(writes().at(-1)).toMatchObject({ method: "DELETE", url: "/api/clones/p1/clips/c1" })
@@ -163,7 +184,7 @@ describe("Voice clone dialog", () => {
   it("confirms before turning it off deletes the voice", async () => {
     const alice = player({ id: "p1", name: "Alice", trained: true, clone_ok: true })
     load(alice)
-    const { writes } = server({ clones: { voices: { p1: VOICE }, clips: [] } }, () => ({
+    const { writes } = server({ clones: { voices: { p1: VOICE }, profiles: {}, clips: [] } }, () => ({
       ...alice,
       clone_ok: false,
     }))
@@ -172,7 +193,9 @@ describe("Voice clone dialog", () => {
 
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false)
     fireEvent.click(screen.getByRole("switch", { name: /agrees to a voice clone/ }))
-    expect(confirm).toHaveBeenCalledWith("Delete Alice's voice clone and every clip made with it?")
+    expect(confirm).toHaveBeenCalledWith(
+      "Delete Alice's voice clone, speech profile and every clip made with them?",
+    )
     expect(writes()).toEqual([])
 
     confirm.mockReturnValue(true)
@@ -180,10 +203,65 @@ describe("Voice clone dialog", () => {
     await waitFor(() => expect(writes().map((c) => c.body)).toEqual([{ clone_ok: false }]))
   })
 
+  it("profiles how they talk and shows the counts, pet phrases and the AI's description", async () => {
+    const alice = player({ id: "p1", name: "Alice", clone_ok: true })
+    load(alice)
+    const state: { clones: Clones } = { clones: { voices: {}, profiles: {}, clips: [] } }
+    const { writes } = server(state, () =>
+      campaignJob({ id: "pr1", kind: "profile", title: "Alice", player_id: "p1" }),
+    )
+    await open(alice)
+    fireEvent.click(screen.getByRole("button", { name: /Profile how they talk/ }))
+    await waitFor(() => expect(writes().map((c) => c.url)).toEqual(["/api/players/p1/profile"]))
+    job({
+      id: "pr1",
+      kind: "profile",
+      title: "Alice",
+      player_id: "p1",
+      state: "running",
+      message: "Describing how they talk…",
+    })
+    expect(screen.getByText(/Describing how they talk…/)).toBeInTheDocument()
+
+    state.clones = { voices: {}, profiles: { p1: PROFILE }, clips: [] }
+    job({ id: "pr1", kind: "profile", title: "Alice", player_id: "p1", state: "done" })
+    await waitFor(() => expect(screen.getByText(PROFILE.description!)).toBeInTheDocument())
+    expect(
+      screen.getByText(
+        "170 words a minute · 9.2 words a line · 75% questions · 0% exclamations · 10% in character",
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByText("“you know what”")).toBeInTheDocument()
+    expect(screen.getByText("Often starts with: okay, so")).toBeInTheDocument()
+    expect(screen.getByText("From 40 lines in 2 sessions.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Update profile/ })).toBeEnabled()
+  })
+
+  it("says it in their words only once they have a profile", async () => {
+    const alice = player({ id: "p1", name: "Alice", trained: true, clone_ok: true })
+    load(alice)
+    const state: { clones: Clones } = { clones: { voices: { p1: VOICE }, profiles: {}, clips: [] } }
+    const { writes } = server(state, () =>
+      campaignJob({ id: "s1", kind: "say", title: "Alice", player_id: "p1" }),
+    )
+    await open(alice)
+    expect(screen.getByRole("switch", { name: /In their words/ })).toHaveAttribute("aria-disabled", "true")
+
+    state.clones = { voices: { p1: VOICE }, profiles: { p1: PROFILE }, clips: [] }
+    act(() => useClones.setState({ clones: state.clones }))
+    fireEvent.click(screen.getByRole("switch", { name: /In their words/ }))
+    fireEvent.change(screen.getByLabelText("Something for Alice to say"), {
+      target: { value: "I open the door." },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /Speak/ }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(bodyOf(writes()[0])).toEqual({ text: "I open the door.", in_their_words: true })
+  })
+
   it("holds off while a session runs", async () => {
     const alice = player({ id: "p1", name: "Alice", trained: true, clone_ok: true })
     load(alice, "running")
-    server({ clones: { voices: {}, clips: [] } })
+    server({ clones: { voices: {}, profiles: {}, clips: [] } })
     await open(alice)
     const build = screen.getByRole("button", { name: /Build voice/ })
     expect(build).toBeDisabled()

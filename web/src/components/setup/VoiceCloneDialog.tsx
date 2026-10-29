@@ -10,6 +10,7 @@ import { attempt, campaignActions, useCampaign } from "@/lib/campaignStore"
 import { refreshClones, useClones } from "@/lib/cloneStore"
 import { actions, useStore } from "@/lib/store"
 import type { CampaignJob, Player } from "@/lib/types"
+import { SpeechProfile } from "./SpeechProfile"
 
 const SAY_MAX = 2000
 
@@ -48,6 +49,7 @@ export function VoiceCloneDialog({
   const jobs = useCampaign((s) => s.jobs)
   const idle = useStore((s) => (s.session?.status ?? "idle") === "idle")
   const [text, setText] = useState("")
+  const [theirWords, setTheirWords] = useState(false)
 
   useEffect(() => {
     if (open) void refreshClones()
@@ -56,17 +58,19 @@ export function VoiceCloneDialog({
   const mine = Object.values(jobs).filter((j) => j.player_id === player.id)
   const building = mine.filter((j) => j.kind === "clone").at(-1)
   const saying = mine.filter((j) => j.kind === "say").at(-1)
+  const profiling = mine.filter((j) => j.kind === "profile").at(-1)
   const busy = [building, saying].some((j) => j && jobActive(j))
   const voice = clones?.voices[player.id]
+  const profile = clones?.profiles[player.id]
   const clips = useMemo(
     () => (clones?.clips ?? []).filter((c) => c.player_id === player.id && c.kind === "say"),
     [clones, player.id],
   )
 
   const setConsent = async (on: boolean) => {
-    const made = !!voice || clips.length > 0
-    if (!on && made && !window.confirm(`Delete ${player.name}'s voice clone and every clip made with it?`))
-      return
+    const made = !!voice || !!profile || clips.length > 0
+    const question = `Delete ${player.name}'s voice clone, speech profile and every clip made with them?`
+    if (!on && made && !window.confirm(question)) return
     const p = await attempt(() => api.updatePlayer(player.id, { clone_ok: on }))
     if (!p) return
     actions.upsertPlayer(p)
@@ -83,7 +87,7 @@ export function VoiceCloneDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{player.name}&apos;s voice clone</DialogTitle>
           <DialogDescription>
@@ -148,7 +152,9 @@ export function VoiceCloneDialog({
                 className="space-y-2"
                 onSubmit={(e) => {
                   e.preventDefault()
-                  void start(() => api.cloneSay(player.id, text.trim())).then((ok) => ok && setText(""))
+                  void start(() => api.cloneSay(player.id, text.trim(), theirWords && !!profile)).then(
+                    (ok) => ok && setText(""),
+                  )
                 }}
               >
                 <Textarea
@@ -159,10 +165,24 @@ export function VoiceCloneDialog({
                   rows={3}
                   onChange={(e) => setText(e.target.value)}
                 />
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button size="sm" type="submit" disabled={!text.trim() || !!why} title={why}>
                     {saying && jobActive(saying) ? <Loader2 className="animate-spin" /> : <Speech />} Speak
                   </Button>
+                  <label
+                    className="flex items-center gap-2 text-sm"
+                    title={
+                      profile ? "Reworded like them by the AI, at their pace" : "Profile how they talk first"
+                    }
+                  >
+                    <Switch
+                      size="sm"
+                      checked={theirWords && !!profile}
+                      disabled={!profile}
+                      onCheckedChange={(on: boolean) => setTheirWords(on)}
+                    />
+                    In their words
+                  </label>
                   <JobLine job={saying} fallback="Speaking…" />
                 </div>
               </form>
@@ -176,6 +196,9 @@ export function VoiceCloneDialog({
                       <span className="flex-1 truncate" title={c.text}>
                         {c.title}
                       </span>
+                      {c.in_their_words && (
+                        <span className="text-xs text-muted-foreground">in their words</span>
+                      )}
                       <span className="text-xs text-muted-foreground tabular-nums">
                         {Math.round(c.seconds)}s
                       </span>
@@ -196,6 +219,8 @@ export function VoiceCloneDialog({
                 ))}
               </ul>
             )}
+
+            <SpeechProfile player={player} profile={profile} job={profiling} />
           </div>
         )}
       </DialogContent>
