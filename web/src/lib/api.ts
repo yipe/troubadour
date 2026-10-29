@@ -7,6 +7,8 @@ import type {
   CloudVault,
   Campaigns,
   CampaignJob,
+  LlmModel,
+  LlmProvider,
   ModelSettings,
   CampaignSuggestions,
   Entity,
@@ -168,9 +170,30 @@ export const api = {
 
   campaign: () => req<Campaign>("GET", "/api/campaign"),
   modelSettings: () => req<ModelSettings>("GET", "/api/settings/models"),
+  /** Only the fields sent change; `hosted` sets one provider's pair without touching the others. */
   saveModelSettings: (
-    body: Pick<ModelSettings, "whisper" | "whisper_improve" | "llm" | "memory" | "llm_url" | "api_key">,
+    body: Partial<
+      Pick<
+        ModelSettings,
+        "whisper" | "whisper_improve" | "llm" | "memory" | "llm_url" | "api_key" | "provider"
+      >
+    > & { hosted?: Partial<ModelSettings["hosted"]> },
   ) => req<ModelSettings>("PUT", "/api/settings/models", body),
+  /** What a hosted provider offers the signed-in account; `error` says why the list is empty, and
+   * `price_note` stands in when the provider's list has no prices. */
+  llmModels: (provider: LlmProvider["id"]) =>
+    req<{ models: LlmModel[]; error: string | null; price_note: string | null }>(
+      "GET",
+      `/api/llm/models?provider=${encodeURIComponent(provider)}`,
+    ),
+  /** Start a browser sign-in (ChatGPT, OpenRouter). `fresh`: ChatGPT with another account. */
+  llmConnect: (provider: LlmProvider["id"], fresh = false) =>
+    req<{ authorize_url: string }>("POST", `/api/llm/${provider}/connect`, { fresh }),
+  llmKey: (provider: LlmProvider["id"], key: string) =>
+    req<LlmProvider[]>("PUT", `/api/llm/${provider}/key`, { key }),
+  /** `revoked`: false when ChatGPT couldn't confirm the sign-out (it can be disconnected in ChatGPT's settings). */
+  llmDisconnect: (provider: LlmProvider["id"]) =>
+    req<{ providers: LlmProvider[]; revoked: boolean }>("POST", `/api/llm/${provider}/disconnect`),
   campaignSuggestions: () => req<CampaignSuggestions>("GET", "/api/campaign/suggestions"),
   createEntity: (b: EntityCreate) => req<Entity>("POST", "/api/campaign/entities", b),
   updateEntity: (name: string, b: EntityPatch) => req<Entity>("PATCH", entityUrl(name), b),

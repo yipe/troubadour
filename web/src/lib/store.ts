@@ -3,6 +3,7 @@ import { toast } from "sonner"
 import { applyAudioEvent } from "./audio"
 import { applyCampaignEvent, campaignActions } from "./campaignStore"
 import { applyCloudEvent } from "./cloudStore"
+import { applyLlmEvent } from "./llmStore"
 import type {
   CampaignInfo,
   LibraryPlayer,
@@ -245,6 +246,8 @@ export function applyEvent(ev: ServerEvent) {
       return applyCampaignEvent(ev)
     case "cloud.updated":
       return applyCloudEvent(ev)
+    case "llm.updated":
+      return applyLlmEvent(ev)
   }
 }
 

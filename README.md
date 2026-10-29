@@ -4,8 +4,8 @@ Live transcription for an in-person D&D table, from one shared microphone. Troub
 speaking and what they said as the game happens, and keeps a campaign wiki (plain Markdown, an
 Obsidian vault) that grows every session.
 
-**Everything runs locally** on one Apple Silicon Mac: speech-to-text, speaker recognition and the
-LLM. No audio or text leaves the machine.
+**Everything runs locally** on one Apple Silicon Mac by default: speech-to-text, speaker recognition and
+the LLM. No audio or text leaves the machine unless you opt in to a hosted language model or cloud backup.
 
 ## What it does
 
@@ -32,7 +32,9 @@ LLM. No audio or text leaves the machine.
   (`corepack enable` gives Yarn 4 and pnpm).
 - [LM Studio](https://lmstudio.ai/) serving an OpenAI-compatible API (default
   `http://127.0.0.1:1235/v1`, model `google/gemma-4-26b-a4b-qat`). Transcription works without it;
-  spelling cleanup and the campaign write-ups need it.
+  spelling cleanup and the campaign write-ups need it. Or, in **Models**, use a hosted model instead:
+  your ChatGPT Go/Plus/Pro plan (Continue with ChatGPT), OpenRouter (sign in), or an Anthropic or
+  DeepSeek API key. Transcripts and notes then go to that provider; audio and voices never do.
 - A [Hugging Face token](https://huggingface.co/settings/tokens) with access to
   [`pyannote/speaker-diarization-community-1`](https://huggingface.co/pyannote/speaker-diarization-community-1)
   (accept its terms once). Models download on first start.

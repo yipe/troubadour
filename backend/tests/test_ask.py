@@ -185,7 +185,7 @@ def test_nothing_found_skips_the_answer_call(setup):
     ("error", "message"),
     [
         (RuntimeError("LM Studio couldn't answer (500: The model has crashed)"), "LM Studio couldn't answer"),
-        (httpx.ConnectError("refused"), "Can't reach LM Studio"),
+        (httpx.ConnectError("refused"), "Can't reach the model server"),
     ],
 )
 def test_llm_errors_are_reported(setup, error, message):

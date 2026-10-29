@@ -14,6 +14,13 @@ def test_saved_models_override_the_environment(tmp_path, monkeypatch):
     assert config.LLM_MODEL in settings.known_llms()
 
 
+def test_menu_labels_name_the_exact_weights():
+    labels = {o["id"]: o["label"] for o in settings.WHISPER_OPTIONS}
+    assert labels[settings.WHISPER_TURBO].startswith("Whisper large-v3-turbo · 809M params · fp16 MLX")
+    assert labels[settings.WHISPER_LARGE].startswith("Whisper large-v3 · 1.55B params · fp16 MLX")
+    assert settings.SPEAKER_LABEL.startswith("WeSpeaker ResNet34")
+
+
 def test_address_accepts_a_port_a_lan_host_or_openrouter():
     assert settings.normalize_llm_url("11434") == "http://127.0.0.1:11434/v1"
     assert settings.normalize_llm_url("10.0.0.8:1234") == "http://10.0.0.8:1234/v1"

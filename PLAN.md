@@ -378,8 +378,8 @@ runs gave byte-identical pages) unless other requests share the GPU.
    the page; keep pass A for glossary facts, names and spellings). It beat the hybrid 20.9 vs 15.6.
 2. Default model: try `qwen/qwen3.8-27b` (base) over Swift on a second session before switching; offer
    Flash-Next as the "best local" choice for machines with 96 GB+ free.
-3. Opt-in hosted write-ups (Sonnet via the OpenRouter setting), off by default like Cloud backup: +4–8 points,
-   ~40 s, but the transcript leaves the Mac, so it needs the user's explicit choice.
+3. Opt-in hosted write-ups: done, see **Hosted language models** below (Sonnet via OpenRouter measured
+   +4–8 points, ~40 s, but the transcript leaves the Mac, so it is the user's explicit choice).
 4. Learn from edits: diff a session page the user corrects against what was generated; turn changed names
    into heard-as spellings and changed claims into facts the next write-up is given.
 5. A second gold session before trusting any change smaller than ~3 points.
@@ -387,9 +387,10 @@ runs gave byte-identical pages) unless other requests share the GPU.
 
 ## Troubadour Cloud (opt-in backup)
 
-The one thing Troubadour sends off the Mac, and only after the user connects: a copy of the open
-campaign's vault, kept as snapshots by a separate service (Troubadour Cloud: Next.js on Vercel, Clerk,
-Neon, private Vercel Blob) that shows it read-only in a browser. Troubadour works the same without it.
+Besides an opt-in hosted language model (next section), the one thing Troubadour sends off the Mac, and only
+after the user connects: a copy of the open campaign's vault, kept as snapshots by a separate service
+(Troubadour Cloud: Next.js on Vercel, Clerk, Neon, private Vercel Blob) that shows it read-only in a browser.
+Troubadour works the same without it.
 
 - `cloud.py`. Sign-in: OAuth 2 authorization code + PKCE (S256) with a loopback redirect to
   `http://127.0.0.1:8765/api/cloud/callback` (fixed: another `TROUBADOUR_PORT` can't sign in); the
@@ -430,6 +431,44 @@ Neon, private Vercel Blob) that shows it read-only in a browser. Troubadour work
 - UI: the header's account menu (avatar, who is signed in, Back up now, Disconnect; Sign in when not connected);
   Campaign header → **Cloud backup** (connect, automatic on/off, include transcripts, back up
   now, last backup or failure, restore, disconnect).
+
+## Hosted language models (opt-in)
+
+Account menu → **Models** → **Language model**: this Mac (LM Studio or any OpenAI-compatible server, the
+default) or a hosted provider. The choice covers every LLM call (live spelling, Improve's spelling pass,
+write-ups, note import, Ask); Whisper and voices always stay on the Mac. Nothing is sent to a provider until
+the user signs in or adds a key **and** picks it. Signing out of the provider in use switches back to this Mac.
+
+- `providers.py`. Secrets in `data/llm_accounts.json` (mode 600), never in API responses (`key …abcd` only).
+  `settings.json` keeps `provider` and each hosted provider's own `{llm, memory}` pair (`hosted`), so
+  switching back and forth loses nothing. `MemoryLLM.wire` picks the API: `chat`, `anthropic`, `responses`.
+- **ChatGPT plan** (`openai`): Sign in with ChatGPT with plan usage, the only way a subscription can pay
+  (https://developers.openai.com/siwc/token-sharing-open-source). Dynamic client registration
+  (`dynamic_agent_client` → an issued `oaiapp_…` id, kept), a per-Mac `ext_agent_host_id` (`urn:uuid:`,
+  kept across sign-outs), PKCE + nonce, loopback `http://127.0.0.1:8765/auth/callback`. The ID token is
+  verified against OpenAI's JWKS (PyJWT). No `chatgpt.tokens.use.direct` in the granted scopes: not
+  connected, and the next sign-in asks again (`prompt=consent`). Access tokens last 1 h; refreshes are
+  serialized (rotating refresh tokens); `invalid_grant` & co. sign out. Sign-out revokes the refresh token
+  at the discovered `revocation_endpoint`. Requests: `POST /v1/responses` with `store: false`,
+  `stream: true`, `instructions`, a strict JSON schema (dropped once if the route refuses it), no
+  temperature or token cap; success only on `response.completed`. Plan errors (usage limit, not eligible)
+  become plain messages with the usage link. Models: `GET /v1/models` → `models[]` with `visibility: list`.
+  One account at a time; "Use another account" registers again.
+- **OpenRouter**: OAuth PKCE (`openrouter.ai/auth`, callback `http://localhost:8765/api/llm/openrouter/callback`)
+  mints a key on the user's account (their credits); a pasted key works too.
+- **Anthropic API**, **DeepSeek API**: pasted keys. Anthropic forbids third-party use of Claude subscription
+  sign-ins (Agent SDK docs), so this is the user's API billing; it uses the native Messages API with
+  `output_config.format` (the OpenAI-compatible layer ignores `response_format`), no temperature, and
+  thinking headroom on `max_tokens`. DeepSeek is OpenAI-compatible chat.
+- API: `GET /api/settings/models` adds `provider`, `hosted`, `providers` (status, never secrets);
+  `PUT /api/settings/models {provider?, hosted?: {id: {llm?, memory?}}}` (400 unless signed in);
+  `GET /api/llm/models?provider=` → `{models: [{id, name, price}], error, price_note}` (only OpenRouter's
+  list has prices, as USD per 1M tokens in/out; the others get a `price_note`); `POST /api/llm/{id}/connect {fresh?}` →
+  `{authorize_url}`; `GET /auth/callback` (ChatGPT), `GET /api/llm/openrouter/callback`;
+  `PUT /api/llm/{id}/key {key}`; `POST /api/llm/{id}/disconnect` → `{providers, revoked}`.
+  Event: `llm.updated {provider, providers}`.
+- Not verified against the live services (tests use fakes of each): the ChatGPT flow needs a real Go/Plus/Pro
+  account to confirm the redirect path and the plan route's acceptance of `text.format`.
 
 ## Spelling cleanup (behind the transcriber)
 

@@ -25,13 +25,13 @@ import re
 import threading
 import time
 import uuid
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
 
-from . import config, dnd_terms, transcript
+from . import config, dnd_terms, providers, transcript
 from .campaign import TYPES, Entity, Vault, add_unique, everyday, norm, safe_name, write_atomic
 
 log = logging.getLogger("troubadour")
@@ -93,27 +93,56 @@ _KIND = {
 
 
 class MemoryLLM:
-    """OpenAI-compatible chat with a JSON schema (LM Studio supports structured output)."""
+    """Chat with a JSON schema. `wire` picks the API: "chat" is OpenAI-compatible chat completions (LM Studio,
+    which supports structured output; OpenRouter; DeepSeek), "anthropic" the Messages API, and "responses" the
+    ChatGPT plan's Responses API, authorized by `token` (the sign-in's current access token; see providers.py)."""
 
-    def __init__(self, url: str = config.LLM_URL, model: str = config.MEMORY_LLM_MODEL, timeout: float = 600, api_key: str = ""):
+    def __init__(
+        self,
+        url: str = config.LLM_URL,
+        model: str = config.MEMORY_LLM_MODEL,
+        timeout: float = 600,
+        api_key: str = "",
+        wire: str = "chat",
+        token: Callable[..., str] | None = None,
+    ):
         self.url = url.rstrip("/")
         self.model = model
         self.api_key = api_key
+        self.wire = wire
+        self.token = token
         self.client = httpx.Client(timeout=timeout)
 
     def _headers(self) -> dict:
-        return {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        secret = self.token() if self.wire == "responses" and self.token else self.api_key
+        return providers.headers(self.wire, secret)
 
     def healthy(self) -> bool:
         """The server answers and has this model."""
         try:
-            r = self.client.get(f"{self.url}/models", headers=self._headers(), timeout=3)
-            data = r.json().get("data", []) if r.status_code == 200 else []
-            return any(isinstance(m, dict) and m.get("id") == self.model for m in data)
-        except Exception:  # down, wrong service on the port, non-JSON reply: all mean "not usable"
+            r = self.client.get(f"{self.url}{providers.models_path(self.wire)}", headers=self._headers(), timeout=10)
+            return r.status_code == 200 and self.model in providers.model_ids(self.wire, r.json())
+        except Exception:  # down, signed out, wrong service on the port, non-JSON reply: all mean "not usable"
             return False
 
     def json(self, system: str, user: str, schema: dict, max_tokens: int = 4000) -> dict:
+        if self.wire == "anthropic":
+            content, cut = self._anthropic(system, user, schema, max_tokens)
+        elif self.wire == "responses":
+            content, cut = self._responses(system, user, schema)
+        else:
+            content, cut = self._chat(system, user, schema, max_tokens)
+        if cut:
+            log.warning("model reply cut off at %s tokens; that part of the job is lost", max_tokens)
+        match = re.search(r"\{.*\}", content, re.S)
+        try:
+            out = json.loads(match.group(0)) if match else {}
+        except json.JSONDecodeError:
+            log.warning("model reply was not JSON (%d chars); that part of the job is lost", len(content))
+            out = {}
+        return out if isinstance(out, dict) else {}
+
+    def _chat(self, system: str, user: str, schema: dict, max_tokens: int) -> tuple[str, bool]:
         thinking = config.MEMORY_REASONING not in ("", "none")
         payload = {
             "model": self.model,
@@ -124,22 +153,32 @@ class MemoryLLM:
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "response_format": {"type": "json_schema", "json_schema": {"name": "out", "strict": True, "schema": schema}},
         }
-        r = self._post(payload)
-        # OpenRouter and some local servers reject reasoning_effort or strict json_schema.
+        r = self._post("/chat/completions", payload)
+        # OpenRouter, DeepSeek and some local servers reject reasoning_effort or strict json_schema.
         if r.status_code == 400:
             payload.pop("reasoning_effort", None)
             payload.pop("response_format", None)
-            r = self._post(payload)
-        if r.is_error:
-            raise RuntimeError(f"The model server couldn't answer ({r.status_code}): {_server_error(r)}")
-        return self._parse(r, payload)
+            r = self._post("/chat/completions", payload)
+        _raise_for(r)
+        choice = r.json()["choices"][0]
+        return choice["message"]["content"] or "", choice.get("finish_reason") == "length"
 
-    def _post(self, payload: dict) -> httpx.Response:
+    def _anthropic(self, system: str, user: str, schema: dict, max_tokens: int) -> tuple[str, bool]:
+        # Current Claude models think by default, and thinking counts against max_tokens.
+        payload = providers.anthropic_payload(self.model, system, user, schema, max_tokens + REASONING_HEADROOM)
+        r = self._post("/messages", payload)
+        if r.status_code == 400:  # a schema structured outputs can't take: the prompts still ask for JSON
+            payload.pop("output_config")
+            r = self._post("/messages", payload)
+        _raise_for(r)
+        return providers.anthropic_text(r.json())
+
+    def _post(self, path: str, payload: dict) -> httpx.Response:
         """One request, tried again on a server error or dropped connection: a write-up is a few dozen
         calls over 20 minutes, and one LM Studio hiccup (a 500, seen in practice) used to sink it all."""
         for attempt in range(LLM_RETRIES + 1):
             try:
-                r = self.client.post(f"{self.url}/chat/completions", headers=self._headers(), json=payload)
+                r = self.client.post(f"{self.url}{path}", headers=self._headers(), json=payload)
             except (httpx.ConnectError, httpx.RemoteProtocolError):  # not a timeout: that would just wait again
                 if attempt == LLM_RETRIES:
                     raise
@@ -150,19 +189,42 @@ class MemoryLLM:
             time.sleep(LLM_RETRY_WAIT_S)
         raise AssertionError("unreachable")
 
-    @staticmethod
-    def _parse(r: httpx.Response, payload: dict) -> dict:
-        choice = r.json()["choices"][0]
-        content = choice["message"]["content"] or ""
-        if choice.get("finish_reason") == "length":
-            log.warning("model reply cut off at %s tokens; that part of the job is lost", payload["max_tokens"])
-        match = re.search(r"\{.*\}", content, re.S)
-        try:
-            out = json.loads(match.group(0)) if match else {}
-        except json.JSONDecodeError:
-            log.warning("model reply was not JSON (%d chars); that part of the job is lost", len(content))
-            out = {}
-        return out if isinstance(out, dict) else {}
+    def _responses(self, system: str, user: str, schema: dict) -> tuple[str, bool]:
+        """One streamed ChatGPT plan request. Tried again like _post, after one token refresh on a 401, and
+        once without the JSON schema if the plan route won't take it."""
+        if self.token is None:
+            raise providers.NotConnected("Sign in with ChatGPT in Models first.")
+        payload = providers.responses_payload(self.model, system, user, schema)
+        rejected = None
+        for attempt in range(LLM_RETRIES + 1):
+            token = self.token(rejected)
+            try:
+                with self.client.stream(
+                    "POST", f"{self.url}/responses", headers=providers.headers("responses", token), json=payload
+                ) as r:
+                    if r.status_code == 200:
+                        return providers.read_stream(r.iter_lines())
+                    r.read()
+            except (httpx.ConnectError, httpx.RemoteProtocolError):
+                if attempt == LLM_RETRIES:
+                    raise
+                time.sleep(LLM_RETRY_WAIT_S)
+                continue
+            if r.status_code == 401 and rejected is None:
+                rejected = token
+            elif r.status_code == 400 and "text" in payload and "subscription_sharing_unsupported_capability" in r.text:
+                payload.pop("text")
+            elif r.status_code < 500 or attempt == LLM_RETRIES:
+                raise providers.ProviderError(providers.http_error(r))
+            else:
+                log.warning("ChatGPT error %s; trying again", r.status_code)
+                time.sleep(LLM_RETRY_WAIT_S)
+        raise providers.ProviderError(providers.http_error(r))
+
+
+def _raise_for(r: httpx.Response) -> None:
+    if r.is_error:
+        raise RuntimeError(f"The model server couldn't answer ({r.status_code}): {_server_error(r)}")
 
 
 def _server_error(r: httpx.Response) -> str:

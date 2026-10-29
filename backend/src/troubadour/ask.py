@@ -508,7 +508,7 @@ class Asker:
                 self._answer(a)
                 a.state = "done"
             except httpx.TransportError:
-                a.state, a.message = "error", f"Can't reach LM Studio at {self.llm.url}."
+                a.state, a.message = "error", f"Can't reach the model server at {self.llm.url}."
             except Exception as e:
                 log.exception("ask failed")
                 a.state, a.message = "error", str(e) if isinstance(e, RuntimeError | ValueError) else f"{type(e).__name__}: {e}"
