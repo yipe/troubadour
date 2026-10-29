@@ -257,8 +257,7 @@ def test_preview_text_falls_back_to_their_own_lines(reply):
     prof = talk.profile(table(), AL)
     text, kind = talk.preview_text(ScriptedLLM(reply), "Al", prof, ["Marla"])
     assert kind == "their lines"
-    assert text.startswith(prof["examples"][0])
-    assert len(talk.tokens(text)) >= round(20 * prof["wpm"] / 60)
+    assert text == prof["monologue"] != ""
 
 
 def test_preview_text_may_use_their_own_name():
@@ -266,3 +265,28 @@ def test_preview_text_may_use_their_own_name():
     written = "Okay so Al is going first, you know what? " * 8
     assert talk.preview_text(ScriptedLLM({"text": written}), "Al", prof, ["Al"], own=["Al"])[1] == "ai"
     assert talk.preview_text(ScriptedLLM({"text": written}), "Al", prof, ["Al"])[1] == "their lines"
+
+
+def test_monologue_is_one_stretch_of_their_talk_not_lines_from_all_over():
+    def at(pid, t, text, **kw):
+        return msg(pid, text, t_start=t, t_end=t + 3, **kw)
+
+    records = [
+        {
+            "session": {"id": "a"},
+            "messages": [
+                at(AL, 0, "So the plan is simple."),
+                at(BO, 4, "The guard looks up."),  # someone else: the stretch ends
+                at(AL, 8, "We go in through the kitchen."),
+                at(AL, 12, "Then we grab the map and run for the river before anyone notices."),
+                at(AL, 16, "Unless the cook is awake.", confidence=0.3),  # not surely them: ends it
+                at(AL, 20, "Lone line much later on its own here."),
+            ],
+        },
+        {"session": {"id": "b"}, "messages": [at(AL, 0, "Hi."), at(AL, 30, "Bye.")]},  # 27 s apart: two stretches
+    ]
+    assert talk.monologue(records, AL, max_words=50) == (
+        "We go in through the kitchen. Then we grab the map and run for the river before anyone notices."
+    )
+    assert talk.monologue(records, AL, max_words=8) == "Lone line much later on its own here."  # whole lines, fit
+    assert talk.monologue(records, BO, max_words=50) == "The guard looks up."

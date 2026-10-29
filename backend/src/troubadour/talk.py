@@ -52,6 +52,7 @@ TEMPO_RANGE = (0.85, 1.15)  # beyond this, time-stretching starts to sound proce
 PREVIEW_S = 20.0  # the voice's sample: long enough to hear how they talk
 DEFAULT_WPM = 160
 PREVIEW_WORDS = (0.6, 1.5)  # a written sample's word count against the target
+RUN_GAP_S = 4.0  # their lines this close, with nobody else between, are one stretch of talk
 
 # Discourse words are how people talk ("okay", "like", "literally"): they may be pet words. Other
 # function words ("the", "of") say nothing about style and are never one on their own.
@@ -186,13 +187,14 @@ def profile(records: list[dict], pid: str) -> dict:
     texts, other_texts = [m["text"] for m in mine], [m["text"] for m in others]
     phrases = pet_phrases(texts, other_texts)
     sessions = {m["session"] for m in mine}
+    wpm = round(60 * sum(w for w, _ in timed) / speech_s) if speech_s >= 30 else None
     return {
         "player_id": pid,
         "built_at": int(time.time()),
         "sessions": len(sessions),
         "lines": len(mine),
         "words": words,
-        "wpm": round(60 * sum(w for w, _ in timed) / speech_s) if speech_s >= 30 else None,
+        "wpm": wpm,
         "words_per_line": round(words / len(mine), 1),
         "questions": _share(mine, lambda m: m["text"].rstrip().endswith("?")),
         "exclamations": _share(mine, lambda m: m["text"].rstrip().endswith("!")),
@@ -200,8 +202,31 @@ def profile(records: list[dict], pid: str) -> dict:
         "phrases": phrases,
         "openers": openers(texts, other_texts),
         "examples": examples(mine, phrases),
+        "monologue": monologue(records, pid, round(PREVIEW_S * (wpm or DEFAULT_WPM) / 60)),
         "description": None,
     }
+
+
+def monologue(records: list[dict], pid: str, max_words: int) -> str:
+    """Their longest stretch of talk: consecutive confident lines of theirs in one session, nobody else
+    in between, under RUN_GAP_S apart, its whole lines up to max_words. One train of thought reads
+    as something they'd say; good lines from different evenings stitched together don't."""
+    best, best_words = [], 0
+    for r in records:
+        run, run_words, last_end = [], 0, None
+        for m in sorted(r["messages"], key=lambda m: m["t_start"]):
+            if m.get("player_id") != pid or m.get("provisional") or (m.get("confidence") or 0) < EXAMPLE_CONFIDENCE:
+                run, run_words, last_end = [], 0, None  # someone else spoke, or it's not surely them
+                continue
+            if last_end is not None and m["t_start"] - last_end > RUN_GAP_S:
+                run, run_words = [], 0
+            words = len(tokens(m["text"]))
+            if run_words + words <= max_words or not run:
+                run, run_words = [*run, m["text"].strip()], run_words + words
+            last_end = m["t_end"]
+            if run_words > best_words:
+                best, best_words = run, run_words
+    return " ".join(best)
 
 
 def examples(mine: list[dict], phrases: list[str]) -> list[str]:
@@ -370,7 +395,7 @@ def preview_text(
 ) -> tuple[str, str]:
     """(about `seconds` of something they would say, how it was made). "ai": the LLM wrote it from their
     profile; "their lines": the LLM was offline or wrote junk (wrong length, a name they never used),
-    so it's their own example lines from the transcripts, to length; "" if there are none."""
+    so it's their longest stretch of talk from the transcripts (monologue); "" if there is none."""
     target = round(seconds * (prof.get("wpm") or DEFAULT_WPM) / 60)
     try:
         text = _ask(llm, PREVIEW_SYSTEM, f"{_brief(name, prof)}\n\nWrite about {target} words.", max_tokens=800)
@@ -381,13 +406,8 @@ def preview_text(
     lo, hi = PREVIEW_WORDS
     if lo * target <= len(tokens(text)) <= hi * target and _found(names, text) <= allowed:
         return text, "ai"
-    lines, total = [], 0
-    for line in prof["examples"]:
-        if total >= target:
-            break
-        lines.append(line)
-        total += len(tokens(line))
-    return " ".join(lines), "their lines" if lines else ""
+    passage = prof.get("monologue") or ""
+    return passage, "their lines" if passage else ""
 
 
 def tempo(player_wpm: float | None, clone_wpm: float | None) -> float:
