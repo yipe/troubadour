@@ -257,7 +257,11 @@ export interface CampaignJob {
 export interface CloneVoice {
   player_id: string
   built_at: number /* epoch s */
-  cleaned: boolean /* the reference is the Train recording after noise removal */
+  /* What the reference came from ("Train recording", "recording of 2026-10-12"), cleaned of room noise;
+   * the build tries the Train recording and the cleanest session recordings and keeps the closest.
+   * Absent on voices built before the search. */
+  source?: string
+  tried?: { source: string; likeness: number | null }[]
   likeness: number | null /* cosine of the preview to their voiceprint (the speaker-ID model's view) */
   reference_s: number
   preview_url: string

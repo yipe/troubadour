@@ -110,7 +110,6 @@ describe("History viewer: write up for campaign", () => {
     const voice = {
       player_id: "p1",
       built_at: 1,
-      cleaned: false,
       likeness: 0.8,
       reference_s: 10,
       preview_url: "/x",
@@ -171,7 +170,6 @@ describe("History viewer: write up for campaign", () => {
     const voice = {
       player_id: "p1",
       built_at: 1,
-      cleaned: false,
       likeness: 0.8,
       reference_s: 10,
       preview_url: "/x",

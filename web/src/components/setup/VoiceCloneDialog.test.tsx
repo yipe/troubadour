@@ -16,7 +16,11 @@ const initialCampaign = useCampaign.getState()
 const VOICE = {
   player_id: "p1",
   built_at: 1,
-  cleaned: true,
+  source: "recording of 2026-10-12",
+  tried: [
+    { source: "Train recording", likeness: 0.62 },
+    { source: "recording of 2026-10-12", likeness: 0.812 },
+  ],
   likeness: 0.812,
   reference_s: 10.4,
   preview_url: "/api/clones/p1/preview.wav?v=1",
@@ -148,7 +152,9 @@ describe("Voice clone dialog", () => {
     job({ id: "j1", kind: "clone", title: "Alice", player_id: "p1", state: "done" })
     await waitFor(() => expect(screen.getByLabelText("Preview")).toHaveAttribute("src", VOICE.preview_url))
     expect(screen.getByLabelText("Preview")).toHaveAttribute("preload", "none") // never autoplays
-    expect(screen.getByText("Likeness 0.81")).toBeInTheDocument()
+    expect(
+      screen.getByText("Likeness 0.81 · from the recording of 2026-10-12, best of 2"),
+    ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /Rebuild voice/ })).toBeEnabled()
   })
 

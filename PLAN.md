@@ -404,14 +404,28 @@ Face on first use, like Whisper, then run locally.
   for the decoder, 6 s for the speech-token model), so more audio doesn't help; cleaner audio does.
   The reference is the player's Train recording (`<voice>.hq.wav`, the mic's own rate, else the
   16 kHz clip), silences cut by Silero, first 10 s of speech.
-- **Build picks by measurement.** The clone copies room and noise along with the voice. Building
-  tries the clip as recorded and after DeepFilterNet, speaks one preview line from each, and keeps
-  whichever the speaker-ID model scores closer to the player's voiceprint (`likeness`, shown).
-  Spike (2026-10-29, synthetic `say` voices, M5 Max): a clean reference cloned at 0.85 cosine
-  (another voice: 0.18–0.33); the same reference through a simulated far-field room with table
-  babble at 12 dB SNR dropped to 0.48, and denoising it first recovered 0.56 with a far cleaner
-  floor (clone SNR 29 → 51 dB). Whisper read the clones back word for word except fantasy names.
-  Speed: ~0.3–0.5× real time warm; first load ~35 s.
+- **Build searches for the cleanest reference.** The clone copies room and noise along with the
+  voice, and its likeness follows the reference's cleanliness far more than its length. Candidates:
+  the Train recording's speech, then up to 3 sessions' worth of their cleanest lines from mic
+  recordings (`audio.wav`, at the mic's own rate): their own voice, not provisional, confidence
+  ≥ 0.75, 2.5–12 s, nobody else within 0.3 s, sounding like their voiceprint (cos ≥ 0.5), ranked by
+  how far speech stands above the room (95th vs 10th percentile of 20 ms frame RMS); per session the
+  cleanest lines up to 10 s (≤ 300 lines measured per build). Every candidate goes through
+  DeepFilterNet (always: the voice should sound clean, and the likeness, measured against a
+  table-mic voiceprint, prefers keeping the room, so it isn't asked), speaks the preview 3 times,
+  and is judged on the mean likeness (one generation varies by ~0.1). `voice.json` keeps `source`
+  and every candidate's score (`tried`).
+- **Measurements** (`spike/clone_reference.py`, synthetic `say` voices, M5 Max, 3 generations per
+  row; truth = cosine to the voice's clean centroid): a noisy 15 dB table-mic reference 0.55–0.65;
+  the same voice from a quiet recording 0.84. Averaging Chatterbox's two speaker embeddings (voice
+  encoder and x-vector) over six noisy clips (~60 s) instead of the reference alone: worse (0.51),
+  so more audio is used to *find* clean speech, not to average. Denoising a noisy reference: clone
+  floor 35 → 55 dB, likeness within run-to-run noise (−0.09 here, +0.08 at 12 dB SNR earlier);
+  also denoising the clone's output: +6 dB floor, −0.06, not done. Scratch smoke (noisy Train clip,
+  quieter session recording): the build picked the session, 0.68 → 0.77, in 17 s. Real players
+  first built from Train clips alone: 0.45–0.63. Earlier: a clean reference cloned at 0.85 (another
+  voice 0.18–0.33); Whisper read clones back word for word except fantasy names. Speed: ~0.3–0.5×
+  real time warm; first load ~35 s.
 - **Reading.** `speakable` turns a note into paragraphs (no frontmatter, links, tags, tables;
   headings and list items become sentences; Mentioned, Transcript, Highlights and Table moments
   are skipped). `chunks` packs whole sentences up to 280 characters, never across a paragraph

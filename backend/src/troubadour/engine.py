@@ -2337,6 +2337,50 @@ class Engine:
             return native, rate, spans
         return audio, SR, spans
 
+    def clone_candidates(self, pid: str) -> list[tuple[str, np.ndarray, int]]:
+        """References to try for their clone, as (label, speech, rate): the Train recording, then up to
+        tts.SESSION_REFS stretches of session recordings at the mic's own rate. Session lines are their
+        solo, confident, own-voice lines (tts.solo_lines) that sound like their voiceprint, ranked by
+        how far the speech stands above the room (tts.noise_floor_db): hours of play hold quieter
+        moments than one Train clip, and the clone's likeness follows the reference's cleanliness."""
+        if not self._wait_ready():  # a Build clicked while the app is still starting
+            raise RuntimeError(self.load_error or "The speech models didn't load.")
+        audio, rate, spans = self.clone_source(pid)
+        out = [("Train recording", tts.speech_only(audio, rate, spans), rate)]
+        lines = []
+        for path in sorted(self.sessions_dir().glob("*/transcript.json")):
+            wav = path.parent / "audio.wav"  # mic sessions: replays have no recording of their own
+            if not wav.is_file():
+                continue
+            try:
+                messages = json.loads(path.read_text())["messages"]
+            except (OSError, ValueError, KeyError):
+                continue
+            lines += [(path.parent.name, wav, s, e) for s, e in tts.solo_lines(messages, pid)]
+        # Longest first when there are too many to measure: more speech per ffmpeg call.
+        lines = sorted(lines, key=lambda line: -(line[3] - line[2]))[: tts.MAX_LINES]
+        with self.lock:
+            v = self._train_voice(pid)
+            target = self.matcher.vector(v.id).copy() if v and self.matcher and v.id in self.matcher.names else None
+        scored, wavs = [], {}
+        for sid, wav, s, e in lines:
+            try:
+                clip = load_audio(wav, s, e)
+            except subprocess.CalledProcessError:
+                continue
+            with self.embed_lock:
+                vec = embed_span(self.embedder, clip, 0.0, len(clip) / SR)
+            if vec is None or (target is not None and float(target @ vec) < tts.SELF_LIKENESS):
+                continue  # labelled theirs, but doesn't sound like them: not worth cloning from
+            scored.append((tts.noise_floor_db(clip, SR), sid, s, e))
+            wavs[sid] = wav
+        for sid, picked in tts.pick_sessions(scored):
+            with wave.open(str(wavs[sid])) as w:
+                native = w.getframerate()
+            pieces = [load_audio(wavs[sid], s, e, rate=native) for s, e in picked]
+            out.append((f"recording of {sid[:10]}", tts.join(pieces, native), native))
+        return out
+
     def voice_likeness(self, pid: str, audio: np.ndarray, rate: int) -> float | None:
         """How much `audio` sounds like them to the speaker-ID model: cosine to their Train voiceprint."""
         import soxr

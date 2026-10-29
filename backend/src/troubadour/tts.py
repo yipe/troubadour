@@ -39,6 +39,16 @@ CPS_TYPICAL = 14.0
 CHECK_MIN_CHARS = 40
 ATTEMPTS = 2
 PREVIEW = "Previously, on our adventure: the party crossed the river at dawn, and nobody fell in. Mostly."
+# Building a voice: each candidate reference speaks the preview this many times and is judged on the
+# mean likeness. One generation varies by ~0.1 (spike/clone_reference.py): one would pick by luck.
+PREVIEW_RUNS = 3
+# Candidate references from session recordings: solo lines of their own voice, confidently theirs.
+SOLO_GAP_S = 0.3  # nobody else talks within this of the line
+LINE_S = (2.5, 12.0)
+LINE_CONFIDENCE = 0.75
+MAX_LINES = 300  # measured per build (ffmpeg seek + one embedding each): bounded
+SESSION_REFS = 3  # sessions tried, the cleanest first (one session: one mic position and room)
+SELF_LIKENESS = 0.5  # a line must sound this much like their voiceprint to count as theirs
 SAY_MAX_CHARS = 2000
 READ_MAX_CHARS = 30000  # about half an hour read aloud
 CLIP_TEXT_CHARS = 300  # what a clip's metadata keeps of its text
@@ -67,6 +77,68 @@ def speech_only(audio: np.ndarray, rate: int, spans: list[tuple[float, float]], 
         if total >= int(seconds * rate):
             break
     return normalize(np.concatenate(parts[:-1])) if parts else np.zeros(0, np.float32)
+
+
+def noise_floor_db(audio: np.ndarray, rate: int) -> float:
+    """Loud vs quiet 20 ms frames, in dB: how far the speech stands above the room. Higher is cleaner."""
+    n = max(1, int(0.02 * rate))
+    frames = audio[: len(audio) // n * n].reshape(-1, n)
+    if len(frames) < 10:
+        return 0.0
+    rms = np.sqrt((frames**2).mean(axis=1)) + 1e-9
+    return float(20 * np.log10(np.percentile(rms, 95) / np.percentile(rms, 10)))
+
+
+def solo_lines(messages: list[dict], pid: str) -> list[tuple[float, float]]:
+    """(start, end) of their lines fit to clone from: their own voice (no character), settled and
+    confident, 2.5-12 s, with nobody else talking just before, during or after."""
+    others = sorted((m["t_start"], m["t_end"]) for m in messages if m.get("player_id") != pid)
+    out = []
+    for m in messages:
+        t0, t1 = m["t_start"], m["t_end"]
+        if (
+            m.get("player_id") != pid
+            or m.get("character")
+            or m.get("provisional")
+            or (m.get("confidence") or 0) < LINE_CONFIDENCE
+            or not LINE_S[0] <= t1 - t0 <= LINE_S[1]
+        ):
+            continue
+        if any(s < t1 + SOLO_GAP_S and e > t0 - SOLO_GAP_S for s, e in others):
+            continue
+        out.append((t0, t1))
+    return out
+
+
+def pick_sessions(scored: list[tuple[float, str, float, float]], limit: int = SESSION_REFS) -> list[tuple[str, list]]:
+    """scored: (noise floor dB, session, start, end) of lines that are theirs. Up to `limit` sessions, the
+    cleanest first (mean floor of the lines that would make the reference), each with its cleanest lines
+    up to REF_S of speech; sessions with under MIN_REF_S are skipped."""
+    by_session: dict[str, list[tuple[float, float, float]]] = {}
+    for floor, sid, s, e in sorted(scored, key=lambda x: (-x[0], x[2])):
+        by_session.setdefault(sid, []).append((floor, s, e))
+    picks = []
+    for sid, lines in by_session.items():
+        chosen, total = [], 0.0
+        for floor, s, e in lines:
+            if total >= REF_S:
+                break
+            chosen.append((floor, s, e))
+            total += e - s
+        if total >= MIN_REF_S:
+            picks.append((float(np.mean([f for f, _, _ in chosen])), sid, [(s, e) for _, s, e in chosen]))
+    picks.sort(key=lambda p: -p[0])
+    return [(sid, spans) for _, sid, spans in picks[:limit]]
+
+
+def join(pieces: list[np.ndarray], rate: int) -> np.ndarray:
+    """Clips back to back with short gaps, peak-normalized, at most REF_S of speech."""
+    spans, t, parts = [], 0.0, []
+    for p in pieces:
+        parts.append(p)
+        spans.append((t, t + len(p) / rate))
+        t += len(p) / rate
+    return speech_only(np.concatenate(parts), rate, spans) if parts else np.zeros(0, np.float32)
 
 
 # ------------------------------------------------------------------ text
@@ -335,36 +407,49 @@ class Clones:
         job,
         emit: Callable[[], None],
         pid: str,
-        audio: np.ndarray,
-        rate: int,
-        spans: list[tuple[float, float]],
+        candidates: list[tuple[str, np.ndarray, int]],
         likeness: Callable[[np.ndarray, int], float | None],
     ) -> dict:
-        """The reference from the Train clip (as recorded or cleaned, whichever clones closer)."""
+        """Their voice from whichever candidate reference clones closest. candidates: (label, speech,
+        rate): the Train recording's speech, then the cleanest stretches of session recordings. Every
+        reference goes through DeepFilterNet first: the clone copies whatever room it hears, and the
+        voice should sound clean (the likeness, measured against a table-mic voiceprint, would rather
+        keep the room: it isn't asked)."""
         self._check_allowed(pid)
-        ref = speech_only(audio, rate, spans)
-        if len(ref) < MIN_REF_S * rate:
-            raise ValueError(f"The Train recording has under {MIN_REF_S:.0f} s of speech; train again.")
-        job.total, job.message = 3, "Loading the voice model (the first time downloads it)…"
+        candidates = [(label, a, r) for label, a, r in candidates if len(a) >= MIN_REF_S * r]
+        if not candidates:
+            raise ValueError(f"No recording of them has {MIN_REF_S:.0f} s of speech; train again.")
+        job.done, job.total = 0, len(candidates) * PREVIEW_RUNS
+        job.message = "Loading the voice model (the first time downloads it)…"
         emit()
-        clean, clean_rate = self.synth.denoise(ref, rate)
-        job.done = 1
-        best = None
-        for label, a, r in (("as recorded", ref, rate), ("cleaned", normalize(clean), clean_rate)):
-            job.message = f"Trying the Train clip {label}…"
+        tried, best = [], None
+        for label, audio, rate in candidates:
+            job.message = f"Trying the {label}…"
             emit()
-            preview = self._speak(PREVIEW, self.synth.voice(a, r))
-            score = likeness(preview, OUT_SR)
-            if best is None or (score if score is not None else -1.0) > (best[3] if best[3] is not None else -1.0):
-                best = (label, a, r, score, preview)
-            job.done += 1
-        label, a, r, score, preview = best
+            clean, clean_rate = self.synth.denoise(audio, rate)
+            clean = normalize(clean)
+            voice = self.synth.voice(clean, clean_rate)
+            runs = []
+            for _ in range(PREVIEW_RUNS):
+                preview = self._speak(PREVIEW, voice)
+                runs.append((likeness(preview, OUT_SR), preview))
+                job.done += 1
+                emit()
+            scores = [s for s, _ in runs if s is not None]
+            score = float(np.mean(scores)) if scores else None
+            tried.append({"source": label, "likeness": None if score is None else round(score, 3)})
+            if best is None or (score if score is not None else -1.0) > (best[0] if best[0] is not None else -1.0):
+                # The preview kept is this reference's closest generation.
+                preview = max(runs, key=lambda r: r[0] if r[0] is not None else -1.0)[1]
+                best = (score, label, clean, clean_rate, preview)
+        score, label, ref, rate, preview = best
         meta = {
             "player_id": pid,
             "built_at": int(time.time()),
-            "cleaned": label == "cleaned",
+            "source": label,
+            "tried": tried,
             "likeness": None if score is None else round(score, 3),
-            "reference_s": round(len(a) / r, 1),
+            "reference_s": round(len(ref) / rate, 1),
             # The clone's own pace, so "in their words" can time-stretch it to the player's (talk.tempo).
             "clone_wpm": round(60 * len(PREVIEW.split()) / max(speech_seconds(preview, OUT_SR), 1e-3)),
         }
@@ -372,10 +457,10 @@ class Clones:
         with self._lock:
             self._check_allowed(pid)
             folder.mkdir(parents=True, exist_ok=True)
-            _write_atomic(folder / "reference.wav", wav_bytes(a, r, bits=24))
+            _write_atomic(folder / "reference.wav", wav_bytes(ref, rate, bits=24))
             _write_atomic(folder / "preview.wav", wav_bytes(preview, OUT_SR))
             _write_atomic(folder / "voice.json", json.dumps(meta).encode())
-        job.message = "Voice ready" + ("" if score is None else f" (likeness {score:.2f})")
+        job.message = f"Voice ready from the {label}" + ("" if score is None else f" (likeness {score:.2f})")
         return self.status(pid) or meta
 
     def speak(

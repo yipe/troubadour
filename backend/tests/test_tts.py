@@ -25,9 +25,11 @@ class FakeSynth:
         self.cps, self.bad = cps, bad
         self.said: list[str] = []
         self.on_speak = lambda: None
+        self.denoised: list[float] = []
 
     def denoise(self, audio, rate):
-        return np.full_like(audio, 0.2), rate  # "clean": a flat level, unlike the sine it came from
+        self.denoised.append(len(audio) / rate)
+        return audio * 0.5, rate  # quieter; the reference is peak-normalized again after
 
     def voice(self, audio, rate):
         return float(np.abs(audio).mean())
@@ -157,37 +159,57 @@ def test_wav_round_trip_at_any_rate_and_depth(tmp_path):
 # ------------------------------------------------------------- Clones
 
 
-def test_build_keeps_the_reference_that_clones_closer(clones):
+def cands(audio, rate, spans):
+    return [("Train recording", tts.speech_only(audio, rate, spans), rate)]
+
+
+def test_build_keeps_the_reference_that_clones_closest_and_always_cleans_it(clones):
     audio, rate, spans = train_clip()
-    status = clones.build(job(), lambda: None, "p1", audio, rate, spans, lambda out, sr: float(out[0]))
-    assert status["cleaned"] is True  # the flat "cleaned" reference reads louder: more alike here
+    flat = np.full(int(5 * 48000), 0.3, np.float32)  # reads louder than a sine once normalized
+    candidates = [("Train recording", tts.speech_only(audio, rate, spans), rate), ("recording of 2026-10-12", flat, 48000)]
+    j = job()
+    status = clones.build(j, lambda: None, "p1", candidates, lambda out, sr: float(out[0]))
+    assert status["source"] == "recording of 2026-10-12"
     assert status["likeness"] == pytest.approx(0.9, abs=1e-3)
+    assert [t["source"] for t in status["tried"]] == ["Train recording", "recording of 2026-10-12"]
+    assert (j.done, j.total) == (2 * tts.PREVIEW_RUNS, 2 * tts.PREVIEW_RUNS)
+    assert len(clones.synth.denoised) == 2  # every reference is cleaned: the clone copies the room
+    assert len(clones.synth.said) == 2 * tts.PREVIEW_RUNS  # several tries each: one is luck
     assert status["preview_url"].startswith("/api/clones/p1/preview.wav?v=")
-    ref, ref_rate = read_wav(clones.root() / "p1" / "reference.wav")
-    assert ref_rate == 48000
+    assert read_wav(clones.root() / "p1" / "reference.wav")[1] == 48000
     assert clones.file("p1", "preview").is_file()
 
-    status = clones.build(job(), lambda: None, "p1", audio, rate, spans, lambda out, sr: -float(out[0]))
-    assert status["cleaned"] is False  # as recorded, this time
+    status = clones.build(j, lambda: None, "p1", candidates, lambda out, sr: -float(out[0]))
+    assert status["source"] == "Train recording"
     assert clones.voices() == {"p1": status}
+
+
+def test_build_judges_a_reference_on_its_mean_likeness(clones):
+    audio, rate, spans = train_clip()
+    scores = iter([0.9, 0.1, 0.1, 0.5, 0.5, 0.5])  # one lucky try mustn't win
+    flat = np.full(int(5 * 48000), 0.3, np.float32)
+    candidates = [("Train recording", tts.speech_only(audio, rate, spans), rate), ("recording of 2026-10-12", flat, 48000)]
+    status = clones.build(job(), lambda: None, "p1", candidates, lambda out, sr: next(scores))
+    assert status["source"] == "recording of 2026-10-12"
+    assert [t["likeness"] for t in status["tried"]] == [pytest.approx(0.367, abs=1e-3), 0.5]
 
 
 def test_build_needs_three_seconds_of_speech(clones):
     audio, rate, _ = train_clip()
-    with pytest.raises(ValueError, match="under 3 s"):
-        clones.build(job(), lambda: None, "p1", audio, rate, [(0.5, 2.5)], lambda out, sr: 0.5)
+    with pytest.raises(ValueError, match="has 3 s of speech"):
+        clones.build(job(), lambda: None, "p1", cands(audio, rate, [(0.5, 2.5)]), lambda out, sr: 0.5)
 
 
 def test_nothing_is_made_without_consent(clones):
     audio, rate, spans = train_clip()
     with pytest.raises(ValueError, match="off for this player"):
-        clones.build(job(), lambda: None, "p2", audio, rate, spans, lambda out, sr: 0.5)
+        clones.build(job(), lambda: None, "p2", cands(audio, rate, spans), lambda out, sr: 0.5)
     assert not (clones.root() / "p2").exists()
 
 
 def test_consent_withdrawn_mid_reading_leaves_no_clip(clones):
     audio, rate, spans = train_clip()
-    clones.build(job(), lambda: None, "p1", audio, rate, spans, lambda out, sr: 0.5)
+    clones.build(job(), lambda: None, "p1", cands(audio, rate, spans), lambda out, sr: 0.5)
     clones.synth.on_speak = lambda: clones.allowed_map.update(p1=False)
     with pytest.raises(ValueError, match="off for this player"):
         clones.speak(job(), lambda: None, "p1", "Hello there. Again.", "say", "Hello", {})
@@ -196,7 +218,7 @@ def test_consent_withdrawn_mid_reading_leaves_no_clip(clones):
 
 def test_speak_reads_chunk_by_chunk_and_redoes_a_reading_cut_short(clones):
     audio, rate, spans = train_clip()
-    clones.build(job(), lambda: None, "p1", audio, rate, spans, lambda out, sr: 0.5)
+    clones.build(job(), lambda: None, "p1", cands(audio, rate, spans), lambda out, sr: 0.5)
     clones.synth.said.clear()
     clones.synth.bad = 1
     text = "The party crossed the drowned bridge at dawn.\n\nNobody fell in, mostly."
@@ -220,7 +242,7 @@ def test_speak_needs_a_built_voice(clones):
 @pytest.mark.parametrize("name", ["../reference", "..", "a/b", "reference", "voice", ""])
 def test_files_are_only_previews_and_clips(clones, name):
     audio, rate, spans = train_clip()
-    clones.build(job(), lambda: None, "p1", audio, rate, spans, lambda out, sr: 0.5)
+    clones.build(job(), lambda: None, "p1", cands(audio, rate, spans), lambda out, sr: 0.5)
     with pytest.raises(KeyError):
         clones.file("p1", name)
     with pytest.raises(KeyError):
@@ -229,7 +251,7 @@ def test_files_are_only_previews_and_clips(clones, name):
 
 def test_delete_clip_and_forget(clones):
     audio, rate, spans = train_clip()
-    clones.build(job(), lambda: None, "p1", audio, rate, spans, lambda out, sr: 0.5)
+    clones.build(job(), lambda: None, "p1", cands(audio, rate, spans), lambda out, sr: 0.5)
     clip = clones.speak(job(), lambda: None, "p1", "Hi.", "say", "Hi", {})
     with pytest.raises(KeyError):
         clones.delete_clip("p1", "preview")
@@ -402,7 +424,7 @@ def test_clips_from_two_players_list_newest_first(clones, tmp_path):
     clones.allowed_map["p2"] = True
     audio, rate, spans = train_clip()
     for pid in ("p1", "p2"):
-        clones.build(job(), lambda: None, pid, audio, rate, spans, lambda out, sr: 0.5)
+        clones.build(job(), lambda: None, pid, cands(audio, rate, spans), lambda out, sr: 0.5)
     first = clones.speak(job(), lambda: None, "p1", "One.", "say", "One", {})
     second = clones.speak(job(), lambda: None, "p2", "Two.", "say", "Two", {})
     assert [c["id"] for c in clones.clips()] == [second["id"], first["id"]]
@@ -421,7 +443,7 @@ def test_a_corrupt_clip_record_is_skipped(clones):
 def test_forget_waits_for_a_clip_being_written(clones):
     """forget() and a job's final write share a lock: the clip is either never written or deleted."""
     audio, rate, spans = train_clip()
-    clones.build(job(), lambda: None, "p1", audio, rate, spans, lambda out, sr: 0.5)
+    clones.build(job(), lambda: None, "p1", cands(audio, rate, spans), lambda out, sr: 0.5)
     started = threading.Event()
     clones.synth.on_speak = started.set
     outcome = []
@@ -444,7 +466,7 @@ def test_forget_waits_for_a_clip_being_written(clones):
 
 def test_build_measures_the_clones_own_pace_and_speak_can_match_another(clones):
     audio, rate, spans = train_clip()
-    status = clones.build(job(), lambda: None, "p1", audio, rate, spans, lambda out, sr: 0.5)
+    status = clones.build(job(), lambda: None, "p1", cands(audio, rate, spans), lambda out, sr: 0.5)
     # The fake reads 14 characters a second: PREVIEW's words over its length.
     assert status["clone_wpm"] == round(60 * len(tts.PREVIEW.split()) / (len(tts.PREVIEW) / 14))
     text = "The party crossed the drowned bridge at dawn and nobody fell in."
@@ -452,3 +474,104 @@ def test_build_measures_the_clones_own_pace_and_speak_can_match_another(clones):
     faster = clones.speak(job(), lambda: None, "p1", text, "say", "x", {}, tempo=1.15, in_their_words=True)
     assert faster["seconds"] == pytest.approx(plain["seconds"] / 1.15, abs=0.1)
     assert (plain["in_their_words"], faster["in_their_words"]) == (False, True)
+
+
+# ------------------------------------------------------------- finding clean references in sessions
+
+
+def line(pid, t0, t1, **kw):
+    return {"player_id": pid, "t_start": t0, "t_end": t1, "confidence": 0.9, "provisional": False, "character": None} | kw
+
+
+def test_solo_lines_are_their_own_settled_voice_with_nobody_else_near():
+    messages = [
+        line("p1", 0.0, 4.0),  # ok
+        line("p2", 4.1, 6.0),  # p2 starts within 0.3 s of the next one ending? no: it overlaps the gap after 0-4
+        line("p1", 10.0, 14.0),  # ok
+        line("p1", 20.0, 24.0, character="Elara"),  # a character voice
+        line("p1", 30.0, 34.0, provisional=True),
+        line("p1", 40.0, 44.0, confidence=0.5),
+        line("p1", 50.0, 51.0),  # too short
+        line("p1", 60.0, 80.0),  # too long
+        line("p1", 90.0, 94.0),
+        line("p2", 93.0, 95.0),  # talks over the end
+    ]
+    assert tts.solo_lines(messages, "p1") == [(10.0, 14.0)]
+
+
+def test_pick_sessions_takes_the_cleanest_session_first_up_to_ten_seconds_each():
+    scored = [
+        (30.0, "noisy", 0.0, 6.0),
+        (30.0, "noisy", 10.0, 16.0),
+        (50.0, "quiet", 0.0, 4.0),
+        (48.0, "quiet", 10.0, 14.0),
+        (45.0, "quiet", 20.0, 24.0),
+        (44.0, "quiet", 30.0, 34.0),  # past 10 s of speech: not needed
+        (60.0, "tiny", 0.0, 2.6),  # cleanest line, but under 3 s in all
+    ]
+    assert tts.pick_sessions(scored) == [
+        ("quiet", [(0.0, 4.0), (10.0, 14.0), (20.0, 24.0)]),
+        ("noisy", [(0.0, 6.0), (10.0, 16.0)]),
+    ]
+    assert tts.pick_sessions(scored, limit=1) == [("quiet", [(0.0, 4.0), (10.0, 14.0), (20.0, 24.0)])]
+
+
+def test_noise_floor_is_higher_for_cleaner_speech():
+    rng = np.random.default_rng(0)
+    t = np.arange(48000) / 48000
+    speech = (0.5 * np.sin(2 * np.pi * 200 * t) * (np.sin(2 * np.pi * 2 * t) > 0)).astype(np.float32)  # bursts
+    quiet = speech + 0.001 * rng.standard_normal(len(t)).astype(np.float32)
+    loud = speech + 0.05 * rng.standard_normal(len(t)).astype(np.float32)
+    assert tts.noise_floor_db(quiet, 48000) > tts.noise_floor_db(loud, 48000) + 20
+
+
+def test_clone_candidates_add_the_cleanest_session_recording(engine, monkeypatch):
+    import json
+
+    import silero_vad
+
+    monkeypatch.setattr(silero_vad, "get_speech_timestamps", lambda a, m, sampling_rate: [{"start": 0, "end": len(a)}])
+    p = engine.add_player("Alice")
+    vid = named_voice(engine, p["id"], ALICE)
+    engine.voices[vid].sample_audio = tone(ALICE, 6)
+    rate = 48000
+    for sid, noise, freq in [("2026-10-01_190000-aaaa", 0.03, ALICE), ("2026-10-02_190000-bbbb", 0.001, ALICE)]:
+        folder = config.DATA_DIR / "sessions" / sid
+        folder.mkdir(parents=True)
+        t = np.arange(20 * rate) / rate
+        audio = 0.3 * np.sin(2 * np.pi * freq * t) * (np.sin(2 * np.pi * 0.5 * t) > -0.5)
+        audio = audio + noise * np.random.default_rng(1).standard_normal(len(t))
+        (folder / "audio.wav").write_bytes(wav_bytes(audio.astype(np.float32), rate))
+        msgs = [line(p["id"], 1.0, 5.0), line(p["id"], 7.0, 11.0), line(p["id"], 13.0, 17.0)]
+        (folder / "transcript.json").write_text(json.dumps({"messages": msgs}))
+    replay = config.DATA_DIR / "sessions" / "2026-10-03_190000-cccc"  # no recording of its own
+    replay.mkdir()
+    (replay / "transcript.json").write_text(json.dumps({"messages": [line(p["id"], 1.0, 5.0)]}))
+
+    found = engine.clone_candidates(p["id"])
+    assert [label for label, _, _ in found] == ["Train recording", "recording of 2026-10-02", "recording of 2026-10-01"]
+    assert [r for _, _, r in found] == [SR, rate, rate]  # sessions at the mic's own rate
+    assert len(found[1][1]) / rate == pytest.approx(10 + 2 * tts.REF_GAP_S, abs=0.05)  # 10 s of speech
+
+
+def test_clone_candidates_skip_lines_that_dont_sound_like_them(engine, monkeypatch):
+    import json
+
+    import silero_vad
+
+    monkeypatch.setattr(silero_vad, "get_speech_timestamps", lambda a, m, sampling_rate: [{"start": 0, "end": len(a)}])
+    p = engine.add_player("Alice")
+    vid = named_voice(engine, p["id"], ALICE)
+    engine.voices[vid].sample_audio = tone(ALICE, 6)
+    folder = config.DATA_DIR / "sessions" / "2026-10-01_190000-aaaa"
+    folder.mkdir(parents=True)
+    (folder / "audio.wav").write_bytes(wav_bytes(tone(2500, 20), SR))  # mislabelled: someone else's voice
+    (folder / "transcript.json").write_text(json.dumps({"messages": [line(p["id"], 1.0, 5.0), line(p["id"], 7.0, 11.0)]}))
+    assert [label for label, _, _ in engine.clone_candidates(p["id"])] == ["Train recording"]
+
+
+def test_clone_candidates_wait_for_the_models(engine, monkeypatch):
+    engine.ready.clear()
+    engine.load_error = "Models failed to load"
+    with pytest.raises(RuntimeError, match="Models failed to load"):
+        engine.clone_candidates("p-anyone")

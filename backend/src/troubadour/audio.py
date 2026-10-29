@@ -26,10 +26,10 @@ _portaudio = threading.RLock()
 _open_streams = 0
 
 
-def load_audio(path: Path | str, start: float = 0.0, end: float | None = None) -> np.ndarray:
+def load_audio(path: Path | str, start: float = 0.0, end: float | None = None, rate: int = SR) -> np.ndarray:
     span = ["-ss", str(start)] + (["-t", str(end - start)] if end is not None else [])
     pcm = subprocess.run(
-        ["ffmpeg", "-nostdin", "-v", "error", *span, "-i", str(path), "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"],
+        ["ffmpeg", "-nostdin", "-v", "error", *span, "-i", str(path), "-ac", "1", "-ar", str(rate), "-f", "f32le", "-"],
         check=True,
         capture_output=True,
     ).stdout

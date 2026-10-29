@@ -129,9 +129,16 @@ export function VoiceCloneDialog({
                   {voice?.likeness != null && (
                     <span
                       className="text-xs text-muted-foreground tabular-nums"
-                      title="How close the preview sounds to their recorded voice, to the speaker recognition (1 = the same)"
+                      title={[
+                        "How close the preview sounds to their voice at the table, to the speaker recognition (1 = the same). A clean clone of a noisy room scores a bit lower than the room itself would.",
+                        ...(voice.tried ?? []).map(
+                          (t) => `${t.source}: ${t.likeness == null ? "?" : t.likeness.toFixed(2)}`,
+                        ),
+                      ].join("\n")}
                     >
                       Likeness {voice.likeness.toFixed(2)}
+                      {voice.source && ` · from the ${voice.source}`}
+                      {(voice.tried?.length ?? 0) > 1 && `, best of ${voice.tried?.length}`}
                     </span>
                   )}
                 </div>

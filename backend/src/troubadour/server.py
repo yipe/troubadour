@@ -1141,10 +1141,10 @@ def build_clone(pid: str):
     _call(engine.clone_source, pid)  # fail now, not in the job, when there's no Train recording
 
     def work(job):
-        audio, rate, spans = engine.clone_source(pid)
-        engine.clones.build(
-            job, lambda: memory.emit(job), pid, audio, rate, spans, lambda out, sr: engine.voice_likeness(pid, out, sr)
-        )
+        job.message = "Finding the cleanest recordings of them…"
+        memory.emit(job)
+        candidates = engine.clone_candidates(pid)
+        engine.clones.build(job, lambda: memory.emit(job), pid, candidates, lambda out, sr: engine.voice_likeness(pid, out, sr))
 
     return memory.submit("clone", name, work, player_id=pid).to_json()
 
