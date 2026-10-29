@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from test_engine import ALICE, BOB, named_voice
 
 from troubadour import config, server, sim
-from troubadour.audio import FRAME, Recorder
+from troubadour.audio import FRAME, Recorder, wav_bytes
 from troubadour.config import SR
 from troubadour.engine import LiveSession, session_audio
 from troubadour.transcript import build
@@ -226,6 +226,119 @@ def test_end_setup_includes_voices_named_during_play(engine, mic_start):
     engine._finish(sess)
     end = json.loads((engine.sessions_dir() / sess.id / "setup" / "end.json").read_text())
     assert [v["id"] for v in end["voices"]] == [vid]
+
+
+def _hear_everything(monkeypatch):
+    """Silero would hear no speech in a test tone: call the whole clip speech."""
+    import silero_vad
+
+    monkeypatch.setattr(
+        silero_vad, "get_speech_timestamps", lambda audio, model, sampling_rate: [{"start": 0, "end": len(audio)}]
+    )
+
+
+def _read24(path) -> tuple[int, np.ndarray]:
+    with wave.open(str(path)) as w:
+        assert (w.getnchannels(), w.getsampwidth()) == (1, 3)
+        raw = np.frombuffer(w.readframes(w.getnframes()), np.uint8).reshape(-1, 3)
+        rate = w.getframerate()
+    ints = (raw[:, 0].astype(np.int32) | raw[:, 1].astype(np.int32) << 8 | raw[:, 2].astype(np.int32) << 16) << 8 >> 8
+    return rate, ints / 8388607
+
+
+def _train_done(engine) -> dict:
+    assert wait_for(lambda: any(s["state"] in ("done", "error") for s in engine.bus.of("train.status")))
+    status = next(s for s in engine.bus.of("train.status") if s["state"] in ("done", "error"))
+    assert status["state"] == "done", status
+    return status
+
+
+def test_wav_bytes_24_bit_round_trips(tmp_path):
+    sweep = (0.9 * np.sin(np.linspace(0, 400, 4800))).astype(np.float32)
+    path = tmp_path / "x.wav"
+    path.write_bytes(wav_bytes(sweep, 48000, bits=24))
+    rate, back = _read24(path)
+    assert rate == 48000
+    assert np.abs(back - sweep).max() < 1e-6  # 24-bit: far finer than 16-bit's 3e-5 step
+
+
+def test_train_on_its_own_mic_keeps_a_lossless_full_rate_clip(engine, monkeypatch):
+    engine.status, engine.live = "idle", None
+    _hear_everything(monkeypatch)
+    monkeypatch.setattr("troubadour.engine.MicSource.native_rate", lambda self: 48000)
+    native = (0.3 * np.sin(2 * np.pi * 9000 * np.arange(6 * 48000) / 48000)).astype(np.float32)  # above 16 kHz's 8 kHz limit
+
+    def mic(self, sink, on_end):  # the device delivers 6 s at once; the job wants 5
+        for block in frames(native, 3 * FRAME):
+            self.tap(block)
+        for frame in frames(tone(ALICE, 6)):
+            sink(frame)
+
+    monkeypatch.setattr("troubadour.engine.MicSource.start", mic)
+    p = engine.add_player("Alice")
+    engine.train(p["id"], 5)
+    _train_done(engine)
+    vid = next(v.id for v in engine.voices.values() if v.player_id == p["id"])
+    assert nframes(config.DATA_DIR / "voices" / f"{vid}.wav") > 0  # the 16 kHz clip, as before
+    rate, hq = _read24(config.DATA_DIR / "voices" / f"{vid}.hq.wav")
+    assert rate == 48000
+    assert np.abs(hq - native[: len(hq)]).max() < 1e-6  # the mic's own samples, untouched
+
+
+def test_train_mid_session_takes_the_clip_from_the_session_mic(engine, mic_start, monkeypatch):
+    _hear_everything(monkeypatch)
+    tap, sink, _ = mic_start()
+    p = engine.add_player("Alice")
+    engine.train(p["id"], 5)
+    native = (0.3 * np.sin(2 * np.pi * 9000 * np.arange(48000) / 48000)).astype(np.float32)
+    for block in frames(native, 3 * FRAME):  # what the mic delivers while the job listens
+        tap(block)
+    for frame in frames(tone(ALICE, 6)):  # the same seconds, through the pipeline at 16 kHz
+        sink(frame)
+    _train_done(engine)
+    vid = next(v.id for v in engine.voices.values() if v.player_id == p["id"])
+    rate, hq = _read24(config.DATA_DIR / "voices" / f"{vid}.hq.wav")
+    assert rate == 48000
+    assert len(hq) == 31 * 3 * FRAME
+
+
+def test_retrain_from_a_replay_drops_the_older_full_rate_clip(engine, monkeypatch):
+    from troubadour.engine import TrainJob
+
+    _hear_everything(monkeypatch)
+    p = engine.add_player("Alice")
+    vid = named_voice(engine, p["id"], ALICE)
+    hq = config.DATA_DIR / "voices" / f"{vid}.hq.wav"
+    hq.parent.mkdir(parents=True, exist_ok=True)
+    hq.write_bytes(wav_bytes(tone(BOB, 1), 48000, bits=24))  # an earlier Train, someone else's tone
+    job = TrainJob(p["id"], 5, from_session=True, native_rate=None)  # a file replay: 16 kHz only
+    for frame in frames(tone(ALICE, 5)):
+        job.feed(frame)
+    engine._finish_training(job)
+    assert not hq.exists()
+
+
+def test_full_rate_clips_survive_a_restart_and_go_with_their_voice(engine):
+    from conftest import RecordingBus
+
+    from troubadour.engine import Engine
+
+    p = engine.add_player("Alice")
+    vid = named_voice(engine, p["id"], ALICE)
+    voices = config.DATA_DIR / "voices"
+    voices.mkdir(parents=True, exist_ok=True)
+    clip, hq = write_wav(voices / f"{vid}.wav", tone(ALICE, 1)), voices / f"{vid}.hq.wav"
+    hq.write_bytes(wav_bytes(tone(ALICE, 1), 48000, bits=24))
+    orphan = voices / "v-gone.hq.wav"
+    orphan.write_bytes(hq.read_bytes())
+    engine.voices[vid].trained = True
+    engine._save_state()
+    Engine(RecordingBus())
+    assert hq.exists()
+    assert not orphan.exists()
+    engine.unassign_voice(vid)
+    assert not clip.exists()
+    assert not hq.exists()
 
 
 def test_silent_mic_session_is_still_saved(engine):

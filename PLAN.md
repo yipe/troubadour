@@ -99,7 +99,12 @@ then relabels earlier messages with the matured voiceprints.
 **Optional: Train.** Any player can tap Train (setup or mid-session) and talk
 for 15–30 s, any words, nobody else speaking. That creates or strengthens their
 voiceprint and marks them trained. Most useful for quiet players, who may
-never accumulate enough speech to surface in the panel.
+never accumulate enough speech to surface in the panel. The clip is kept twice under
+`data/voices/`: `<voice>.wav` (16 kHz, what the voiceprint and the sample use) and
+`<voice>.hq.wav`, the same seconds at the mic's own rate (usually 48 kHz), 24-bit, untouched
+(the mic tap, as for session recordings; a Train mid-session takes it from the session's mic). It is
+meant as a voice-clone reference, where the band above 8 kHz matters. A Train during a file
+replay has only 16 kHz, so it deletes an older `.hq.wav` rather than keep one that no longer matches.
 
 **One line, by hand.** Clicking a line's speaker name offers every player (and the characters
 someone already voices; a typed character goes with the pick). `POST /api/messages/{id}/speaker`

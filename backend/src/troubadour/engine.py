@@ -401,6 +401,7 @@ class LiveSession:
         self.paused = False  # source is held; the segmenter must not treat the silence as a dead mic
         self.awake: subprocess.Popen | None = None  # sleep assertion while listening
         self.recorder: Recorder | None = None  # mic sessions: audio.wav in the session folder
+        self.native_rate: int | None = None  # mic sessions: the mic's own rate, which the tap delivers
         self.meter: levels.LevelMeter | None = None  # live level + quality for the UI
 
     def release(self) -> None:
@@ -422,11 +423,15 @@ class LiveSession:
 
 
 class TrainJob:
-    def __init__(self, player_id: str, seconds: float, from_session: bool):
+    def __init__(self, player_id: str, seconds: float, from_session: bool, native_rate: int | None = None):
         self.player_id = player_id
         self.seconds = seconds
         self.from_session = from_session  # True: fed by the running session's segmenter; False: own mic
-        self.frames: list[np.ndarray] = []
+        self.frames: list[np.ndarray] = []  # 16 kHz: the voiceprint and the sample
+        # The same speech at the mic's own rate (usually 48 kHz), kept losslessly as the voice-clone
+        # reference. None when the audio comes from a file replay: there is nothing better than 16 kHz.
+        self.native_rate = native_rate
+        self.native: list[np.ndarray] = []
         self.done = threading.Event()
         self.cancelled = False
 
@@ -439,6 +444,11 @@ class TrainJob:
             self.frames.append(frame)
             if self.captured_s >= self.seconds:
                 self.done.set()
+
+    def feed_native(self, block: np.ndarray) -> None:
+        """From the audio callback: keep it cheap. Stops with the 16 kHz capture (`done`)."""
+        if self.native_rate is not None and not self.done.is_set():
+            self.native.append(block)
 
     def cancel(self) -> None:
         self.cancelled = True
@@ -848,6 +858,14 @@ class Engine:
     def _voice_audio_path(self, vid: str) -> Path:
         return config.DATA_DIR / "voices" / f"{vid}.wav"
 
+    def _voice_hq_path(self, vid: str) -> Path:
+        """The Train clip at the mic's own rate, 24-bit (see TrainJob.native)."""
+        return config.DATA_DIR / "voices" / f"{vid}.hq.wav"
+
+    def _drop_voice_audio(self, vid: str) -> None:
+        self._voice_audio_path(vid).unlink(missing_ok=True)
+        self._voice_hq_path(vid).unlink(missing_ok=True)
+
     def _load_state(self) -> None:
         path = self._state_path()
         if not path.exists():
@@ -899,7 +917,8 @@ class Engine:
         self._next_label = data["next_label"]
         # Recordings whose voice is gone (unassigned/deleted while offline, or older builds).
         for wav in (config.DATA_DIR / "voices").glob("*.wav"):
-            if wav.stem not in self.voices and wav.stem not in self.parked:
+            vid = wav.name.removesuffix(".wav").removesuffix(".hq")  # <vid>.wav and <vid>.hq.wav
+            if vid not in self.voices and vid not in self.parked:
                 wav.unlink(missing_ok=True)
 
     def _in_campaign(self, v: Voice) -> bool:
@@ -1090,7 +1109,7 @@ class Engine:
             for v in [v for v in self.parked.values() if v.player_id == pid]:
                 del self.parked[v.id]
                 self._parked_vecs.pop(v.id, None)
-                self._voice_audio_path(v.id).unlink(missing_ok=True)
+                self._drop_voice_audio(v.id)
             for c in self.campaigns.values():
                 c.roster.pop(pid, None)
                 c.left.pop(pid, None)
@@ -1394,7 +1413,7 @@ class Engine:
             v.sum = (vec if vec is not None else np.zeros(256)) * max(v.seconds, 1.0)
             if v.trained:
                 v.trained, v.sample_audio = False, None
-                self._voice_audio_path(vid).unlink(missing_ok=True)
+                self._drop_voice_audio(vid)
             if owner is not None:
                 owner.trained = any(
                     o.trained and o.player_id == owner.id and o.character is None
@@ -1452,8 +1471,8 @@ class Engine:
         self.stop_mic_test()  # a session needs the mic; its own meter takes over
         with self._start_lock:
             sess = LiveSession(src, desc, self.campaign)
-            if kind == "mic" and config.RECORD_AUDIO:
-                self._attach_recorder(sess, src)  # before start(): the recording begins at t=0 too
+            if kind == "mic":
+                self._attach_tap(sess, src)  # before start(): the recording begins at t=0 too
             # Open the source first: if the mic is missing or busy, nothing has changed yet.
             try:
                 src.start(sess.frames_q.put, lambda: sess.frames_q.put(STOP))
@@ -1482,24 +1501,35 @@ class Engine:
         self.bus.emit("snapshot", snapshot)  # clients drop the old transcript
         return snapshot["session"]
 
-    def _attach_recorder(self, sess: LiveSession, src: MicSource) -> None:
-        """Full-quality recording: the mic's own rate (usually 48 kHz), not the pipeline's 16 kHz."""
+    def _attach_tap(self, sess: LiveSession, src: MicSource) -> None:
+        """The mic's own-rate audio (usually 48 kHz), not the pipeline's 16 kHz, goes to the session
+        recording (unless TROUBADOUR_RECORD=0) and to a Train clip taken mid-session."""
         try:
             rate = src.native_rate()
         except Exception:
             return  # no such device: start() is about to fail with the real message
+        sess.native_rate = rate
 
         def failed(error: str) -> None:  # from the writer thread, mid-session
             log.error("session recording stopped: %s", error)
             self.bus.emit("error", {"message": f"The audio recording stopped (the transcript still saves): {error}"})
 
-        try:
-            sess.recorder = Recorder(self.sessions_dir() / sess.id / "audio.wav", rate, on_error=failed)
-        except OSError as e:
-            log.exception("can't record session audio")
-            self.bus.emit("error", {"message": f"Not recording audio (the transcript still saves): {e}"})
-            return
-        src.tap = sess.recorder.write
+        if config.RECORD_AUDIO:
+            try:
+                sess.recorder = Recorder(self.sessions_dir() / sess.id / "audio.wav", rate, on_error=failed)
+            except OSError as e:
+                log.exception("can't record session audio")
+                self.bus.emit("error", {"message": f"Not recording audio (the transcript still saves): {e}"})
+        recorder = sess.recorder
+
+        def tap(block: np.ndarray) -> None:  # the audio callback: appends only
+            if recorder is not None:
+                recorder.write(block)
+            job = self.train_job
+            if job is not None and job.from_session:
+                job.feed_native(block)
+
+        src.tap = tap
 
     def pause(self) -> dict:
         """Hold the mic or replay. The session, transcript, and recording stay open."""
@@ -2139,7 +2169,9 @@ class Engine:
                 raise KeyError(pid)
             if self.train_job is not None:
                 raise ValueError("Already training someone; finish or cancel that first.")
-            job = TrainJob(pid, max(5.0, min(float(seconds), 60.0)), from_session=self.status == "running")
+            from_session = self.status == "running"
+            native_rate = self.live.native_rate if from_session and self.live is not None else None
+            job = TrainJob(pid, max(5.0, min(float(seconds), 60.0)), from_session, native_rate)
             self.train_job = job
         self._emit_session()
         threading.Thread(target=self._train_run, args=(job,), name="train", daemon=True).start()
@@ -2171,6 +2203,8 @@ class Engine:
                 raise RuntimeError(self.load_error or "models unavailable")
             if not job.from_session:  # no session running: open the default mic just for this
                 own_mic = MicSource()
+                job.native_rate = own_mic.native_rate()
+                own_mic.tap = job.feed_native
                 own_mic.start(job.feed, lambda: None)
             deadline = time.monotonic() + job.seconds * 3 + 5
             while not job.done.wait(0.25):
@@ -2240,6 +2274,11 @@ class Engine:
             path = self._voice_audio_path(target.id)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(wav_bytes(audio))  # voice samples survive restarts
+        hq = self._voice_hq_path(target.id)
+        if job.native:
+            hq.write_bytes(wav_bytes(np.concatenate(job.native), job.native_rate, bits=24))
+        else:  # a Train clip from a file replay: an older full-quality clip would no longer match it
+            hq.unlink(missing_ok=True)
         self._save_state()
         self.refine_now.set()
         return f"Heard {speech:.0f}s of speech."

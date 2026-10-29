@@ -40,13 +40,21 @@ def pcm16(audio: np.ndarray) -> bytes:
     return (np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes()
 
 
-def wav_bytes(audio: np.ndarray) -> bytes:
+def wav_bytes(audio: np.ndarray, rate: int = SR, bits: int = 16) -> bytes:
+    """Mono PCM WAV. bits=24 for Train clips kept at the mic's own rate (the voice-clone reference)."""
+    if bits == 16:
+        frames = pcm16(audio)
+    elif bits == 24:
+        ints = np.round(np.clip(audio, -1, 1) * 8388607).astype("<i4")
+        frames = ints.view(np.uint8).reshape(-1, 4)[:, :3].tobytes()  # little-endian: drop the top byte
+    else:
+        raise ValueError(f"unsupported bit depth {bits}")
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
         w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(SR)
-        w.writeframes(pcm16(audio))
+        w.setsampwidth(bits // 8)
+        w.setframerate(rate)
+        w.writeframes(frames)
     return buf.getvalue()
 
 
