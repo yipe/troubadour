@@ -107,14 +107,14 @@ describe("History viewer: write up for campaign", () => {
           }),
         }),
       )
-    steps({ phase: "reading", tokens: 0, tok_s: 0, started: Date.now() / 1000 - 42 }, 0)
+    steps({ phase: "reading", tokens: 0, tok_s: 0, started: Date.now() / 1000 - 245 }, 0)
     const list = screen.getByRole("list", { name: "Write-up progress" })
     expect([...list.querySelectorAll("li")].map((li) => li.dataset.state)).toEqual([
       "running",
       "pending",
       "pending",
     ])
-    expect(list).toHaveTextContent(/Reading the transcript… 4\d s/)
+    expect(list).toHaveTextContent(/Reading the transcript… 4m 0[5-7]s/)
 
     steps({ phase: "writing", tokens: 1234, tok_s: 27.5, started: 0 }, 1)
     expect([...list.querySelectorAll("li")].map((li) => li.dataset.state)).toEqual([

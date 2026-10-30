@@ -116,10 +116,21 @@ export function JobStatus({
   return null
 }
 
+/** 42 → "42s", 240 → "4m 00s", 3725 → "1h 02m 05s". */
+function elapsed(seconds: number): string {
+  const t = Math.max(0, Math.round(seconds))
+  const h = Math.floor(t / 3600)
+  const m = Math.floor((t % 3600) / 60)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  if (h) return `${h}h ${pad(m)}m ${pad(t % 60)}s`
+  if (m) return `${m}m ${pad(t % 60)}s`
+  return `${t}s`
+}
+
 /** What a streaming model call is doing, e.g. "Writing… ~1,234 tokens · 27 tok/s". */
 function liveText(live: JobLive, now: number): string {
   if (live.phase === "reading")
-    return `Reading the transcript… ${Math.max(0, Math.round(now - live.started))} s`
+    return `Reading the transcript… ${elapsed(now - live.started)}`
   const what = live.phase === "thinking" ? "Thinking" : "Writing"
   return `${what}… ~${live.tokens.toLocaleString("en-US")} tokens · ${live.tok_s} tok/s`
 }
