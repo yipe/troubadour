@@ -137,6 +137,8 @@ The repo's `AGENTS.md`, `web/AGENTS.md` and `backend/AGENTS.md` still apply. On 
   X2 writes them in.
 
 **Tests and checks**
+- From the repo root, `pnpm -C web/...` refuses to run because the root `package.json` names yarn as its
+  package manager. Prefix it: `COREPACK_ENABLE_STRICT=0 pnpm -C web/app shot …`, or `cd web` first.
 - Every behaviour change gets a test that fails without it. Pure helpers get unit tests. Pages get
   Testing Library tests for their main interactions, with `mockFetch` and the fixtures in
   `@troubadour/api/testing`.
