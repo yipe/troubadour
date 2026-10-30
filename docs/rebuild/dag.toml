@@ -557,7 +557,7 @@ owns = ["{lore}timeline.py", "{server}routers/timeline.py", "{tests}test_appeara
 id = "F32"
 title = "Refresh a session, and upgrade old sessions after a software update"
 size = "L"
-deps = ["F30", "F28", "F24"]
+deps = ["F30", "F28", "F24", "X2"]
 owns = ["backend/packages/engine/src/troubadour/engine/pipeline.py", "backend/packages/engine/src/troubadour/engine/improve.py", "backend/packages/engine/src/troubadour/engine/_sessions.py", "{server}routers/sessions.py", "{tests}test_pipeline.py", "{api}sessions/", "{app}pages/sessions/tools/", "{app}pages/sessions/UpgradeBanner.tsx", "{app}pages/home/UpgradeBanner.tsx", "{app}pages/home/index.tsx", "{app}pages/sessions/index.tsx", "backend/AGENTS.md"]
 
 [[task]]
