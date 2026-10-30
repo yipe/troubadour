@@ -497,6 +497,13 @@ size = "M"
 deps = ["F18", "S12"]
 owns = ["{app}pages/settings/sections/cloud/"]
 
+[[task]]
+id = "F23"
+title = "Home: who talked, ordered by share of talk time"
+size = "S"
+deps = ["F1"]
+owns = ["{app}pages/home/LastSession.tsx", "{app}pages/home/LastSession.test.tsx", "{app}components/people/TalkShareBar.tsx", "{app}components/people/TalkShareBar.test.tsx"]
+
 # ---------------------------------------------------------------- X: finish
 [[task]]
 id = "X1"
@@ -509,7 +516,7 @@ owns = ["web/app/public/", "site/favicon.svg"]
 id = "X2"
 title = "Cutover: delete legacy, update docs"
 size = "M"
-deps = ["F1", "F2", "F3", "F5", "F6", "F7", "F8", "F10", "F11", "F12", "F13", "F15", "F16", "F17", "F19", "F20", "F21", "F22", "S11", "S13", "C4", "C13", "X1", "W2"]
+deps = ["F1", "F2", "F3", "F5", "F6", "F7", "F8", "F10", "F11", "F12", "F13", "F15", "F16", "F17", "F19", "F20", "F21", "F22", "F23", "S11", "S13", "C4", "C13", "X1", "W2"]
 owns = ["web/legacy/", "AGENTS.md", "web/AGENTS.md", "backend/AGENTS.md", "PLAN.md", "README.md", ".github/workflows/ci.yml", "docs/adr/", "docs/architecture.md", "docs/conventions.md", "docs/glossary.md"]
 
 [[task]]
