@@ -255,4 +255,17 @@ describe("bridgeSocket", () => {
     emit({ type: "campaign.job", data: campaignJob({ id: "c", kind: "clone", state: "done" }) })
     expect(spy).toHaveBeenCalledWith({ queryKey: keys.clones() })
   })
+
+  it("refetches a session's recap when its recap job ends", () => {
+    const { socket, emit } = fakeSocket()
+    bridgeSocket(socket, client)
+    const spy = vi.spyOn(client, "invalidateQueries")
+    emit({
+      type: "campaign.job",
+      data: campaignJob({ id: "r", kind: "recap", title: "s12", state: "running" }),
+    })
+    expect(spy).not.toHaveBeenCalled()
+    emit({ type: "campaign.job", data: campaignJob({ id: "r", kind: "recap", title: "s12", state: "done" }) })
+    expect(spy).toHaveBeenCalledWith({ queryKey: keys.recap("s12") })
+  })
 })

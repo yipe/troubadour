@@ -50,8 +50,10 @@ export function bridgeSocket(socket: Socket, client: QueryClient, opts: BridgeOp
       // Looked at before the patch: "ended just now" is a change of state, not a state.
       const before = client.getQueryData<Campaign>(keys.campaign())?.jobs.find((j) => j.id === job.id)
       editCampaign(client, withJob(job))
-      if (CLONE_JOBS.has(job.kind) && !jobActive(job) && (!before || jobActive(before)))
-        void client.invalidateQueries({ queryKey: keys.clones() })
+      const endedNow = !jobActive(job) && (!before || jobActive(before))
+      if (CLONE_JOBS.has(job.kind) && endedNow) void client.invalidateQueries({ queryKey: keys.clones() })
+      // A recap job's title is its session id.
+      if (job.kind === "recap" && endedNow) void client.invalidateQueries({ queryKey: keys.recap(job.title) })
     }),
     socket.on("campaign.answer", (answer) => editCampaign(client, withAnswer(answer))),
     socket.on("cloud.updated", (data) => client.setQueryData(keys.cloud(), data)),
