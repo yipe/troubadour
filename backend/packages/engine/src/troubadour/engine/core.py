@@ -14,7 +14,7 @@ from troubadour.core import config
 from troubadour.lore import cleanup
 from troubadour.lore.memory import MemoryLLM
 from troubadour.sound import asr, levels, tts
-from troubadour.sound.audio import MicSource, load_audio
+from troubadour.sound.audio import MicSource, list_mics, load_audio
 from troubadour.sound.voices import (
     VoiceMatcher,
     embed_span,
@@ -163,6 +163,10 @@ class Engine(SessionsMixin, LibraryMixin, VoicesMixin, PipelineMixin, TrainingMi
         with self._start_lock:
             if self.status != "idle" or self.train_job is not None:
                 raise ValueError("Stop the session (or training) first; its own meter shows the mic.")
+        # PortAudio matches a name as a substring and an unplugged mic would otherwise fall back
+        # to something else; fail with the name instead.
+        if device is not None and device not in {m["name"] for m in list_mics()}:
+            raise ValueError(f"Couldn't open {device}: it isn't connected.")
         self.stop_mic_test()
         frames: queue.Queue = queue.Queue()
         meter = levels.LevelMeter(self.bus.emit, source="test")

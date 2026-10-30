@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Check, Mic, Square } from "lucide-react"
+import { Check, Mic, RefreshCw, Square } from "lucide-react"
 import { stopMicTest, useMics, useStartMicTest, useStopMicTest } from "@troubadour/api/audio"
 import { useAudio, useLive } from "@troubadour/api/live"
 import type { Source, SourceList } from "@troubadour/api/session"
@@ -53,12 +53,16 @@ function SavedSessionOptions() {
   )
 }
 
-function TestControl({ device }: { device: string | null }) {
+function TestControl({ device, unavailable }: { device: string | null; unavailable: string | null }) {
   const running = useAudio((s) => s.micTest === "running")
   const start = useStartMicTest()
   const stop = useStopMicTest()
   const [endsAt, setEndsAt] = useState<number | null>(null)
   const [now, setNow] = useState(() => Date.now())
+
+  // A failure belongs to the device it was tried on.
+  const resetStart = start.reset
+  useEffect(() => resetStart(), [device, resetStart])
 
   useEffect(() => {
     if (!running) return
@@ -78,7 +82,7 @@ function TestControl({ device }: { device: string | null }) {
   const left = endsAt == null ? null : Math.max(0, Math.ceil((endsAt - now) / 1000))
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       {running ? (
         <Button
           size="sm"
@@ -92,7 +96,8 @@ function TestControl({ device }: { device: string | null }) {
       ) : (
         <Button
           size="sm"
-          disabled={busy}
+          disabled={busy || unavailable !== null}
+          title={unavailable ?? undefined}
           onClick={() =>
             start.mutate(
               { device },
@@ -112,6 +117,12 @@ function TestControl({ device }: { device: string | null }) {
           <Mic className="size-3" /> Test
         </Button>
       )}
+      {!running && unavailable && <span className="text-12 text-ink-subtle">{unavailable}</span>}
+      {start.isError && (
+        <span role="alert" className="text-12 text-danger">
+          {start.error.message}
+        </span>
+      )}
       {running && left != null && (
         <span data-testid="mic-test-countdown" className="text-12 text-ink-subtle tabular-nums">
           {left}s
@@ -122,8 +133,10 @@ function TestControl({ device }: { device: string | null }) {
 }
 
 export function MicCard({ mode, device, onDeviceChange, sources }: MicCardProps) {
-  const mics = useMics()
   const sessionRunning = useLive((s) => (s.session?.status ?? "idle") !== "idle")
+  const testing = useAudio((s) => s.micTest === "running")
+  // Don't poll while a session or test holds the mic open.
+  const mics = useMics({ poll: !sessionRunning && !testing })
   const source = sessionRunning ? "session" : "test"
   const quality = useAudio((s) => s.quality[source])
 
@@ -131,6 +144,8 @@ export function MicCard({ mode, device, onDeviceChange, sources }: MicCardProps)
   const defaultMic = micList.find((m) => m.default)?.name
   const micName = device.kind === "mic" ? (device.device ?? defaultMic) : undefined
   const selectedMic = micList.find((m) => m.name === micName)
+  // A remembered mic that is unplugged stays in the list so the choice isn't silently swapped.
+  const disconnected = mics.isSuccess && device.kind === "mic" && !!micName && !selectedMic
   const rows = checklistRows(selectedMic?.checks ?? [], quality)
 
   const failing = rows.some((r) => r.tone === "warn")
@@ -166,15 +181,13 @@ export function MicCard({ mode, device, onDeviceChange, sources }: MicCardProps)
           {status === "success" ? <Check className="size-3" aria-hidden /> : status === "warning" ? "!" : ""}
         </span>
         <h3 className="font-bold">Microphone</h3>
-        <div className="ml-auto min-w-[280px]">
+        <div className="ml-auto flex min-w-[280px] items-center gap-1.5">
           <NativeSelect
             aria-label="Microphone"
             value={valueOf(device, defaultMic)}
             onChange={(e) => change(e.target.value)}
           >
-            {device.kind === "mic" && micName && !selectedMic && (
-              <option value={MIC + micName}>{micName}</option>
-            )}
+            {disconnected && <option value={MIC + micName}>{micName} (not connected)</option>}
             {micList.map((m) => (
               <option key={m.name} value={MIC + m.name}>
                 {m.default ? `${m.name} (default)` : m.name}
@@ -191,13 +204,27 @@ export function MicCard({ mode, device, onDeviceChange, sources }: MicCardProps)
             )}
             {mode === "ready" && <SavedSessionOptions />}
           </NativeSelect>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-7 px-0"
+            aria-label="Refresh microphones"
+            onClick={() => void mics.refetch()}
+          >
+            <RefreshCw className={`size-4 ${mics.isFetching ? "animate-spin" : ""}`} />
+          </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)_300px] items-center gap-5">
         <div className="flex flex-col gap-2">
           <LevelMeter48 key={source} source={source} />
-          {!sessionRunning && <TestControl device={device.kind === "mic" ? (device.device ?? null) : null} />}
+          {!sessionRunning && (
+            <TestControl
+              device={device.kind === "mic" ? (device.device ?? null) : null}
+              unavailable={disconnected ? `${micName} isn't connected.` : null}
+            />
+          )}
         </div>
         <MicChecklist rows={rows} />
       </div>
