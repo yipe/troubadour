@@ -75,3 +75,10 @@ root_packages = ["troubadour.core", "troubadour.sound", "troubadour.lore", "trou
 name = "Layers"
 type = "layers"
 layers = ["troubadour.server", "troubadour.engine", "troubadour.cloud", "troubadour.lore | troubadour.sound", "troubadour.core"]
+
+[tool.basedpyright]
+include = ["packages", "tests"]
+exclude = ["spike", "**/__pycache__", "**/.venv"]
+typeCheckingMode = "standard"
+pythonVersion = "3.12"
+reportMissingTypeStubs = false
