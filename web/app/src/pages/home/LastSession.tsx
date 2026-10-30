@@ -68,7 +68,7 @@ function Written({
         <h2 className="font-serif text-24 font-bold text-ink">{titleOf(session)}</h2>
         {session.summary ? <p className="text-pretty text-ink-muted">{session.summary}</p> : null}
         {Object.keys(session.talk).length > 0 ? (
-          <TalkShareBar talk={session.talk} players={players} height={8} />
+          <TalkShareBar talk={session.talk} players={players} height={8} order="share" />
         ) : null}
         <div className="mt-0.5 flex flex-wrap gap-2">
           <Button nativeButton={false} variant="ghost" render={<Link to={paths.transcript(session.id)} />}>
