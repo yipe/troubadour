@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { AlertCircle, Check, Circle, Loader2, X } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { jobActive, jobCount } from "@/lib/campaign"
 import { campaignActions } from "@/lib/campaignStore"
-import type { CampaignJob, JobLive } from "@/lib/types"
+import type { CampaignJob, JobLive, JobSnippet } from "@/lib/types"
 
 /** Compact header chip for a queued/running job, or a failed one (dismissible). */
 export function JobChip({ job: j }: { job: CampaignJob }) {
@@ -117,7 +117,7 @@ export function JobStatus({
 }
 
 /** What a streaming model call is doing, e.g. "Writing… ~1,234 tokens · 27 tok/s". */
-export function liveText(live: JobLive, now: number): string {
+function liveText(live: JobLive, now: number): string {
   if (live.phase === "reading")
     return `Reading the transcript… ${Math.max(0, Math.round(now - live.started))} s`
   const what = live.phase === "thinking" ? "Thinking" : "Writing"
@@ -152,11 +152,68 @@ export function JobSteps({ job: j }: { job: CampaignJob | undefined }) {
           </span>
           {s.state === "running" && (j.live || j.message) && (
             <span className="pl-5.5 text-xs text-muted-foreground tabular-nums">
-              {j.live ? liveText(j.live, Math.max(now, Date.now() / 1000)) : j.message}
+              {j.live ? liveText(j.live, now) : j.message}
             </span>
           )}
         </li>
       ))}
+      <JobMarquee snippets={j.snippets ?? []} />
     </ol>
+  )
+}
+
+const MARQUEE_MS = 4000
+const PREFIX: Record<JobSnippet["kind"], string> = {
+  stat: "",
+  beat: "Noted",
+  person: "Met",
+  place: "Place",
+  loot: "Loot",
+  character: "",
+}
+
+function snippetText(s: JobSnippet): string {
+  return [PREFIX[s.kind], s.at, s.text].filter(Boolean).join(" · ")
+}
+
+/** One find at a time, every few seconds: the model's newest finds first, as it writes them; while it has
+ * nothing new (it is still reading the transcript), the code-counted stats about the session instead. */
+export function JobMarquee({ snippets }: { snippets: JobSnippet[] }) {
+  const [shown, setShown] = useState<{ snippet: JobSnippet; n: number } | null>(null)
+  const latest = useRef(snippets)
+  const seen = useRef(new Set<string>())
+  const turn = useRef(0)
+  useEffect(() => {
+    latest.current = snippets
+  }, [snippets])
+  const has = snippets.length > 0
+
+  useEffect(() => {
+    if (!has) return
+    const next = () => {
+      const all = latest.current
+      const found = all.filter((s) => s.kind !== "stat")
+      const fresh = found.find((s) => !seen.current.has(snippetText(s)))
+      const fill = all.filter((s) => s.kind === "stat")
+      const pool = fill.length ? fill : found
+      const pick = fresh ?? pool[turn.current % pool.length]
+      if (fresh) seen.current.add(snippetText(fresh))
+      else turn.current += 1
+      setShown((prev) => ({ snippet: pick, n: (prev?.n ?? 0) + 1 }))
+    }
+    next()
+    const id = setInterval(next, MARQUEE_MS)
+    return () => clearInterval(id)
+  }, [has])
+
+  if (!shown) return null
+  return (
+    <li
+      key={shown.n}
+      data-testid="write-up-marquee"
+      className="animate-in list-none pl-5.5 text-xs text-muted-foreground italic duration-500 fade-in"
+    >
+      {snippetText(shown.snippet)}
+    </li>
   )
 }

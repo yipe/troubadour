@@ -250,6 +250,7 @@ def test_write_up_reads_the_session_then_writes_the_page_from_the_notes(setup):
     assert llm.thought[writeup.WRITE_SYSTEM[:40]] is False
     assert all(llm.progress)  # every call streams its progress to the job
     assert [s["state"] for s in job.steps] == ["done"] * 4
+    assert job.snippets[0] == {"kind": "stat", "at": "", "text": "10:00 of play, 3 lines, 1 at the table"}
     assert job.done == job.total == 4
     assert job.live is None
 
@@ -704,6 +705,16 @@ def test_job_steps_and_throttled_model_progress(monkeypatch):
         (2, ["done", "done"], None),
     ]
     assert "_live_sent" not in job.to_json()
+
+
+def test_a_running_job_keeps_what_the_model_has_found_so_far():
+    job = mem.Job(id="j", kind="writeup", title="s")
+    job.stats(["2 h of play"])
+    beat = {"kind": "beat", "at": "0:05", "text": "They crossed the bridge."}
+    job.model_progress({"phase": "writing", "text": "{...", "snippets": [beat]})
+    job.model_progress({"phase": "writing", "snippets": [beat, {"kind": "person", "at": "", "text": "Mudge: An ogre."}]})
+    assert [s["text"] for s in job.snippets] == ["2 h of play", "They crossed the bridge.", "Mudge: An ogre."]
+    assert job.live == {"phase": "writing"}  # the streamed text itself is never sent
 
 
 def test_a_server_hiccup_is_tried_again(monkeypatch):

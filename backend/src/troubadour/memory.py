@@ -36,6 +36,7 @@ log = logging.getLogger("troubadour")
 CHUNK_CHARS = 6000  # notes per extraction call; small enough for a fast, careful answer
 RESOLVED_WORDS = 4  # an open item sharing this many content words with a scene is already told
 LLM_RETRIES, LLM_RETRY_WAIT_S = 2, 5.0  # a server error or dropped connection is tried again
+SNIPPETS_KEPT = 30  # the model's latest finds a running job keeps (sent with every update)
 LIVE_EVERY_S = 0.5  # a streaming call's progress reaches the UI at most this often
 CHARS_PER_TOKEN = 4  # streamed text -> estimated tokens (servers send several tokens per chunk)
 REASONING_HEADROOM = 12000  # extra max_tokens for a thinking model's reasoning
@@ -191,7 +192,8 @@ class MemoryLLM:
                         tokens = round((thought + written) / CHARS_PER_TOKEN)
                         rate = tokens / max(time.time() - first, 1e-3)
                         phase = "writing" if written else "thinking"
-                        progress({"phase": phase, "tokens": tokens, "tok_s": round(rate, 1), "started": started})
+                        info = {"phase": phase, "tokens": tokens, "tok_s": round(rate, 1), "started": started}
+                        progress({**info, "text": "".join(text)})
         except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError):
             return None
         return "".join(text), finish == "length"
@@ -506,12 +508,19 @@ class Job:
     # The model call in flight (model_progress): {"phase": "reading" | "thinking" | "writing", "tokens" (estimated),
     # "tok_s", "started" (epoch seconds)}; None between calls.
     live: dict | None = None
+    # Things found so far, shown while it runs: {"kind": "stat" | "beat" | "person" | "place" | "loot" |
+    # "character", "at", "text"}; stats first (code, at the start), then what the model has written.
+    snippets: list[dict] = field(default_factory=list)
     # Called after every update(): Memory.submit points it at the campaign.job event. Not sent.
     on_change: Callable[[], None] = field(default=lambda: None, repr=False, compare=False)
     _live_sent: float = field(default=0.0, repr=False, compare=False)
 
     def to_json(self) -> dict:
         return {k: v for k, v in self.__dict__.items() if k not in ("on_change", "_live_sent")}
+
+    def stats(self, lines: list[str]) -> None:
+        """Code-counted facts about the session, shown before the model has found anything."""
+        self.update(snippets=[{"kind": "stat", "at": "", "text": t} for t in lines] + self.snippets)
 
     def plan(self, *labels: str) -> None:
         """The job's stages, all pending; done/total count them."""
@@ -527,8 +536,17 @@ class Job:
     def model_progress(self, info: dict) -> None:
         """A streaming model call's progress; sent at most twice a second (and at each change of phase)."""
         now = time.monotonic()
+        found = info.get("snippets") or []
+        info = {k: v for k, v in info.items() if k not in ("text", "snippets")}
         phase_changed = (self.live or {}).get("phase") != info.get("phase")
         self.live = info
+        known = {(s["kind"], s["text"]) for s in self.snippets}
+        new = [s for s in found if (s["kind"], s["text"]) not in known]
+        if new:
+            stats = [s for s in self.snippets if s["kind"] == "stat"]
+            self.snippets = stats + [s for s in self.snippets if s["kind"] != "stat"][-SNIPPETS_KEPT:]
+            self.snippets += new[-SNIPPETS_KEPT:]
+            phase_changed = True
         if phase_changed or now - self._live_sent >= LIVE_EVERY_S:
             self._live_sent = now
             self.on_change()
@@ -757,6 +775,7 @@ class Memory:
             raise ValueError("That session has no lines.")
         stamps = {line.split(" ", 1)[0] for line in lines}
         job.plan("Read the whole session", "Write the page", "Suggest names, facts and spellings", "Save the page")
+        job.stats(writeup.table_stats(record, [n for e in self.vault.entities() for n in (e.name, *e.aliases)]))
         job.step(0, f"Reading {len(lines)} lines…")
         notes = writeup.read(self.llm, lines, cast, glossary_brief(self.vault), job.model_progress)
         if not notes.beats:

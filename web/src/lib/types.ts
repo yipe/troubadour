@@ -264,6 +264,12 @@ export interface CampaignJob {
   player_id: string | null /* clone / say / read / profile: whose voice */
   steps?: JobStep[] /* a job with stages (a write-up): in order */
   live?: JobLive | null /* the model call in flight, when it streams */
+  snippets?: JobSnippet[] /* found so far: code-counted stats first, then what the model has written */
+}
+export interface JobSnippet {
+  kind: "stat" | "beat" | "person" | "place" | "loot" | "character"
+  at: string /* a beat's timestamp, else "" */
+  text: string
 }
 export interface JobStep {
   label: string

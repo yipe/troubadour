@@ -6,7 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { useCampaign } from "@/lib/campaignStore"
 import { useClones } from "@/lib/cloneStore"
 import { applyEvent, useStore } from "@/lib/store"
-import type { Campaign, Clones, JobLive } from "@/lib/types"
+import type { Campaign, Clones, JobLive, JobSnippet } from "@/lib/types"
 import { campaign, campaignJob, player, savedSession, sessionRecord } from "@/test/fixtures"
 import { bodyOf, mockFetch } from "@/test/mockFetch"
 
@@ -126,6 +126,50 @@ describe("History viewer: write up for campaign", () => {
 
     steps(null, 1)
     expect(list).toHaveTextContent("Reading 1637 lines…") // between calls: the job's message
+  })
+
+  it("rotates what the model finds, and fills the wait with stats about the session", async () => {
+    server(campaign())
+    await renderViewer()
+    vi.useFakeTimers()
+    const send = (snippets: JobSnippet[]) =>
+      act(() =>
+        applyEvent({
+          type: "campaign.job",
+          data: campaignJob({
+            id: "w1",
+            kind: "writeup",
+            title: ID,
+            state: "running",
+            total: 1,
+            steps: [{ label: "Read the whole session", state: "running" }],
+            snippets,
+          }),
+        }),
+      )
+    const stat = (text: string): JobSnippet => ({ kind: "stat", at: "", text })
+    const stats = [
+      stat("2:39:58 of play, 1,754 lines, 5 at the table"),
+      stat("Natural 20s called out: 5; natural 1s: 2"),
+    ]
+    send(stats)
+    const marquee = () => screen.getByTestId("write-up-marquee")
+    expect(marquee()).toHaveTextContent("2:39:58 of play, 1,754 lines, 5 at the table")
+    act(() => vi.advanceTimersByTime(4000))
+    expect(marquee()).toHaveTextContent("Natural 20s called out: 5")
+
+    send([
+      ...stats,
+      { kind: "beat", at: "1:14:26", text: "The turtle swallowed Thoronn." },
+      { kind: "person", at: "", text: "Mama: one of three hags." },
+    ])
+    act(() => vi.advanceTimersByTime(4000))
+    expect(marquee()).toHaveTextContent("Noted · 1:14:26 · The turtle swallowed Thoronn.")
+    act(() => vi.advanceTimersByTime(4000))
+    expect(marquee()).toHaveTextContent("Met · Mama: one of three hags.")
+    act(() => vi.advanceTimersByTime(4000)) // nothing new from the model: back to the stats
+    expect(marquee()).toHaveTextContent("2:39:58 of play")
+    vi.useRealTimers()
   })
 
   it("offers 'Write up again' and a session-page link once written up", async () => {

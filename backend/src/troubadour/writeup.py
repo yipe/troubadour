@@ -14,6 +14,7 @@ errors. Model output is untrusted: types and lengths are checked, timestamps mus
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -231,7 +232,12 @@ def read(llm, lines: list[str], cast: str, glossary: str, progress=None) -> Note
     """The whole session in one call, thinking on (more of the session's facts, measured). `progress` hears a
     streaming call's progress (Job.model_progress)."""
     user = f"Who is at the table:\n{cast}\n\nGlossary:\n{glossary}\n\nTranscript:\n" + "\n".join(lines)
-    raw = llm.json(READ_SYSTEM, user, NOTES_SCHEMA, READ_TOKENS, think=True, progress=progress)
+
+    def heard(info: dict) -> None:
+        if progress is not None:
+            progress({**info, "snippets": snippets(info.get("text", ""))})
+
+    raw = llm.json(READ_SYSTEM, user, NOTES_SCHEMA, READ_TOKENS, think=True, progress=heard)
     return parse_notes(raw, {line.split(" ", 1)[0] for line in lines})
 
 
@@ -257,3 +263,86 @@ def facts(llm, notes: Notes, progress=None) -> list[tuple[str, str]]:
         for f in raw.get("facts") or []
         if isinstance(f, dict) and (about := clean(f.get("about"), NAME_MAX)) and (text := clean(f.get("text")))
     ][:LIST_MAX]
+
+
+# ------------------------------------------------------------------ while it runs (no extra model calls)
+
+SNIPPET_MAX = 160
+_STRING = r'"((?:[^"\\]|\\.)*)"'
+_SECTION = re.compile(r'"(beats|characters|people|places|loot|open|ending|spellings)"\s*:')
+_BEAT = re.compile(r'\{\s*"at"\s*:\s*' + _STRING + r'\s*,\s*"text"\s*:\s*' + _STRING + r"\s*\}")
+_NAMED = re.compile(
+    r'\{\s*"name"\s*:\s*' + _STRING + r'\s*,\s*(?:"kind"\s*:\s*' + _STRING + r'\s*,\s*)?"what"\s*:\s*' + _STRING + r"\s*\}"
+)
+_ITEM = re.compile(_STRING + r"\s*[,\]]")
+
+
+def _unescape(s: str) -> str:
+    try:
+        text = clean(json.loads(f'"{s}"'), 10_000)
+    except ValueError:
+        text = clean(s, 10_000)
+    if len(text) <= SNIPPET_MAX:
+        return text
+    return text[:SNIPPET_MAX].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+
+
+def snippets(partial: str) -> list[dict]:
+    """Finished entries in a notes reply that is still streaming: beats, the people met, places, loot. Shown
+    while the model writes (the same text it is writing anyway). An entry still being written is skipped."""
+    marks = [(m.start(), m.group(1)) for m in _SECTION.finditer(partial)]
+    out = []
+    for i, (start, section) in enumerate(marks):
+        body = partial[start : marks[i + 1][0] if i + 1 < len(marks) else len(partial)]
+        if section == "beats":
+            out += [{"kind": "beat", "at": _unescape(at), "text": _unescape(t)} for at, t in _BEAT.findall(body)]
+        elif section in ("people", "places", "characters"):
+            kind = {"people": "person", "places": "place", "characters": "character"}[section]
+            out += [{"kind": kind, "at": "", "text": f"{_unescape(n)}: {_unescape(w)}"} for n, _, w in _NAMED.findall(body)]
+        elif section == "loot":
+            out += [{"kind": "loot", "at": "", "text": _unescape(x)} for x in _ITEM.findall(body.split("[", 1)[-1])]
+    return [s for s in out if s["text"]]
+
+
+_NAT = re.compile(r"\bnat(?:ural)?[ -]?(20|twenty|1|one)\b", re.I)
+
+
+def table_stats(record: dict, names: list[str]) -> list[str]:
+    """Things about the session code can count in a moment, to show while the model is still reading."""
+    msgs = [m for m in record.get("messages") or [] if isinstance(m, dict) and isinstance(m.get("text"), str)]
+    s = record.get("session") or {}
+    out = []
+    if msgs:
+        players = {p.get("id"): p for p in record.get("players") or []}
+        out.append(f"{_clock(s.get('duration_s', 0))} of play, {len(msgs):,} lines, {len(players)} at the table")
+        talk: dict[str, float] = {}
+        for m in msgs:
+            who = m.get("speaker") or ""
+            if who and m.get("player_id"):
+                talk[who] = talk.get(who, 0.0) + max(0.0, float(m.get("t_end", 0)) - float(m.get("t_start", 0)))
+        total = sum(talk.values())
+        if total:
+            top = sorted(talk.items(), key=lambda kv: -kv[1])[:2]
+            out.append("Most talk: " + ", ".join(f"{who} {round(100 * t / total)}%" for who, t in top))
+        text = "\n".join(m["text"] for m in msgs)
+        counted = sorted(((len(re.findall(rf"\b{re.escape(n)}\b", text, re.I)), n) for n in names if len(n) >= 3), reverse=True)
+        if counted and counted[0][0] >= 3:
+            out.append(f"Most-said name: {counted[0][1]} ({counted[0][0]} times)")
+        nats = [m.group(1).lower() for m in _NAT.finditer(text)]
+        twenties = sum(n in ("20", "twenty") for n in nats)
+        ones = len(nats) - twenties
+        if nats:
+            out.append(f"Natural 20s called out: {twenties}; natural 1s: {ones}")
+        loud = [m for m in msgs if isinstance(m.get("level_db"), (int, float)) and len(m["text"].split()) >= 4]
+        if loud:
+            top = max(loud, key=lambda m: m["level_db"])
+            out.append(
+                f"Loudest moment, {_clock(top.get('t_start', 0))}: {top.get('speaker') or 'someone'}: “{clean(top['text'], 100)}”"
+            )
+    return out
+
+
+def _clock(seconds) -> str:
+    s = int(seconds or 0)
+    h, m, s = s // 3600, s % 3600 // 60, s % 60
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
