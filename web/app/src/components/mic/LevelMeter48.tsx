@@ -7,7 +7,16 @@ import { BAR_CLASS, barHeight, barZone, emptyBars, pushBar, type Bar } from "./m
  * 48 bars of recent input level, newest on the right. Level events arrive about ten times a second;
  * they land in a ref and become one new bar per animation frame at most.
  */
-export function LevelMeter48({ source, className }: { source: AudioSource; className?: string }) {
+export function LevelMeter48({
+  source,
+  className,
+  hint = "Say a few words from each seat",
+}: {
+  source: AudioSource
+  className?: string
+  /** The middle caption: the mic test's instruction by default; null during a session. */
+  hint?: string | null
+}) {
   const [bars, setBars] = useState<Bar[]>(emptyBars)
   const pending = useRef<{ db: number | null } | null>(null)
   const frame = useRef(0)
@@ -55,7 +64,7 @@ export function LevelMeter48({ source, className }: { source: AudioSource; class
       </div>
       <div className="flex justify-between text-11 text-ink-subtle">
         <span>quiet</span>
-        <span>Say a few words from each seat</span>
+        {hint && <span>{hint}</span>}
         <span>clipping</span>
       </div>
     </div>

@@ -51,7 +51,7 @@ export function QualityPopover({ children }: { children: ReactNode }) {
           </Button>
         ) : (
           <div className="flex flex-col gap-3">
-            <LevelMeter48 source="session" />
+            <LevelMeter48 source="session" hint={null} />
             {quality ? (
               <>
                 <ul className="flex flex-col gap-1 text-13">
