@@ -526,10 +526,17 @@ deps = ["F20", "F18", "C1", "F21", "F22", "F19"]
 owns = ["{lore}dnd_terms.py", "{server}routers/terms.py", "{server}app.py", "{tests}test_terms.py", "{tests}test_routes.py", "{api}terms/", "{api}query/keys.ts", "{app}paths.ts", "{app}pages/settings/index.tsx", "{app}pages/settings/index.test.tsx", "{app}pages/settings/sections/content/", "{app}pages/settings/sections/players/"]
 
 [[task]]
+id = "F28"
+title = "Ask: delete a past question"
+size = "S"
+deps = ["F17", "C14"]
+owns = ["{lore}ask.py", "{server}routers/ask.py", "{tests}test_ask_delete.py", "{api}ask/", "{app}pages/ask/"]
+
+[[task]]
 id = "R1"
 title = "Responsive layouts: wrap to two columns, then one"
 size = "L"
-deps = ["F24", "F25", "F26", "F23", "X3"]
+deps = ["F24", "F25", "F26", "F28", "F23", "X3"]
 owns = ["{ui}components/rail-layout.tsx", "{app}shell/", "{app}pages/", "{app}components/", "web/app/scripts/smoke.ts"]
 
 # ---------------------------------------------------------------- X: finish
