@@ -16,17 +16,17 @@ export function ColorSwatchPicker({ value, onChange, label = "Colour", allowClea
     <Popover.Root>
       <Popover.Trigger
         aria-label={`${label}: ${current}`}
-        className="border-line bg-sunken text-13 text-ink-muted hover:bg-elevated rounded-control flex h-8 cursor-pointer items-center gap-2 border px-2"
+        className="flex h-8 cursor-pointer items-center gap-2 rounded-control border border-line bg-sunken px-2 text-13 text-ink-muted hover:bg-elevated"
       >
         <span
-          className={cn("size-4 rounded-full", !value && "border-line-strong border border-dashed")}
+          className={cn("size-4 rounded-full", !value && "border border-dashed border-line-strong")}
           style={value ? { backgroundColor: value } : undefined}
         />
         {value ? null : <span>auto</span>}
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner sideOffset={6}>
-          <Popover.Popup className="border-popover-line bg-popover rounded-card flex flex-col gap-2 border p-2.5 shadow-lg outline-none">
+          <Popover.Popup className="flex flex-col gap-2 rounded-card border border-popover-line bg-popover p-2.5 shadow-lg outline-none">
             <div
               className="grid gap-1.5"
               style={{ gridTemplateColumns: `repeat(${SWATCH_HUES.length}, 18px)` }}
@@ -43,7 +43,7 @@ export function ColorSwatchPicker({ value, onChange, label = "Colour", allowClea
                       aria-pressed={selected}
                       onClick={() => onChange(hex)}
                       className={cn(
-                        "focus-visible:ring-accent-strong size-[18px] cursor-pointer rounded-full border-2 border-transparent outline-none focus-visible:ring-2",
+                        "size-[18px] cursor-pointer rounded-full border-2 border-transparent outline-none focus-visible:ring-2 focus-visible:ring-accent-strong",
                         selected && "border-ink",
                       )}
                       style={{ backgroundColor: hex }}
@@ -56,7 +56,7 @@ export function ColorSwatchPicker({ value, onChange, label = "Colour", allowClea
               <button
                 type="button"
                 onClick={() => onChange(null)}
-                className="text-12 text-ink-muted hover:text-ink cursor-pointer text-left"
+                className="cursor-pointer text-left text-12 text-ink-muted hover:text-ink"
               >
                 Use class colour
               </button>

@@ -40,9 +40,9 @@ export function UnderlineTabs({
         }
         const content = (
           <>
-            {item.dot && <span className="bg-accent size-[7px] rounded-full" />}
+            {item.dot && <span className="size-[7px] rounded-full bg-accent" />}
             {item.label}
-            {item.count != null && <span className="text-12 text-ink-subtle font-normal">{item.count}</span>}
+            {item.count != null && <span className="text-12 font-normal text-ink-subtle">{item.count}</span>}
           </>
         )
         if (renderItem) return <span key={item.id}>{renderItem(item, props, content)}</span>

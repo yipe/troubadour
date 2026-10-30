@@ -52,12 +52,12 @@ export function Chip({
     <span className={classes}>
       {body}
       {dashed && onAccept && (
-        <button type="button" aria-label="Accept" onClick={onAccept} className="text-success flex">
+        <button type="button" aria-label="Accept" onClick={onAccept} className="flex text-success">
           <Check size={13} />
         </button>
       )}
       {dashed && onReject && (
-        <button type="button" aria-label="Reject" onClick={onReject} className="text-danger flex">
+        <button type="button" aria-label="Reject" onClick={onReject} className="flex text-danger">
           <X size={13} />
         </button>
       )}

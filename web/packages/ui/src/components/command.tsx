@@ -6,7 +6,7 @@ import { cn } from "../lib/cn"
 export function Command({ className, ...props }: ComponentProps<typeof CommandPrimitive>) {
   return (
     <CommandPrimitive
-      className={cn("text-ink rounded-dialog bg-popover flex flex-col overflow-hidden", className)}
+      className={cn("flex flex-col overflow-hidden rounded-dialog bg-popover text-ink", className)}
       {...props}
     />
   )
@@ -14,10 +14,10 @@ export function Command({ className, ...props }: ComponentProps<typeof CommandPr
 
 export function CommandInput({ className, ...props }: ComponentProps<typeof CommandPrimitive.Input>) {
   return (
-    <div className="border-popover-line flex items-center gap-2 border-b px-3">
-      <Search className="text-ink-subtle size-4 shrink-0" />
+    <div className="flex items-center gap-2 border-b border-popover-line px-3">
+      <Search className="size-4 shrink-0 text-ink-subtle" />
       <CommandPrimitive.Input
-        className={cn("text-14 text-ink h-10 w-full bg-transparent outline-none", className)}
+        className={cn("h-10 w-full bg-transparent text-14 text-ink outline-none", className)}
         {...props}
       />
     </div>
@@ -31,7 +31,7 @@ export function CommandList({ className, ...props }: ComponentProps<typeof Comma
 export function CommandEmpty({ className, ...props }: ComponentProps<typeof CommandPrimitive.Empty>) {
   return (
     <CommandPrimitive.Empty
-      className={cn("text-13 text-ink-subtle py-6 text-center", className)}
+      className={cn("py-6 text-center text-13 text-ink-subtle", className)}
       {...props}
     />
   )
@@ -41,7 +41,7 @@ export function CommandGroup({ className, ...props }: ComponentProps<typeof Comm
   return (
     <CommandPrimitive.Group
       className={cn(
-        "[&_[cmdk-group-heading]]:text-11 [&_[cmdk-group-heading]]:text-ink-subtle [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase",
+        "[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-11 [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-ink-subtle [&_[cmdk-group-heading]]:uppercase",
         className,
       )}
       {...props}
@@ -53,7 +53,7 @@ export function CommandItem({ className, ...props }: ComponentProps<typeof Comma
   return (
     <CommandPrimitive.Item
       className={cn(
-        "text-13 rounded-control data-[selected=true]:bg-elevated flex cursor-pointer items-center gap-2 px-2 py-1.5 select-none data-[disabled=true]:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+        "flex cursor-pointer items-center gap-2 rounded-control px-2 py-1.5 text-13 select-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-elevated [&_svg]:size-4 [&_svg]:shrink-0",
         className,
       )}
       {...props}

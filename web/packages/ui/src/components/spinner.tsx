@@ -6,7 +6,7 @@ export function Spinner({ className }: { className?: string }) {
     <Loader
       role="status"
       aria-label="Loading"
-      className={cn("text-ink-subtle size-4 animate-spin", className)}
+      className={cn("size-4 animate-spin text-ink-subtle", className)}
     />
   )
 }

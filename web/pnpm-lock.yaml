@@ -153,6 +153,10 @@ importers:
       tailwind-merge:
         specifier: ^3.7.0
         version: 3.7.0
+    devDependencies:
+      tailwindcss:
+        specifier: ^4.3.3
+        version: 4.3.3
 
 packages:
 

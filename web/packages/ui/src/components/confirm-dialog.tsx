@@ -53,7 +53,7 @@ export function ConfirmDialog({
         <DialogBody className="text-ink-muted">
           {body}
           {error ? (
-            <p role="alert" className={cn("text-13 text-danger mt-3")}>
+            <p role="alert" className={cn("mt-3 text-13 text-danger")}>
               {error}
             </p>
           ) : null}

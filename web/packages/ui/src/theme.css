@@ -79,7 +79,7 @@
     color-scheme: dark;
   }
   body {
-    @apply bg-canvas text-14 text-ink font-sans;
+    @apply bg-canvas font-sans text-14 text-ink;
   }
   ::placeholder {
     @apply text-ink-subtle;
@@ -88,7 +88,7 @@
     @apply text-accent hover:text-ink;
   }
   :focus-visible {
-    @apply outline-accent-strong outline-2 outline-offset-2;
+    @apply outline-2 outline-offset-2 outline-accent-strong;
   }
 }
 

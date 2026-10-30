@@ -41,14 +41,14 @@ export function DialogHeader({
   className?: string
 }) {
   return (
-    <div className={cn("border-line flex items-start gap-3 border-b px-6 py-5", className)}>
+    <div className={cn("flex items-start gap-3 border-b border-line px-6 py-5", className)}>
       {icon ? (
-        <span className="bg-accent-soft text-accent rounded-card flex size-9 shrink-0 items-center justify-center [&_svg]:size-5">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-card bg-accent-soft text-accent [&_svg]:size-5">
           {icon}
         </span>
       ) : null}
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <DialogPrimitive.Title className="text-20 text-ink font-serif font-bold">
+        <DialogPrimitive.Title className="font-serif text-20 font-bold text-ink">
           {title}
         </DialogPrimitive.Title>
         {description ? (
@@ -59,7 +59,7 @@ export function DialogHeader({
       </div>
       <DialogPrimitive.Close
         aria-label="Close"
-        className="text-ink-subtle hover:text-ink rounded-control cursor-pointer p-1"
+        className="cursor-pointer rounded-control p-1 text-ink-subtle hover:text-ink"
       >
         <X className="size-4" />
       </DialogPrimitive.Close>
@@ -69,7 +69,7 @@ export function DialogHeader({
 
 export function DialogBody({ className, ...props }: ComponentProps<"div">) {
   return (
-    <div className={cn("text-14 text-ink min-h-0 flex-1 overflow-y-auto px-6 py-5", className)} {...props} />
+    <div className={cn("min-h-0 flex-1 overflow-y-auto px-6 py-5 text-14 text-ink", className)} {...props} />
   )
 }
 
@@ -81,8 +81,8 @@ export function DialogFooter({
   ...props
 }: ComponentProps<"div"> & { note?: ReactNode }) {
   return (
-    <div className={cn("border-line flex items-center gap-3 border-t px-6 py-4", className)} {...props}>
-      <div className="text-12 text-ink-subtle min-w-0 flex-1">{note}</div>
+    <div className={cn("flex items-center gap-3 border-t border-line px-6 py-4", className)} {...props}>
+      <div className="min-w-0 flex-1 text-12 text-ink-subtle">{note}</div>
       <div className="flex items-center gap-2">{children}</div>
     </div>
   )

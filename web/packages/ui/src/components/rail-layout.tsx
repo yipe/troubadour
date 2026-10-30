@@ -21,13 +21,13 @@ export function RailLayout({
 }: RailLayoutProps) {
   return (
     <div className={cn("flex h-full min-h-0 w-full", className)}>
-      <div className="border-line min-h-0 shrink-0 overflow-auto border-r" style={{ width: railWidth }}>
+      <div className="min-h-0 shrink-0 overflow-auto border-r border-line" style={{ width: railWidth }}>
         {rail}
       </div>
       <div className="min-h-0 min-w-0 flex-1 overflow-auto">{children}</div>
       {aside != null && (
         <div
-          className="border-line bg-sunken min-h-0 shrink-0 overflow-auto border-l"
+          className="min-h-0 shrink-0 overflow-auto border-l border-line bg-sunken"
           style={{ width: asideWidth }}
         >
           {aside}

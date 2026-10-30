@@ -35,7 +35,7 @@ export function SegmentedLegend({ segments, className }: { segments: Segment[]; 
   const sum = total(segments)
   if (sum <= 0) return null
   return (
-    <ul className={cn("text-12 text-ink-muted flex flex-wrap gap-x-4 gap-y-1", className)}>
+    <ul className={cn("flex flex-wrap gap-x-4 gap-y-1 text-12 text-ink-muted", className)}>
       {segments.map((s) => (
         <li key={s.label} className="flex items-center gap-1.5">
           <span className="size-2 rounded-full" style={{ background: s.color }} />

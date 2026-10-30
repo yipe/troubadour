@@ -16,7 +16,7 @@ export function PopoverContent({
       <PopoverPrimitive.Positioner side={side} align={align} sideOffset={sideOffset} className="z-50">
         <PopoverPrimitive.Popup
           className={cn(
-            "text-14 text-ink rounded-dialog border-popover-line bg-popover shadow-popover border outline-none",
+            "rounded-dialog border border-popover-line bg-popover text-14 text-ink shadow-popover outline-none",
             className,
           )}
           {...props}

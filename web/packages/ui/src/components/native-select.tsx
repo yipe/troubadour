@@ -24,7 +24,7 @@ export function NativeSelect({ className, leading, children, ...props }: NativeS
       </select>
       <ChevronDown
         aria-hidden
-        className="text-ink-subtle pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2"
+        className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-ink-subtle"
       />
     </div>
   )

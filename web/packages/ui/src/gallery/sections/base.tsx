@@ -38,7 +38,7 @@ export function Section() {
       </div>
 
       <SectionLabel>Status dots</SectionLabel>
-      <div className="text-13 text-ink-muted flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 text-13 text-ink-muted">
         {dotTones.map((tone) => (
           <span key={tone} className="flex items-center gap-1.5">
             <StatusDot tone={tone} /> {tone}

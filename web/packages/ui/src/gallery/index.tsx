@@ -21,7 +21,7 @@ export function Gallery() {
     <div className="flex flex-col gap-10 p-6">
       {sections.map(({ path, title, Section }) => (
         <section key={path} className="flex flex-col gap-4">
-          <h2 className="border-line text-24 text-ink border-b pb-2 font-serif font-bold">{title}</h2>
+          <h2 className="border-b border-line pb-2 font-serif text-24 font-bold text-ink">{title}</h2>
           <Section />
         </section>
       ))}

@@ -18,7 +18,7 @@ export function DropdownMenuContent({
       <Menu.Positioner side={side} align={align} sideOffset={sideOffset} className="z-50">
         <Menu.Popup
           className={cn(
-            "rounded-dialog border-popover-line bg-popover shadow-popover min-w-44 border p-1 outline-none",
+            "min-w-44 rounded-dialog border border-popover-line bg-popover p-1 shadow-popover outline-none",
             className,
           )}
           {...props}
@@ -57,5 +57,5 @@ export function DropdownMenuItem({
 }
 
 export function DropdownMenuSeparator({ className }: { className?: string }) {
-  return <Menu.Separator className={cn("bg-line my-1 h-px", className)} />
+  return <Menu.Separator className={cn("my-1 h-px bg-line", className)} />
 }

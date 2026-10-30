@@ -21,7 +21,7 @@ export function IconTile({ tone = "neutral", size = 32, children, className }: I
   return (
     <span
       className={cn(
-        "rounded-control inline-flex shrink-0 items-center justify-center",
+        "inline-flex shrink-0 items-center justify-center rounded-control",
         tones[tone],
         className,
       )}

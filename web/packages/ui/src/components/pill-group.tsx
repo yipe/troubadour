@@ -21,8 +21,8 @@ export function PillGroup({ items, value, onChange, className }: PillGroupProps)
             aria-pressed={active}
             onClick={() => onChange(item.id)}
             className={cn(
-              "text-13 rounded-full px-3 py-1",
-              active ? "bg-accent-strong text-ink-on-accent font-semibold" : "bg-surface text-ink-muted",
+              "rounded-full px-3 py-1 text-13",
+              active ? "bg-accent-strong font-semibold text-ink-on-accent" : "bg-surface text-ink-muted",
             )}
           >
             {item.label}

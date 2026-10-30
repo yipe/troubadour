@@ -11,7 +11,7 @@ export function SearchInput({ className, onClear, value, ...props }: SearchInput
     <div className={cn("relative w-full", className)}>
       <Search
         aria-hidden
-        className="text-ink-subtle pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
+        className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-subtle"
       />
       <Input
         type="search"
@@ -24,7 +24,7 @@ export function SearchInput({ className, onClear, value, ...props }: SearchInput
           type="button"
           aria-label="Clear search"
           onClick={onClear}
-          className="text-ink-subtle hover:text-ink absolute top-1/2 right-2 -translate-y-1/2 cursor-pointer"
+          className="absolute top-1/2 right-2 -translate-y-1/2 cursor-pointer text-ink-subtle hover:text-ink"
         >
           <X className="size-3.5" />
         </button>

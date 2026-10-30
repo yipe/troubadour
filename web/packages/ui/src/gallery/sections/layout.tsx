@@ -28,10 +28,10 @@ export function Section() {
   return (
     <div className="flex flex-col gap-6">
       <SectionLabel>Rail layout and nav items</SectionLabel>
-      <div className="border-line rounded-card h-56 overflow-hidden border">
+      <div className="h-56 overflow-hidden rounded-card border border-line">
         <RailLayout
           railWidth={220}
-          aside={<div className="text-13 text-ink-muted p-3">Aside</div>}
+          aside={<div className="p-3 text-13 text-ink-muted">Aside</div>}
           rail={
             <div className="flex flex-col gap-1 p-2">
               <NavItem
@@ -49,7 +49,7 @@ export function Section() {
             </div>
           }
         >
-          <div className="text-13 text-ink-muted p-3">Main</div>
+          <div className="p-3 text-13 text-ink-muted">Main</div>
         </RailLayout>
       </div>
 

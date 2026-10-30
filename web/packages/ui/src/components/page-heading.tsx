@@ -13,9 +13,9 @@ export function PageHeading({ eyebrow, title, subtitle, actions, className }: Pa
   return (
     <header className={cn("flex items-end gap-4", className)}>
       <div className="min-w-0 flex-1">
-        {eyebrow != null && <div className="text-13 text-accent mb-1 font-serif">{eyebrow}</div>}
-        <h1 className="text-34 text-ink font-serif leading-tight font-bold">{title}</h1>
-        {subtitle != null && <p className="text-14 text-ink-muted mt-1">{subtitle}</p>}
+        {eyebrow != null && <div className="mb-1 font-serif text-13 text-accent">{eyebrow}</div>}
+        <h1 className="font-serif text-34 leading-tight font-bold text-ink">{title}</h1>
+        {subtitle != null && <p className="mt-1 text-14 text-ink-muted">{subtitle}</p>}
       </div>
       {actions != null && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </header>

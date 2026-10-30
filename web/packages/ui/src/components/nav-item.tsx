@@ -46,13 +46,13 @@ export function NavItem({
 }: NavItemProps) {
   const content = (
     <>
-      {icon != null && <span className="text-ink-subtle flex shrink-0">{icon}</span>}
+      {icon != null && <span className="flex shrink-0 text-ink-subtle">{icon}</span>}
       <span className="min-w-0 flex-1">
         <span className="block truncate">{children}</span>
-        {sub != null && <span className="text-12 text-ink-subtle block truncate">{sub}</span>}
+        {sub != null && <span className="block truncate text-12 text-ink-subtle">{sub}</span>}
       </span>
       {dot != null && <span className={cn("size-[7px] shrink-0 rounded-full", dotTones[dot])} />}
-      {count != null && <span className="text-12 text-ink-subtle shrink-0 font-mono">{count}</span>}
+      {count != null && <span className="shrink-0 font-mono text-12 text-ink-subtle">{count}</span>}
     </>
   )
   const classes = cn(itemVariants({ selected: !!selected }), className)
