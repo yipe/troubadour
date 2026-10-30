@@ -265,6 +265,9 @@ export function campaignAnswer(a: Partial<CampaignAnswer> & { id: string }): Cam
     sources: [],
     message: "",
     created: 1_760_000_000,
+    campaign: null,
+    t: null,
+    stats: null,
     ...a,
   }
 }

@@ -6,7 +6,7 @@ import { ask } from "./endpoints.ts"
 export function useAsk() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (question: string) => ask(question),
+    mutationFn: ({ question, t }: { question: string; t?: number }) => ask(question, t),
     onSuccess: (answer) => editCampaign(client, withAnswer(answer)),
   })
 }
