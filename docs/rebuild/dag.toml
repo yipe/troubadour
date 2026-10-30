@@ -560,6 +560,13 @@ size = "L"
 deps = ["F24", "F25", "F26", "F28", "F29", "F30", "F31", "F23", "X3"]
 owns = ["{ui}components/rail-layout.tsx", "{app}shell/", "{app}pages/", "{app}components/", "web/app/scripts/smoke.ts"]
 
+[[task]]
+id = "F27"
+title = "Appearance: light and midnight themes (DPRcalc tokens)"
+size = "M"
+deps = ["R1", "F26"]
+owns = ["web/packages/tokens/", "{ui}", "web/app/index.html", "{app}main.tsx", "{app}paths.ts", "{app}pages/settings/", "{app}components/", "{app}shell/", "web/app/scripts/smoke.ts", "{app}lib/theme.ts", "{app}lib/theme.test.ts"]
+
 # ---------------------------------------------------------------- X: finish
 [[task]]
 id = "X1"
