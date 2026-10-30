@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react"
+import { fireEvent, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { CampaignJob } from "@troubadour/api/campaign"
 import type { Clones } from "@troubadour/api/clones"
@@ -65,14 +65,8 @@ describe("Players & voices settings", () => {
     expect(writes()[1]).toMatchObject({ method: "DELETE", url: "/api/players/p9" })
   })
 
-  it("adds a custom class and removes one after confirming", async () => {
-    const { writes } = mockFetch((c) =>
-      c.method === "POST"
-        ? { id: "mystic", label: "Mystic", color: "#8b5cf6", builtin: false }
-        : c.method === "DELETE"
-          ? undefined
-          : CLASSES,
-    )
+  it("no longer shows Classes (they moved to Content)", () => {
+    mockFetch(() => undefined)
     renderWithProviders(<PlayersSettings />, {
       live: { ...snapshotBase(), session: session(), players: [] },
       queryData: [
@@ -80,21 +74,8 @@ describe("Players & voices settings", () => {
         [keys.clones(), EMPTY],
       ],
     })
-    const classes = screen.getByRole("region", { name: "Classes" })
-    expect(within(classes).getByText("Bard")).toBeInTheDocument()
-    expect(within(classes).getByText("Tinkerer")).toBeInTheDocument()
-
-    fireEvent.click(within(classes).getByRole("button", { name: /Add a class/ }))
-    fireEvent.change(await screen.findByLabelText("Class name"), { target: { value: "Mystic" } })
-    fireEvent.click(screen.getByRole("button", { name: "Add class" }))
-    await waitFor(() => expect(writes()).toHaveLength(1))
-    expect(writes()[0]).toMatchObject({ method: "POST", url: "/api/classes", body: { label: "Mystic" } })
-
-    fireEvent.click(within(classes).getByRole("button", { name: "Remove Tinkerer" }))
-    expect(await screen.findByText(/fall back to their own colour/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Remove class" }))
-    await waitFor(() => expect(writes()).toHaveLength(2))
-    expect(writes()[1]).toMatchObject({ method: "DELETE", url: "/api/classes/tinkerer" })
+    expect(screen.queryByRole("region", { name: "Classes" })).toBeNull()
+    expect(screen.getAllByRole("heading", { name: "Players & voices" })).toHaveLength(1)
   })
 })
 
