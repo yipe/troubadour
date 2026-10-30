@@ -215,9 +215,11 @@ class MemoryLLM:
         for attempt in range(LLM_RETRIES + 1):
             try:
                 r = self.client.post(f"{self.url}{path}", headers=self._headers(), json=payload)
-            except (httpx.ConnectError, httpx.RemoteProtocolError):  # not a timeout: that would just wait again
+            except (httpx.ConnectError, httpx.RemoteProtocolError) as e:  # not a timeout: that would just wait again
                 if attempt == LLM_RETRIES:
-                    raise
+                    raise RuntimeError(
+                        f"Couldn't reach the model server at {self.url}. Is it running? (Models picks the server.)"
+                    ) from e
             else:
                 if not _try_again(r) or attempt == LLM_RETRIES:
                     return r

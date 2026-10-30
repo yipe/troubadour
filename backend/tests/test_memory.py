@@ -717,6 +717,16 @@ def test_a_running_job_keeps_what_the_model_has_found_so_far():
     assert job.live == {"phase": "writing"}  # the streamed text itself is never sent
 
 
+def test_a_server_that_isnt_running_says_so(monkeypatch):
+    monkeypatch.setattr(mem, "LLM_RETRY_WAIT_S", 0)
+
+    def refuse(request):
+        raise httpx.ConnectError("Connection refused")
+
+    with pytest.raises(RuntimeError, match=r"Couldn't reach the model server at http://llm.test/v1. Is it running"):
+        _llm_with(refuse).json("s", "u", {})
+
+
 def test_a_server_hiccup_is_tried_again(monkeypatch):
     monkeypatch.setattr(mem, "LLM_RETRY_WAIT_S", 0)
     replies = [
