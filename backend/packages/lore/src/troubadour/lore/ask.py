@@ -44,6 +44,7 @@ QUESTION_WEIGHT, TERM_WEIGHT, NAME_WEIGHT = 1.0, 0.6, 1.5
 ANSWER_MAX = 1500
 KEPT_ANSWERS = 20
 SKIP_NOTES = {"glossary.md", "readme.md", "ignored words.md"}  # generated, or about Troubadour itself
+SKIP_FOLDERS = {"_Overview"}  # generated from the other notes: searching it would duplicate everything
 NOT_FOUND = "I couldn't find anything about that in the transcripts or notes."
 
 TYPE_LABELS = {
@@ -244,6 +245,8 @@ class Answer:
     sources: list[dict] = field(default_factory=list)
     message: str = ""
     created: float = field(default_factory=time.time)
+    t: float | None = None  # live session seconds when asked, echoed back
+    stats: dict | None = None  # {seconds, transcripts, notes}: set once the corpus is counted
 
     def to_json(self) -> dict:
         return dict(self.__dict__)
@@ -387,6 +390,7 @@ def note_passages(vault: Vault) -> list[Passage]:
             path in entry_paths
             or any(part.startswith(".") for part in rel.parts)
             or rel.name.casefold() in SKIP_NOTES
+            or rel.parts[0] in SKIP_FOLDERS
             or rel.parts[:2] == ("Sessions", "Transcripts")
         ):
             continue
@@ -490,11 +494,11 @@ class Asker:
         self._q: queue.Queue = queue.Queue()
         threading.Thread(target=self._run, name="ask", daemon=True).start()
 
-    def ask(self, question: str) -> Answer:
+    def ask(self, question: str, t: float | None = None) -> Answer:
         question = re.sub(r"\s+", " ", question).strip()
         if not question:
             raise ValueError("Ask a question first.")
-        a = Answer(id=uuid.uuid4().hex[:8], question=question, campaign=self.campaign())
+        a = Answer(id=uuid.uuid4().hex[:8], question=question, campaign=self.campaign(), t=t)
         with self._lock:
             self.answers[a.id] = a
             for old in sorted(self.answers.values(), key=lambda x: x.created)[:-KEPT_ANSWERS]:
@@ -516,6 +520,7 @@ class Asker:
     def _run(self) -> None:
         while True:
             a = self._q.get()
+            started = time.monotonic()
             try:
                 self._answer(a)
                 a.state = "done"
@@ -524,6 +529,8 @@ class Asker:
             except Exception as e:
                 log.exception("ask failed")
                 a.state, a.message = "error", str(e) if isinstance(e, RuntimeError | ValueError) else f"{type(e).__name__}: {e}"
+            if a.stats:
+                a.stats["seconds"] = round(time.monotonic() - started, 1)
             self._emit(a)
 
     def _answer(self, a: Answer) -> None:
@@ -549,6 +556,12 @@ class Asker:
             players.append(seats)
         for p in passages:
             p.counts = collections.Counter(tokens(p.words if p.words is not None else p.text))
+        a.stats = {
+            "seconds": 0,
+            "transcripts": len(players),
+            "notes": len({p.path or p.entry for p in passages if p.kind != "transcript"}),
+        }
+        self._emit(a)  # so the UI can say "Searching 13 transcripts and 214 notes…"
         names = {e.name for e in about}
         entries = [p for p in passages if p.kind == "entry" and p.entry in names]
         excerpts = select(rank(passages, query_weights(a.question, terms, about)), entries)
