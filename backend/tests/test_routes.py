@@ -83,6 +83,8 @@ EXPECTED = [
     ("POST", "/api/sessions/{sid}/improve"),
     ("POST", "/api/sessions/{sid}/in-character"),
     ("GET", "/api/sessions/{sid}/notebook"),
+    ("GET", "/api/sessions/{sid}/review"),
+    ("POST", "/api/sessions/{sid}/review/{item_id}"),
     ("GET", "/api/sessions/{sid}/quality"),
     ("POST", "/api/sessions/{sid}/restore"),
     ("POST", "/api/sessions/{sid}/reviewed"),
