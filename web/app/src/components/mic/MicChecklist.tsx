@@ -12,10 +12,19 @@ export function MicChecklist({ rows }: { rows: ChecklistRow[] }) {
       {rows.map((r) => {
         const Icon = ICON[r.tone]
         return (
-          <li key={r.id} data-check={r.id} data-tone={r.tone} className="flex items-center gap-2">
-            <Icon aria-label={ICON_LABEL[r.tone]} className={`size-3.5 shrink-0 ${ICON_CLASS[r.tone]}`} />
-            <span className="flex-1">{r.label}</span>
-            {r.value && <span className="text-ink-subtle">{r.value}</span>}
+          <li
+            key={r.id}
+            data-check={r.id}
+            data-tone={r.tone}
+            className="flex flex-wrap items-baseline gap-x-2"
+          >
+            <Icon
+              aria-label={ICON_LABEL[r.tone]}
+              className={`size-3.5 shrink-0 self-center ${ICON_CLASS[r.tone]}`}
+            />
+            {/* A long value wraps under the label instead of squeezing it to a word per line. */}
+            <span className="min-w-40 flex-1">{r.label}</span>
+            {r.value && <span className="ml-auto text-right text-ink-subtle">{r.value}</span>}
           </li>
         )
       })}
