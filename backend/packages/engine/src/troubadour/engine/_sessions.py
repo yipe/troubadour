@@ -6,8 +6,10 @@ Assigns: `self._next_label`, `self._saved_signature`, `self.audio_monitor`, `sel
 Locking: `self.lock` guards players, voices, messages and the session fields; `_save_lock` and `_transcript_lock` serialize the writes. File and disk work happens outside `self.lock`.
 """
 
+import contextlib
 import json
 import logging
+import os
 import shutil
 import tempfile
 import threading
@@ -25,6 +27,11 @@ from .paths import SESSION_ID, _audio_seconds, _concat_wav, _first_by_id, sessio
 from .state import MAIN_CAMPAIGN, STATE_VERSION, Campaign, migrate_state
 
 log = logging.getLogger("troubadour")
+
+TRASH = ".trash"  # sessions/.trash/<id>: deleted or merged-away sessions, kept so they can come back
+PREMERGE = ".premerge"  # <kept>/.premerge: what a merge replaced, for unmerge
+RESTORED = ("transcript.json", "transcript.md", "meta.json", "quality.json", "transcript.orig.json")
+_structure_lock = threading.Lock()  # one delete, merge or unmerge at a time
 
 _talk_cache: dict[str, tuple[int, dict[str, float]]] = {}  # session id → (transcript mtime_ns, talk), for old sessions
 
@@ -218,32 +225,81 @@ class SessionsMixin:
         _talk_cache[folder.name] = (mtime, talk)
         return talk
 
+    def _check_removable(self, sid: str) -> Path:
+        """The folder of a saved session that may be merged away or deleted; KeyError if unknown,
+        ValueError for the live session or another campaign's."""
+        if not SESSION_ID.fullmatch(sid):
+            raise KeyError(sid)
+        with self.lock:
+            if self.live is not None and self.live.id == sid:
+                raise ValueError("Stop the live session first.")
+            campaign = self.campaign
+        folder = self.sessions_dir() / sid
+        if not folder.is_dir():
+            raise KeyError(sid)
+        if self.session_campaign(sid) not in (None, campaign):
+            raise ValueError("That session belongs to another campaign; open it first.")
+        return folder
+
+    def _to_trash(self, folder: Path) -> str:
+        """Move a session folder to sessions/.trash/ (a timestamp suffix if the name is taken); the
+        name it got. Nothing is ever deleted: the folder can be moved back."""
+        trash = self.sessions_dir() / TRASH
+        trash.mkdir(exist_ok=True)
+        name = folder.name
+        if (trash / name).exists():
+            name = f"{folder.name}.{time.time_ns()}"
+        folder.rename(trash / name)
+        return name
+
+    def delete_session(self, sid: str) -> str:
+        """Move a saved session (recording and transcript) to the trash; returns its trash name.
+        The vault's write-up page stays."""
+        with _structure_lock:
+            return self._to_trash(self._check_removable(sid))
+
+    def undelete_session(self, sid: str) -> dict:
+        """Put a trashed session back (the newest one if the id was trashed more than once).
+        KeyError: nothing in the trash by that id. FileExistsError: the id is in use again."""
+        if not SESSION_ID.fullmatch(sid):
+            raise KeyError(sid)
+        trash = self.sessions_dir() / TRASH
+        with _structure_lock:
+            held = sorted(
+                (p for p in trash.glob(f"{sid}*") if p.name == sid or p.name.startswith(f"{sid}.")),
+                key=lambda p: p.stat().st_mtime_ns,
+            )
+            if not held:
+                raise KeyError(sid)
+            if (self.sessions_dir() / sid).exists():
+                raise FileExistsError(sid)
+            held[-1].rename(self.sessions_dir() / sid)
+        return next((s for s in self.list_sessions() if s["id"] == sid), {"id": sid})
+
     def merge_sessions(self, ids: list[str]) -> dict:
-        """Append one saved session onto an earlier one and delete the later folder.
+        """Append one saved session onto an earlier one; the later folder goes to the trash.
 
         The earlier session keeps its id and start time. The later session's lines are shifted
         to follow it, and the two recordings are concatenated when both exist. A recording on
         only one of them is refused: the merged audio would no longer match the transcript.
+        Reversible: the earlier session's old files go to `.premerge/` and `unmerge_session`
+        puts everything back.
         """
         if len(ids) != 2 or len(set(ids)) != 2:
             raise ValueError("Pick two different saved sessions.")
-        for sid in ids:
-            if not SESSION_ID.fullmatch(sid):
-                raise KeyError(sid)
-        with self.lock:
-            if self.live is not None and self.live.id in ids:
-                raise ValueError("Stop the live session before merging it.")
-            campaign = self.campaign
+        with _structure_lock:
+            return self._merge(ids)
+
+    def _merge(self, ids: list[str]) -> dict:
         records = []
         for sid in ids:
-            if self.session_campaign(sid) != campaign:
-                raise ValueError("That session belongs to another campaign; open it first.")
-            folder = self.sessions_dir() / sid
+            folder = self._check_removable(sid)
             try:
                 record = json.loads((folder / "transcript.json").read_text())
             except (OSError, json.JSONDecodeError) as e:
                 raise KeyError(sid) from e
             records.append((folder, record))
+        campaign = self.campaign
         records.sort(key=lambda item: item[1]["session"].get("started_at", 0))
         (keep_dir, keep), (drop_dir, drop) = records
         keep_audio, drop_audio = keep_dir / "audio.wav", drop_dir / "audio.wav"
@@ -272,20 +328,106 @@ class SessionsMixin:
         merged_from.append(drop["session"]["id"])
         session["merged_from"] = merged_from
         record = keep | {"session": session, "players": players, "voices": voices, "messages": messages}
-        if keep_audio.is_file():
-            _concat_wav(keep_audio, drop_audio)
-        for name in ("quality.json", "transcript.orig.json"):
-            (keep_dir / name).unlink(missing_ok=True)
+        # meta.json holds fields the transcript's session dict may lack (campaign, title,
+        # present_player_ids); keep them, overlay what the merge changed.
+        changed = {k: session[k] for k in ("duration_s", "lines", "talk", "reviewed_at", "merged_from")}
+        meta = {**session, **self._read_meta(keep_dir), **changed, "campaign": campaign}
+
+        # Everything the merge replaces is set aside first, so any failure (or a later unmerge) can put it back.
+        pre = keep_dir / PREMERGE
+        if pre.exists():  # an earlier merge's restore point stays, under another name
+            pre.rename(keep_dir / f"{PREMERGE}.{time.time_ns()}")
+        pre.mkdir()
+        audio_bytes = keep_audio.stat().st_size if keep_audio.is_file() else None
+        for name in RESTORED:
+            if (keep_dir / name).is_file():
+                shutil.copy2(keep_dir / name, pre / name)
+        if audio_bytes is not None:
+            # The concat replaces the file, so a hard link keeps the original. Without links, unmerge truncates.
+            with contextlib.suppress(OSError):
+                os.link(keep_audio, pre / "audio.wav")
+        _write_files(pre, {"merge.json": json.dumps({"dropped": drop["session"]["id"], "audio_bytes": audio_bytes})})
+        try:
+            if audio_bytes is not None:
+                _concat_wav(keep_audio, drop_audio)
+            _write_files(
+                keep_dir,
+                {
+                    "transcript.json": json.dumps(record, ensure_ascii=False, indent=1),
+                    "transcript.md": transcript.markdown(record),
+                    "meta.json": json.dumps(meta),
+                },
+            )
+            for name in ("quality.json", "transcript.orig.json"):  # both describe the old content
+                if (keep_dir / name).is_file():
+                    (keep_dir / name).replace(pre / name)
+            trashed = self._to_trash(drop_dir)
+        except BaseException:
+            self._restore_premerge(keep_dir)
+            raise
         _write_files(
-            keep_dir,
-            {
-                "transcript.json": json.dumps(record, ensure_ascii=False, indent=1),
-                "transcript.md": transcript.markdown(record),
-                "meta.json": json.dumps(session),
-            },
+            pre, {"merge.json": json.dumps({"dropped": drop["session"]["id"], "audio_bytes": audio_bytes, "trash": trashed})}
         )
-        shutil.rmtree(drop_dir)
-        return next(s for s in self.list_sessions() if s["id"] == keep["session"]["id"])
+        return next((s for s in self.list_sessions() if s["id"] == keep["session"]["id"]), {"id": keep["session"]["id"]})
+
+    @staticmethod
+    def _restore_premerge(keep_dir: Path) -> None:
+        """Put the files in `.premerge/` back over the merged ones, audio first. Does not touch the trash."""
+        pre = keep_dir / PREMERGE
+        info = json.loads((pre / "merge.json").read_text())
+        audio = keep_dir / "audio.wav"
+        if (pre / "audio.wav").is_file():
+            if audio.exists() and os.path.samefile(audio, pre / "audio.wav"):
+                (pre / "audio.wav").unlink()  # the merge never replaced it; this is only the second name
+            else:
+                (pre / "audio.wav").replace(audio)
+        elif info.get("audio_bytes") is not None:
+            # No saved copy: cut the appended samples off and fix the two sizes in the WAV header.
+            size = info["audio_bytes"]
+            with open(audio, "r+b") as f:
+                f.truncate(size)
+                f.seek(4)
+                f.write((size - 8).to_bytes(4, "little"))
+                f.seek(40)
+                f.write((size - 44).to_bytes(4, "little"))
+        for name in RESTORED:
+            if (pre / name).is_file():
+                (pre / name).replace(keep_dir / name)
+            elif (keep_dir / name).is_file():
+                # Made after the merge (an Improve of the merged session) and it doesn't describe the
+                # restored transcript: set it aside rather than delete it.
+                (keep_dir / name).replace(keep_dir / f"{name}.undone")
+        (pre / "merge.json").unlink(missing_ok=True)
+        with contextlib.suppress(OSError):
+            pre.rmdir()
+
+    def unmerge_session(self, sid: str) -> dict:
+        """Undo the last merge into `sid`: its old files, its recording's length, and the dropped
+        session's folder (from the trash) all come back. KeyError: unknown session.
+        FileNotFoundError: no merge to undo. FileExistsError: the dropped id is in use again."""
+        if not SESSION_ID.fullmatch(sid):
+            raise KeyError(sid)
+        keep_dir = self.sessions_dir() / sid
+        with _structure_lock:
+            if not keep_dir.is_dir():
+                raise KeyError(sid)
+            try:
+                info = json.loads((keep_dir / PREMERGE / "merge.json").read_text())
+                dropped, held = info["dropped"], self.sessions_dir() / TRASH / info["trash"]
+            except (OSError, ValueError, KeyError, TypeError):
+                raise FileNotFoundError(sid) from None
+            if not held.is_dir():
+                raise FileNotFoundError(sid)
+            home = self.sessions_dir() / dropped
+            if home.exists():
+                raise FileExistsError(dropped)
+            held.rename(home)
+            try:
+                self._restore_premerge(keep_dir)
+            except BaseException:
+                home.rename(held)
+                raise
+        return next((s for s in self.list_sessions() if s["id"] == sid), {"id": sid})
 
     def session_file(self, sid: str, fmt: str) -> Path:
         """A saved session's transcript.{md,json} or its own recording (fmt "wav")."""

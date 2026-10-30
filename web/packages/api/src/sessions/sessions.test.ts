@@ -1,6 +1,13 @@
 import { afterEach, expect, it, vi } from "vitest"
 import { bodyOf, mockFetch, savedSession } from "../testing/index.ts"
-import { markReviewed, mergeSessions, sessionAudioUrl } from "./index.ts"
+import {
+  deleteSession,
+  markReviewed,
+  mergeSessions,
+  sessionAudioUrl,
+  undeleteSession,
+  unmergeSession,
+} from "./index.ts"
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -20,4 +27,18 @@ it("markReviewed POSTs the flag", async () => {
   await markReviewed("a", true)
   expect(m.calls[0]).toMatchObject({ method: "POST", url: "/api/sessions/a/reviewed" })
   expect(bodyOf(m.calls[0]!)).toEqual({ reviewed: true })
+})
+
+it("deleteSession, undeleteSession and unmergeSession hit their routes", async () => {
+  const m = mockFetch((c) =>
+    c.method === "DELETE" ? new Response(null, { status: 204 }) : savedSession({ id: "a" }),
+  )
+  await deleteSession("a")
+  await undeleteSession("a")
+  await unmergeSession("a")
+  expect(m.calls.map((c) => [c.method, c.url])).toEqual([
+    ["DELETE", "/api/sessions/a"],
+    ["POST", "/api/sessions/a/undelete"],
+    ["POST", "/api/sessions/a/unmerge"],
+  ])
 })

@@ -314,7 +314,7 @@ describe("MergeDialog", () => {
     fireEvent.click(screen.getByRole("radio", { name: /First half/ }))
     fireEvent.click(screen.getByRole("button", { name: "Merge…" }))
     expect(writes()).toEqual([])
-    expect(screen.getByText(/can't be undone/)).toBeInTheDocument()
+    expect(screen.getByText(/You can undo this right after/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Merge sessions" }))
     await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/sessions/a"))
     expect(writes()).toEqual([{ method: "POST", url: "/api/sessions/merge", body: { ids: ["a", "b"] } }])

@@ -16,7 +16,7 @@ import { sessionStatus } from "../../lib/sessions.ts"
 import { paths } from "../../paths.ts"
 import { StatTile } from "./StatTile.tsx"
 import { openSuggestions, sceneLengths, sessionGains, sessionTitle } from "./stats.ts"
-import { ExportMenu, ImproveDialog, MergeDialog, QualityDialog } from "./tools/index.ts"
+import { ExportMenu, ImproveDialog, MergeDialog, QualityDialog, SessionMenu } from "./tools/index.ts"
 
 const QUALITY = {
   good: { label: "Audio quality good", dot: "bg-success" },
@@ -66,6 +66,7 @@ export function SessionDetail({ session, numbers }: SessionDetailProps) {
           <h1 className="mt-0.5 font-serif text-32 font-bold">{sessionTitle(session)}</h1>
         </div>
         <ExportMenu session={session} />
+        <SessionMenu session={session} onMerge={() => setDialog("merge")} />
         <Button size="lg" nativeButton={false} render={<Link to={paths.transcript(session.id)} />}>
           <ScrollText className="size-3.5" />
           Transcript
@@ -152,10 +153,6 @@ export function SessionDetail({ session, numbers }: SessionDetailProps) {
             )}
             <Button variant="link" className="text-12 font-normal" onClick={() => setDialog("improve")}>
               Improve transcript
-            </Button>
-            <span aria-hidden>·</span>
-            <Button variant="link" className="text-12 font-normal" onClick={() => setDialog("merge")}>
-              Merge with another session
             </Button>
           </div>
         </div>
