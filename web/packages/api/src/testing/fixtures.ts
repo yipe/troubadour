@@ -3,7 +3,7 @@ import type { AudioLevel, AudioQuality, MicInfo, QualityNumbers } from "../audio
 import type { Campaign, CampaignJob, Entity } from "../campaign/types.ts"
 import type { CampaignInfo } from "../campaigns/types.ts"
 import type { CloneClip, CloneVoice, SpeechProfile } from "../clones/types.ts"
-import type { CloudAccount, CloudBackup, CloudStatus, CloudVault } from "../cloud/types.ts"
+import type { BackupAttempt, CloudAccount, CloudBackup, CloudStatus, CloudVault } from "../cloud/types.ts"
 import type { LlmModel, LlmProvider, ModelSettings } from "../llm/types.ts"
 import type { LibraryPlayer, Player } from "../players/types.ts"
 import type { Message, Session, Snapshot, Voice } from "../session/types.ts"
@@ -257,7 +257,24 @@ export function cloudStatus(c: Partial<CloudStatus> = {}): CloudStatus {
     auto_backup: false,
     last_backup: null,
     last_error: null,
+    device: "This Mac",
+    main_device: "This Mac",
+    is_main: true,
+    paused_live: false,
     ...c,
+  }
+}
+
+export function backupAttempt(a: Partial<BackupAttempt> = {}): BackupAttempt {
+  return {
+    at: 1_760_000_000,
+    ok: true,
+    snapshot: "snap1",
+    files: 0,
+    changed: 0,
+    message: null,
+    error: null,
+    ...a,
   }
 }
 

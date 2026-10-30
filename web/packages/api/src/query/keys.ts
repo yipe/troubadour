@@ -15,6 +15,7 @@ export const keys = {
   cloud: () => ["cloud"] as const,
   cloudAccount: () => ["cloudAccount"] as const,
   cloudVaults: () => ["cloudVaults"] as const,
+  cloudHistory: () => ["cloudHistory"] as const,
   /** Hosted providers and which one is picked (kept current by `llm.updated`). */
   llm: () => ["llm"] as const,
   models: () => ["models"] as const,

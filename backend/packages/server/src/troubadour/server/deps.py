@@ -45,6 +45,11 @@ asker = Asker(
 cloud = Cloud()  # opt-in backup; contacts the service only once the user connects
 
 
+def session_live() -> bool:
+    """A session is running or paused: backups wait until it ends (the mic and Whisper need the Mac)."""
+    return engine.status != "idle"
+
+
 accounts = Accounts()  # hosted language models; contacts one only once the user signs in or adds a key
 
 

@@ -36,6 +36,7 @@ EXPECTED = [
     ("POST", "/api/cloud/disconnect"),
     ("PUT", "/api/cloud/options"),
     ("POST", "/api/cloud/restore"),
+    ("GET", "/api/cloud/history"),
     ("GET", "/api/cloud/vaults"),
     ("GET", "/api/debug/memory"),
     ("GET", "/api/files/{name}"),

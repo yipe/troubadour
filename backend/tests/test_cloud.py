@@ -41,6 +41,7 @@ class FakeService:
         self.vaults: dict[str, dict] = {}
         self.snapshots: dict[str, list[dict]] = {}
         self.blobs: dict[str, bytes] = {}
+        self.messages: dict[str, str | None] = {}  # snapshot -> the commit message
         self.fail_next_commit: str | None = None  # an error code to answer the next commit with
         self.tampered: dict[str, bytes] = {}  # sha256 -> bytes served instead of the real ones
         self.rejecting: threading.Barrier | None = None
@@ -140,7 +141,9 @@ class FakeService:
                 return self.error(404, "not_found")
             listed = [f | {"url": f"https://download.test/{f['sha256']}"} for f in files]
             snap = {"id": snap_id, "parent": None, "created_at": "2026-10-17T00:00:00Z", "file_count": len(files)}
-            return httpx.Response(200, json={"snapshot": snap | {"total_bytes": 0, "message": None}, "files": listed})
+            return httpx.Response(
+                200, json={"snapshot": snap | {"total_bytes": 0, "message": self.messages.get(snap_id)}, "files": listed}
+            )
         vault_id, action = path.removeprefix("/vaults/").split("/")
         vault = self.vaults[vault_id]
         files = body["files"]
@@ -187,6 +190,7 @@ class FakeService:
             return httpx.Response(200, json={"snapshot": {"id": head, **snap, "parent": None}, "unchanged": True})
         snap_id = str(uuid.uuid4())
         self.snapshots[snap_id], vault["head_snapshot"] = files, snap_id
+        self.messages[snap_id] = body.get("message")
         return httpx.Response(200, json={"snapshot": {"id": snap_id, **snap}, "unchanged": False})
 
 
@@ -417,6 +421,9 @@ def test_disconnect_forgets_tokens_but_keeps_settings(client, service):
     client.logout()
     assert client.status("main") | {"url": None} == {
         "url": None,
+        "device": client.device,
+        "main_device": client.device,
+        "is_main": True,
         "connected": False,
         "include_transcripts": True,
         "auto_backup": True,

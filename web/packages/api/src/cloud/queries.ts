@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useEffect, useRef } from "react"
 import { putJob } from "../query/cache.ts"
 import { keys } from "../query/keys.ts"
 import {
@@ -7,6 +8,7 @@ import {
   cloudBackup,
   cloudConnect,
   cloudDisconnect,
+  cloudHistory,
   cloudOptions,
   cloudRestore,
   cloudVaults,
@@ -16,6 +18,23 @@ import type { CloudStatus } from "./types.ts"
 /** Backup status for the open campaign; `cloud.updated` events replace it. */
 export function useCloud() {
   return useQuery({ queryKey: keys.cloud(), queryFn: cloud })
+}
+
+/**
+ * Backup attempts for the open campaign. Every attempt, good or bad, changes the status' `last_backup` or
+ * `last_error` (and the server sends `cloud.updated`), so a change there refetches the list.
+ */
+export function useCloudHistory() {
+  const client = useQueryClient()
+  const { data: status } = useCloud()
+  const latest = `${status?.last_backup?.at}|${status?.last_error?.at}`
+  const seen = useRef(latest)
+  useEffect(() => {
+    if (seen.current === latest) return
+    seen.current = latest
+    void client.invalidateQueries({ queryKey: keys.cloudHistory() })
+  }, [client, latest])
+  return useQuery({ queryKey: keys.cloudHistory(), queryFn: cloudHistory })
 }
 
 /** Who is signed in. Quiet: with no account the header just shows initials, so no retry. */
@@ -77,7 +96,8 @@ export function useCloudBackup() {
 export function useCloudRestore() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (vaultId: string) => cloudRestore(vaultId),
+    mutationFn: ({ vaultId, snapshot }: { vaultId: string; snapshot?: string }) =>
+      cloudRestore(vaultId, snapshot),
     onSuccess: (job) => putJob(client, job),
   })
 }
