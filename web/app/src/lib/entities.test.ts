@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { campaignJob, entity } from "@troubadour/api/testing"
+import { campaignJob, entity, fact, factSuggestion } from "@troubadour/api/testing"
 import {
   connectedEntries,
   entityTone,
@@ -39,7 +39,7 @@ describe("glossary helpers", () => {
     expect(needsReview(entity({ name: "a" }))).toBe(false)
     expect(needsReview(entity({ name: "a", status: "suggested" }))).toBe(true)
     expect(needsReview(entity({ name: "a", heard_as_suggested: ["x"] }))).toBe(true)
-    expect(needsReview(entity({ name: "a", suggested_facts: ["x"] }))).toBe(true)
+    expect(needsReview(entity({ name: "a", suggested_facts: [factSuggestion({ text: "x" })] }))).toBe(true)
   })
 
   it("matchesSearch checks name, aliases and heard-as, case-insensitively", () => {
@@ -89,12 +89,12 @@ describe("entityTone", () => {
 })
 
 describe("connectedEntries", () => {
-  const elara = entity({ name: "Elara", facts: ["Sworn to [[Tarsis|the city]] long ago"] })
+  const elara = entity({ name: "Elara", facts: [fact({ text: "Sworn to [[Tarsis|the city]] long ago" })] })
   const tarsis = entity({ name: "Tarsis", type: "place" })
   const blade = entity({
     name: "Dawn Blade",
     type: "item",
-    facts: [`Carried by [[Elara]] ${"and kept sharp ".repeat(6)}`],
+    facts: [fact({ text: `Carried by [[Elara]] ${"and kept sharp ".repeat(6)}` })],
   })
   const lonely = entity({ name: "Lonely" })
   const campaign = { entities: [elara, tarsis, blade, lonely] }
@@ -115,14 +115,17 @@ describe("connectedEntries", () => {
     expect(rows).toEqual([{ name: "Elara", reason: "Sworn to the city long ago" }].slice(0, 0).concat(rows))
     expect(rows.map((r) => r.name)).toEqual(["Elara"])
     expect(rows[0]?.reason.length).toBeLessThanOrEqual(60)
-    const selfLinked = entity({ name: "Narcissus", facts: ["Loves [[Narcissus]]", "Also [[Narcissus]]"] })
+    const selfLinked = entity({
+      name: "Narcissus",
+      facts: [fact({ text: "Loves [[Narcissus]]" }), fact({ text: "Also [[Narcissus]]" })],
+    })
     expect(connectedEntries(selfLinked, { entities: [selfLinked] })).toEqual([])
     expect(connectedEntries(lonely, campaign)).toEqual([])
   })
 
   it("lists an entry once when linked both ways", () => {
-    const a = entity({ name: "A", facts: ["knows [[B]]"] })
-    const b = entity({ name: "B", facts: ["knows [[A]]"] })
+    const a = entity({ name: "A", facts: [fact({ text: "knows [[B]]" })] })
+    const b = entity({ name: "B", facts: [fact({ text: "knows [[A]]" })] })
     expect(connectedEntries(a, { entities: [a, b] })).toEqual([{ name: "B", reason: "knows B" }])
   })
 })

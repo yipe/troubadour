@@ -15,18 +15,21 @@ import { keys } from "../query/keys.ts"
 import {
   addCampaignFact,
   addEntityFact,
+  deleteCampaignFact,
   deleteEntity,
+  deleteEntityFact,
+  editCampaignFact,
+  editEntityFact,
   ignoreWords,
   importNotes,
   mergeEntity,
   reviewEntity,
   seekFacts,
-  setCampaignFacts,
   unignoreWord,
   updateEntity,
   writeUp,
 } from "./endpoints.ts"
-import type { Entity, EntityPatch, EntityReview } from "./types.ts"
+import type { Entity, EntityFactCreate, EntityPatch, EntityReview, FactCreate, FactEdit } from "./types.ts"
 
 /*
  * Every campaign write here goes through `useCampaignWrite`: one at a time, each computed from the
@@ -111,22 +114,61 @@ export function useReviewEntity() {
 
 export function useAddEntityFact() {
   return useCampaignWrite(
-    (vars: { name: string; text: string }, ctx) =>
-      changeEntity(ctx, vars.name, (latest) => addEntityFact(latest.name, vars.text)),
+    (vars: { name: string; fact: EntityFactCreate }, ctx) =>
+      changeEntity(ctx, vars.name, (latest) => addEntityFact(latest.name, vars.fact)),
     { apply: (e, vars, ctx) => entityApply(e, vars.name, ctx) },
   )
 }
 
-/** Replace the campaign-wide facts with `change(latest facts)`, computed when the write runs. */
-export function useSetCampaignFacts() {
+const hasFact = (e: Entity, id: string) => [...e.facts, ...e.suggested_facts].some((f) => f.id === id)
+
+/** Edit one fact by id (skipped when the fact is gone from the latest entry). */
+export function useEditFact() {
   return useCampaignWrite(
-    (change: (latest: string[]) => string[], ctx) => setCampaignFacts(change(ctx.latest?.facts ?? [])),
-    { apply: (facts) => withFacts(facts) },
+    (vars: { name: string; edit: FactEdit }, ctx) =>
+      changeEntity(ctx, vars.name, (latest) =>
+        hasFact(latest, vars.edit.fact_id) ? editEntityFact(latest.name, vars.edit) : undefined,
+      ),
+    { apply: (e, vars, ctx) => entityApply(e, vars.name, ctx) },
+  )
+}
+
+export function useDeleteFact() {
+  return useCampaignWrite(
+    (vars: { name: string; factId: string }, ctx) =>
+      changeEntity(ctx, vars.name, (latest) =>
+        hasFact(latest, vars.factId) ? deleteEntityFact(latest.name, vars.factId) : undefined,
+      ),
+    { apply: (e, vars, ctx) => entityApply(e, vars.name, ctx) },
+  )
+}
+
+/** Accept or reject one suggested fact. An accepted update replaces the fact it names and keeps it as history. */
+export function useReviewFact() {
+  return useCampaignWrite(
+    (vars: { name: string; factId: string; accept: boolean }, ctx) =>
+      changeEntity(ctx, vars.name, (latest) =>
+        latest.suggested_facts.some((f) => f.id === vars.factId)
+          ? reviewEntity(
+              latest.name,
+              vars.accept ? { accept_facts: [vars.factId] } : { reject_facts: [vars.factId] },
+            )
+          : undefined,
+      ),
+    { apply: (e, vars, ctx) => entityApply(e, vars.name, ctx) },
   )
 }
 
 export function useAddCampaignFact() {
-  return useCampaignWrite((text: string) => addCampaignFact(text), {
+  return useCampaignWrite((fact: FactCreate) => addCampaignFact(fact), { apply: (facts) => withFacts(facts) })
+}
+
+export function useEditCampaignFact() {
+  return useCampaignWrite((edit: FactEdit) => editCampaignFact(edit), { apply: (facts) => withFacts(facts) })
+}
+
+export function useDeleteCampaignFact() {
+  return useCampaignWrite((factId: string) => deleteCampaignFact(factId), {
     apply: (facts) => withFacts(facts),
   })
 }

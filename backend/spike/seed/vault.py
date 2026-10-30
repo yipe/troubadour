@@ -7,7 +7,8 @@ Still open / Mentioned / Transcript), so the app reads them as real write-ups.
 import re
 
 from troubadour.core import transcript
-from troubadour.lore.campaign import Vault
+from troubadour.lore.campaign import SessionIndex, Vault
+from troubadour.lore.facts import Fact, Source, Version, parse_hms
 
 from .common import SeedContext, SessionSeed
 
@@ -135,23 +136,36 @@ ENTITIES = [
     ("Detect Magic", "spell", "Thessaly’s first move in any suspicious room.", [], [], [], "confirmed"),
 ]
 
-# Facts the design shows, with the session they came from: (about, session number, text, suggested)
+# Facts the design shows (docs/design/.../data.js): (about, session number, time in session, text, suggested,
+# said by, confidence). Speakers are character names so seated players resolve; "Orsa Vell" is an NPC and stays unresolved.
 DESIGN_FACTS = [
-    ("Drowned Abbey", 12, "Necromantic magic lies beneath the abbey bell’s shadow.", False),
-    ("Diamond of Ysolde", 12, "The Diamond of Ysolde is hidden in the bell’s clapper.", True),
-    ("Drowned Abbey", 12, "The tide turns at the second bell.", False),
-    ("Captain Orsa Vell", 12, "Orsa Vell won’t set foot in the abbey.", False),
-    ("The Tidecallers", 11, "The Tidecallers want the abbey sealed for good.", False),
-    ("Diamond of Ysolde", 11, "The diamond is somewhere in the abbey.", True),
-    ("Captain Orsa Vell", 10, "Orsa Vell owes Pip 20 gold.", False),
-    ("Captain Orsa Vell", 9, "Orsa Vell smuggles for the Tidecallers.", True),
-    ("The Tidecallers", 8, "The Tidecallers will pay 4,000 gp for the diamond.", False),
-    ("Brann Coldwater", 6, "Brann swore an oath to the drowned god.", True),
-    ("Diamond of Ysolde", 5, "Whoever holds the diamond can’t tell a lie.", False),
-    ("Diamond of Ysolde", 3, "The Diamond of Ysolde was stolen from the Saltreach temple during the eclipse.", False),
+    ("Drowned Abbey", 12, "1:41:55", "Necromantic magic lies beneath the abbey bell’s shadow.", False, "Alex", "gm"),
+    ("Diamond of Ysolde", 12, "1:40:31", "The Diamond of Ysolde is hidden in the bell’s clapper.", True, "Velis Anwe", "theory"),
+    ("Drowned Abbey", 12, "1:38:02", "The tide turns at the second bell.", False, "Orsa Vell", "gm"),
+    ("Captain Orsa Vell", 12, "1:37:20", "Orsa Vell won’t set foot in the abbey.", False, "Alex", "gm"),
+    ("The Tidecallers", 11, "2:04:47", "The Tidecallers want the abbey sealed for good.", False, "Alex", "gm"),
+    ("Diamond of Ysolde", 11, "1:12:30", "The diamond is somewhere in the abbey.", True, "Pip Tallowmere", "theory"),
+    ("Captain Orsa Vell", 9, "1:30:05", "Orsa Vell smuggles for the Tidecallers.", True, "Pip Tallowmere", "theory"),
+    ("The Tidecallers", 8, "2:15:40", "The Tidecallers will pay 4,000 gp for the diamond.", False, "Orsa Vell", "gm"),
+    ("Brann Coldwater", 6, "0:44:12", "Brann swore an oath to the drowned god.", True, "Brann Coldwater", "once"),
+    ("Diamond of Ysolde", 5, "1:05:19", "Whoever holds the diamond can’t tell a lie.", False, "Sister Merrow", "gm"),
+    (
+        "Diamond of Ysolde",
+        3,
+        "2:10:04",
+        "The Diamond of Ysolde was stolen from the Saltreach temple during the eclipse.",
+        False,
+        "Alex",
+        "gm",
+    ),
 ]
 
-# Facts only the seed has, so more entries have something to show.
+# A fact that changed: the S10 debt was paid in S12, so the old wording sits in the new fact's history.
+PAID_BACK = ("Captain Orsa Vell", (12, "1:42:58", "Orsa Vell paid Pip back. They’re square.", "Alex", "gm"))
+OWED = (10, "0:52:10", "Orsa Vell owes Pip 20 gold.", "Pip Tallowmere", "once")
+
+# Old-format bullets, kept so both formats load: (about, session number, text, suggested). With a number the
+# bullet is the bare "([[page]])" form; without one it has no trailer at all.
 EXTRA_FACTS = [
     ("Old Tam", 2, "Old Tam carried a drowned passenger who never paid.", False),
     ("Mother Glass", 4, "Mother Glass bought Orsa’s ledger pages.", False),
@@ -159,6 +173,7 @@ EXTRA_FACTS = [
     ("Harbormaster Dunmore", 1, "Dunmore pays couriers half up front and half on return.", False),
     ("Sister Merrow", 5, "Sister Merrow tends the Saltreach Temple’s eclipse candles.", False),
     ("Wick Farrow", 9, "Wick Farrow saw who lit the fire on the docks.", True),
+    ("The Abbot", None, "Keeps what he stole close to his voice.", False),
 ]
 
 # Write-ups for S1..S11 except S7: (last time, [what happened], [still open]).
@@ -292,19 +307,36 @@ def _page(s: SessionSeed) -> str:
     return "\n".join(out)
 
 
+def _source(s: SessionSeed, at: str | None) -> Source:
+    return Source(s.page_title, s.id, parse_hms(at) if at else None)
+
+
 def seed(ctx: SeedContext) -> None:
-    vault = Vault(ctx.vault_dir)
+    index = SessionIndex(
+        ids_for={s.page_title: s.id for s in ctx.sessions},
+        numbers={s.id: s.n for s in ctx.sessions},
+        page_for={s.id: s.page_title for s in ctx.sessions},
+    )
+    vault = Vault(ctx.vault_dir, lambda: index)
     for name, kind, description, aliases, heard_as, suggested, status in ENTITIES:
         vault.create(
             name, kind, description=description, aliases=aliases, heard_as=heard_as, heard_as_suggested=suggested, status=status
         )
     by_n = {s.n: s for s in ctx.sessions}
-    for about, n, text, suggested in [*DESIGN_FACTS, *EXTRA_FACTS]:
-        vault.add_fact(about, f"{text} ([[{by_n[n].page_title}]])", suggested=suggested)
+    for about, n, at, text, suggested, said_by, confidence in DESIGN_FACTS:
+        fact = Fact(text, about, said_by, _source(by_n[n], at), confidence)  # type: ignore[arg-type]
+        vault.add_fact(about, fact, suggested=suggested)
+    about, (n, at, text, said_by, confidence) = PAID_BACK
+    n_old, at_old, text_old, by_old, conf_old = OWED
+    history = [Version(text_old, by_old, _source(by_n[n_old], at_old), conf_old)]  # type: ignore[arg-type]
+    vault.add_fact(about, Fact(text, about, said_by, _source(by_n[n], at), confidence, history))  # type: ignore[arg-type]
+    for about, n, text, suggested in EXTRA_FACTS:
+        source = Source(by_n[n].page_title) if n else None
+        vault.add_fact(about, Fact(text, about, source=source), suggested=suggested)
     vault.set_campaign_facts(
         [
-            "The campaign is set on the tidal coast around Saltreach.",
-            "Two bells mark each tide; the second is the one that matters.",
+            Fact("The campaign is set on the tidal coast around Saltreach.", source=Source(by_n[1].page_title)),
+            Fact("Two bells mark each tide; the second is the one that matters."),
         ]
     )
     for s in ctx.sessions:

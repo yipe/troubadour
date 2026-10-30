@@ -4152,24 +4152,6 @@
                 }
             }
         ],
-        "./packages/server/src/troubadour/server/routers/campaign.py": [
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 10,
-                    "endColumn": 14,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportInvalidTypeForm",
-                "range": {
-                    "startColumn": 10,
-                    "endColumn": 14,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./packages/server/src/troubadour/server/routers/players.py": [
             {
                 "code": "reportCallIssue",
