@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { useLlmProviders } from "@/lib/llmStore"
 import { useStore } from "@/lib/store"
 import type * as Store from "@/lib/store"
 import { session } from "@/test/fixtures"
@@ -33,5 +34,18 @@ describe("App", () => {
     expect(screen.queryByRole("alert")).toBeNull()
     act(() => useStore.setState({ session: session({ status: "idle", error: "Mic unplugged" }) }))
     expect(screen.getByRole("alert")).toHaveTextContent("Mic unplugged")
+  })
+  it("shows whether the AI answers, and opens Models from the status", () => {
+    render(<App />)
+    act(() =>
+      useStore.setState({
+        connected: true,
+        session: session({ status: "idle", llm: { url: "http://127.0.0.1:1235/v1", model: "m", ok: false } }),
+      }),
+    )
+    const status = screen.getByRole("button", { name: /Connected.*AI offline/ })
+    fireEvent.click(status)
+    expect(useLlmProviders.getState().modelsOpen).toBe(true)
+    act(() => useLlmProviders.setState({ modelsOpen: false }))
   })
 })

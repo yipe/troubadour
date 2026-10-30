@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { api } from "@/lib/api"
 import { setLlmProviders, useLlmProviders } from "@/lib/llmStore"
+import { useStore } from "@/lib/store"
 import type { LlmModel, LlmProvider, LlmProviderId, ModelSettings } from "@/lib/types"
 
 type HostedId = LlmProvider["id"]
@@ -218,6 +219,7 @@ export function ModelsDialog({
                       {scan.busy ? <Loader2 className="animate-spin" /> : <RefreshCw />} Rescan
                     </Button>
                   </div>
+                  <ServerStatus scanned={scan.note} />
                   {scan.note && (
                     <p role="status" className="text-xs text-muted-foreground">
                       {scan.note}
@@ -503,4 +505,16 @@ function ModelPicker({
 function modelLabel(m: LlmModel): string {
   const name = m.name && m.name !== m.id ? `${m.name} (${m.id})` : m.id
   return m.price ? `${name} · ${m.price}` : name
+}
+
+/** Whether the saved model server answers with the chosen model (the app's health check, every 30 s). */
+function ServerStatus({ scanned }: { scanned: string | null }) {
+  const llm = useStore((s) => s.session?.llm)
+  if (!llm || scanned) return null
+  return (
+    <p role="status" className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className={`size-2 rounded-full ${llm.ok ? "bg-emerald-500" : "bg-red-500"}`} />
+      {llm.ok ? `Connected: ${llm.model} answers at ${llm.url}` : `Not answering: ${llm.model} at ${llm.url}`}
+    </p>
+  )
 }

@@ -65,7 +65,7 @@ function model(id: string) {
   return { id, name: id, price: null }
 }
 
-beforeEach(() => useLlmProviders.setState({ providers: null }, true))
+beforeEach(() => useLlmProviders.setState({ providers: null, modelsOpen: false }, true))
 afterEach(() => vi.restoreAllMocks())
 
 describe("Models dialog", () => {

@@ -7,6 +7,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useCampaign } from "@/lib/campaignStore"
 import { cloudActions, useCloud } from "@/lib/cloudStore"
+import { setModelsOpen, useLlmProviders } from "@/lib/llmStore"
 import { cn } from "@/lib/utils"
 
 /** Accounts are DPRcalc's: name, email, avatar and password are managed there. */
@@ -33,7 +34,7 @@ export function AccountMenu() {
   const account = useCloud((s) => s.account)
   const backingUp = useCampaign(running("backup"))
   const [open, setOpen] = useState(false)
-  const [models, setModels] = useState(false)
+  const models = useLlmProviders((s) => s.modelsOpen)
   const connected = !!status?.connected
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export function AccountMenu() {
           className="w-full justify-start"
           onClick={() => {
             setOpen(false)
-            setModels(true)
+            setModelsOpen(true)
           }}
         >
           <Settings /> Models
@@ -146,7 +147,7 @@ export function AccountMenu() {
           </>
         )}
       </PopoverContent>
-      <ModelsDialog open={models} onOpenChange={setModels} />
+      <ModelsDialog open={models} onOpenChange={setModelsOpen} />
     </Popover>
   )
 }

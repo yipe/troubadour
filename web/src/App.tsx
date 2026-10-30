@@ -10,6 +10,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { startRouting } from "@/lib/route"
 import { connect, actions, useStore } from "@/lib/store"
+import { setModelsOpen } from "@/lib/llmStore"
 import { cn } from "@/lib/utils"
 
 const TABS: { id: "sessions" | "campaign" | "ask"; label: string }[] = [
@@ -21,6 +22,7 @@ const TABS: { id: "sessions" | "campaign" | "ask"; label: string }[] = [
 export default function App() {
   const view = useStore((s) => s.view)
   const connected = useStore((s) => s.connected)
+  const llm = useStore((s) => s.session?.llm)
   const loaded = useStore((s) => s.loaded)
   const sessionStatus = useStore((s) => s.session?.status)
   const running = sessionStatus === "running" || sessionStatus === "paused"
@@ -75,7 +77,12 @@ export default function App() {
               RECORDING
             </span>
           )}
-          <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+          <button
+            type="button"
+            title="Models: where the AI runs, and whether it answers"
+            onClick={() => setModelsOpen(true)}
+            className="ml-auto flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+          >
             <span
               className={cn(
                 "size-2 rounded-full",
@@ -83,7 +90,14 @@ export default function App() {
               )}
             />
             {connected ? "Connected" : "Connecting…"}
-          </div>
+            {connected && llm && (
+              <>
+                <span aria-hidden>·</span>
+                <span className={cn("size-2 rounded-full", llm.ok ? "bg-emerald-500" : "bg-red-500")} />
+                {llm.ok ? "AI ready" : "AI offline"}
+              </>
+            )}
+          </button>
           {loaded && <AccountMenu />}
         </header>
         {serverError && (

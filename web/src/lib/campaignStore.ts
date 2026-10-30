@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { toast } from "sonner"
+import { setModelsOpen } from "./llmStore"
 import { api } from "./api"
 import type { Campaign, CampaignAnswer, CampaignJob, CampaignSuggestions, Entity } from "./types"
 
@@ -241,7 +242,11 @@ export async function attempt<T>(call: () => Promise<T>): Promise<T | undefined>
   try {
     return await call()
   } catch (e) {
-    toast.error((e as Error).message)
+    const message = (e as Error).message
+    // "…Is it running? (Models picks the server.)", "…Pick one in Models.": one click to fix it.
+    if (/\bModels\b/.test(message))
+      toast.error(message, { action: { label: "Open Models", onClick: () => setModelsOpen(true) } })
+    else toast.error(message)
     return undefined
   }
 }
