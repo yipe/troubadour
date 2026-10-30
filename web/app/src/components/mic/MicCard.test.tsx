@@ -1,8 +1,9 @@
+import { useState } from "react"
 import { act, fireEvent, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { applyAudioEvent } from "@troubadour/api/live"
-import type { SourceList } from "@troubadour/api/session"
-import { audioLevel, audioQuality, mic, mockFetch, savedSession } from "@troubadour/api/testing"
+import { applyAudioEvent, useAudio } from "@troubadour/api/live"
+import type { Source, SourceList } from "@troubadour/api/session"
+import { audioLevel, audioQuality, httpError, mic, mockFetch, savedSession } from "@troubadour/api/testing"
 import { renderWithProviders } from "../../test/render.tsx"
 import { MicCard } from "./MicCard.tsx"
 
@@ -122,5 +123,70 @@ describe("MicCard", () => {
     await screen.findByRole("option", { name: "Yeti GX" })
     expect(screen.queryByRole("group", { name: /Replay/ })).toBeNull()
     expect(calls.some((c) => c.url === "/api/sessions")).toBe(false)
+  })
+
+  it("shows the server's message when the test can't start, and clears it on a device change", async () => {
+    mockFetch(
+      handler((c) =>
+        c.url === "/api/mic/test" ? httpError(400, "Couldn't open Yeti GX: it isn't connected.") : undefined,
+      ),
+    )
+    function Harness() {
+      const [device, setDevice] = useState<Source>({ kind: "mic", device: "Yeti GX" })
+      return <MicCard mode="settings" device={device} onDeviceChange={setDevice} />
+    }
+    renderWithProviders(<Harness />)
+    await screen.findByRole("option", { name: "Yeti GX" })
+    fireEvent.click(screen.getByRole("button", { name: /Test/ }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't open Yeti GX: it isn't connected.")
+    fireEvent.change(screen.getByRole("combobox", { name: "Microphone" }), {
+      target: { value: "mic:Jabra Speak 710" },
+    })
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull())
+  })
+
+  it("keeps an unplugged remembered mic as '(not connected)' and disables Test for it", async () => {
+    const { writes } = mockFetch(handler())
+    renderWithProviders(
+      <MicCard mode="settings" device={{ kind: "mic", device: "Yeti 2" }} onDeviceChange={() => {}} />,
+    )
+    expect(await screen.findByRole("option", { name: "Yeti 2 (not connected)" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Test/ })).toBeDisabled()
+    expect(screen.getByText("Yeti 2 isn't connected.")).toBeInTheDocument()
+    expect(writes()).toEqual([])
+  })
+
+  it("Refresh microphones refetches the list", async () => {
+    const { calls } = mockFetch(handler())
+    renderWithProviders(
+      <MicCard mode="settings" device={{ kind: "mic", device: null }} onDeviceChange={() => {}} />,
+    )
+    await screen.findByRole("option", { name: "Yeti GX" })
+    const before = calls.filter((c) => c.url === "/api/mics").length
+    fireEvent.click(screen.getByRole("button", { name: "Refresh microphones" }))
+    await waitFor(() => expect(calls.filter((c) => c.url === "/api/mics").length).toBe(before + 1))
+  })
+
+  it("polls the list every 2 s, but not while a mic test runs", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const { calls } = mockFetch(handler())
+      renderWithProviders(
+        <MicCard mode="settings" device={{ kind: "mic", device: null }} onDeviceChange={() => {}} />,
+      )
+      await screen.findByRole("option", { name: "Yeti GX" })
+      const count = () => calls.filter((c) => c.url === "/api/mics").length
+      const first = count()
+      await act(() => vi.advanceTimersByTimeAsync(2100))
+      expect(count()).toBeGreaterThan(first)
+
+      act(() => useAudio.setState({ micTest: "running" }))
+      const during = count()
+      await act(() => vi.advanceTimersByTimeAsync(6000))
+      expect(count()).toBe(during)
+    } finally {
+      act(() => useAudio.setState({ micTest: "stopped" }))
+      vi.useRealTimers()
+    }
   })
 })

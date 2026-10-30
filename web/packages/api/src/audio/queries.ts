@@ -3,8 +3,9 @@ import { keys } from "../query/keys.ts"
 import type { MicInfo, MicSpecsPatch } from "./types.ts"
 import { mics, setAudioMonitor, startMicTest, stopMicTest, updateMic } from "./endpoints.ts"
 
-export function useMics() {
-  return useQuery({ queryKey: keys.mics(), queryFn: mics })
+/** `poll`: refetch every 2 s so a plugged-in or removed mic shows up without a reload. */
+export function useMics(opts: { poll?: boolean } = {}) {
+  return useQuery({ queryKey: keys.mics(), queryFn: mics, refetchInterval: opts.poll ? 2000 : false })
 }
 
 export function useUpdateMic() {
