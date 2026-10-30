@@ -119,6 +119,7 @@ def write_wav(path: Path, audio: np.ndarray) -> Path:
 def hermetic_dnd_terms(tmp_path, monkeypatch):
     """Tests use the built-in D&D names, never a local list in data/dnd_terms.json."""
     monkeypatch.setattr("troubadour.lore.dnd_terms.generated_path", lambda: tmp_path / "no-dnd-terms.json")
+    monkeypatch.setattr("troubadour.lore.dnd_terms.custom_path", lambda: tmp_path / "no-custom-terms.json")
 
 
 # ------------------------------------------------------------- voice clones (tts.py, talk.py, cloning.py)

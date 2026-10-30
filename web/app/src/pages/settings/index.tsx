@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ComponentType } from "react"
-import { BookOpen, Cloud, Mic, ShieldCheck, Users } from "lucide-react"
+import { BookMarked, BookOpen, Cloud, Mic, ShieldCheck, Users } from "lucide-react"
 import { Link, useParams } from "react-router"
 import { NavItem } from "@troubadour/ui/nav-item"
 import { RailLayout } from "@troubadour/ui/rail-layout"
@@ -10,6 +10,7 @@ const sections: Record<SettingsSection, ComponentType> = {
   models: lazy(() => import("./sections/models/index.tsx").then((m) => ({ default: m.Component }))),
   microphone: lazy(() => import("./sections/microphone/index.tsx").then((m) => ({ default: m.Component }))),
   players: lazy(() => import("./sections/players/index.tsx").then((m) => ({ default: m.Component }))),
+  content: lazy(() => import("./sections/content/index.tsx").then((m) => ({ default: m.Component }))),
   vault: lazy(() => import("./sections/vault/index.tsx").then((m) => ({ default: m.Component }))),
   cloud: lazy(() => import("./sections/cloud/index.tsx").then((m) => ({ default: m.Component }))),
 }
@@ -18,6 +19,7 @@ const nav: { id: SettingsSection; label: string; icon: ComponentType<{ className
   { id: "models", label: "Models & privacy", icon: ShieldCheck },
   { id: "microphone", label: "Microphone", icon: Mic },
   { id: "players", label: "Players & voices", icon: Users },
+  { id: "content", label: "Content", icon: BookMarked },
   { id: "vault", label: "Obsidian vault", icon: BookOpen },
   { id: "cloud", label: "Troubadour Cloud", icon: Cloud },
 ]

@@ -30,6 +30,7 @@ from troubadour.server.routers import (
     sessions,
     state,
     storage,
+    terms,
     timeline,
     voices,
 )
@@ -76,6 +77,7 @@ for router_module in (
     timeline,
     recap,
     storage,
+    terms,
 ):
     app.include_router(router_module.router)
 

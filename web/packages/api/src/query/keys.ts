@@ -25,6 +25,8 @@ export const keys = {
   sources: () => ["sources"] as const,
   clones: () => ["clones"] as const,
   classes: () => ["classes"] as const, // C1
+  /** No argument: the prefix of every terms query. */
+  terms: (query?: object) => (query ? (["terms", query] as const) : (["terms"] as const)),
   // C-domains: the C tasks write the hooks, the keys are here so they don't touch this file.
   notebook: () => ["notebook"] as const,
   review: (id: string) => ["review", id] as const,
