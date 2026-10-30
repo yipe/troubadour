@@ -491,3 +491,26 @@ def test_chatgpt_sign_in_through_the_server(api):
     assert live.token() == server.accounts.token()
     assert "ChatGPT plan: not connected" in client.get("/auth/callback", params={"code": "x", "state": "nope"}).text
     assert client.post("/api/llm/deepseek/connect").status_code == 404  # a key, not a sign-in
+
+
+def test_rescan_asks_the_typed_local_server_for_its_models(api, monkeypatch):
+    client, _, _ = api
+    asked = []
+
+    def get(url, headers, timeout):
+        asked.append((url, headers))
+        if "10.0.0.8" in url:
+            raise httpx.ConnectError("refused")
+        return httpx.Response(200, json={"data": [{"id": "qwen3.8-27b"}, {"id": 7}, {"id": "gemma-4-26b"}]})
+
+    monkeypatch.setattr(server.httpx, "get", get)
+    r = client.post("/api/llm/local/models", json={"llm_url": "1235", "api_key": " k1 "})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["installed"][:2] == ["qwen3.8-27b", "gemma-4-26b"]  # then the models chosen here before
+    assert (body["found"], body["error"]) == (2, None)
+    assert asked[-1] == ("http://127.0.0.1:1235/v1/models", {"Authorization": "Bearer k1"})
+
+    r = client.post("/api/llm/local/models", json={"llm_url": "10.0.0.8:1234"})
+    assert (r.json()["found"], r.json()["error"]) == (0, "Couldn't reach http://10.0.0.8:1234/v1 (ConnectError).")
+    assert client.post("/api/llm/local/models", json={"llm_url": "ftp://x"}).status_code == 400

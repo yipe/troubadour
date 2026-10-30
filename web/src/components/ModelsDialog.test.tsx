@@ -88,6 +88,42 @@ describe("Models dialog", () => {
     })
   })
 
+  it("rescans the typed server for the models it offers now", async () => {
+    const { writes } = mockFetch((call) => {
+      if (call.url === "/api/settings/models") return settings()
+      if (call.url === "/api/llm/local/models")
+        return { installed: ["qwen3.8-27b", "gemma", "qwen"], found: 1, error: null }
+    })
+    await openDialog()
+    fireEvent.change(screen.getByLabelText("Model server"), { target: { value: "1234" } })
+    fireEvent.click(screen.getByRole("button", { name: /Rescan/ }))
+    await act(async () => {})
+    expect(writes()).toEqual([
+      { method: "POST", url: "/api/llm/local/models", body: { llm_url: "1234", api_key: "" } },
+    ])
+    expect(screen.getByRole("status")).toHaveTextContent("Found 1 model.")
+    pick("Live spelling", "qwen3.8-27b")
+    expect(screen.getByLabelText("Live spelling")).toHaveValue("qwen3.8-27b")
+  })
+
+  it("says why a rescan found nothing", async () => {
+    mockFetch((call) => {
+      if (call.url === "/api/settings/models") return settings()
+      if (call.url === "/api/llm/local/models")
+        return {
+          installed: ["gemma", "qwen"],
+          found: 0,
+          error: "Couldn't reach http://127.0.0.1:1235/v1 (ConnectError).",
+        }
+    })
+    await openDialog()
+    fireEvent.click(screen.getByRole("button", { name: /Rescan/ }))
+    await act(async () => {})
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Couldn't reach http://127.0.0.1:1235/v1 (ConnectError).",
+    )
+  })
+
   it("shows speaker matching with its one model, named exactly", async () => {
     mockFetch((call) => {
       if (call.url === "/api/settings/models") return settings()

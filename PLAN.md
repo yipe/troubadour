@@ -597,6 +597,8 @@ the user signs in or adds a key **and** picks it. Signing out of the provider in
   list has prices, as USD per 1M tokens in/out; the others get a `price_note`); `POST /api/llm/{id}/connect {fresh?}` →
   `{authorize_url}`; `GET /auth/callback` (ChatGPT), `GET /api/llm/openrouter/callback`;
   `PUT /api/llm/{id}/key {key}`; `POST /api/llm/{id}/disconnect` → `{providers, revoked}`.
+  `POST /api/llm/local/models {llm_url, api_key}` → `{installed, found, error}`: the Models dialog's
+  Rescan, asking the typed (unsaved) local server what it offers now.
   Event: `llm.updated {provider, providers}`.
 - Not verified against the live services (tests use fakes of each): the ChatGPT flow needs a real Go/Plus/Pro
   account to confirm the redirect path and the plan route's acceptance of `text.format`.

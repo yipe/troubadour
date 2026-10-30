@@ -200,6 +200,12 @@ export const api = {
   ) => req<ModelSettings>("PUT", "/api/settings/models", body),
   /** What a hosted provider offers the signed-in account; `error` says why the list is empty, and
    * `price_note` stands in when the provider's list has no prices. */
+  /** What a local model server offers now (the typed address, saved or not), plus models chosen before. */
+  scanLocalModels: (llm_url: string, api_key: string) =>
+    req<{ installed: string[]; found: number; error: string | null }>("POST", "/api/llm/local/models", {
+      llm_url,
+      api_key,
+    }),
   llmModels: (provider: LlmProvider["id"]) =>
     req<{ models: LlmModel[]; error: string | null; price_note: string | null }>(
       "GET",

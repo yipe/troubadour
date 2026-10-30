@@ -299,6 +299,11 @@ class ModelsIn(BaseModel):
     hosted: dict[str, HostedModelsIn] | None = Field(None, max_length=len(PROVIDERS))
 
 
+class LocalModelsIn(BaseModel):
+    llm_url: str = Field(max_length=300)
+    api_key: str = Field("", max_length=400)
+
+
 class LlmKeyIn(BaseModel):
     key: str = Field(max_length=providers.KEY_MAX + 100)
 
@@ -307,10 +312,9 @@ class LlmConnectIn(BaseModel):
     fresh: bool = False  # ChatGPT: register again, to sign in to another account
 
 
-def _llm_choices() -> list[str]:
-    """The local server's current models, plus any this Mac has chosen before."""
-    installed = _installed_llms()
-    out = list(installed)
+def _llm_choices(installed: list[str] | None = None) -> list[str]:
+    """The local server's current models (`installed`, else asked now), plus any this Mac has chosen before."""
+    out = list(_installed_llms() if installed is None else installed)
     for model in settings.known_llms():
         if model not in out:
             out.append(model)
@@ -320,14 +324,24 @@ def _llm_choices() -> list[str]:
 def _installed_llms() -> list[str]:
     """Model ids the configured local server is offering. Empty when it is down."""
     chosen = settings.current()
-    headers = {"Authorization": f"Bearer {chosen['api_key']}"} if chosen.get("api_key") else {}
+    return _scan_llms(chosen["llm_url"], chosen.get("api_key") or "")[0]
+
+
+def _scan_llms(url: str, key: str) -> tuple[list[str], str | None]:
+    """(model ids a local server offers, why there are none or None)."""
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
     try:
-        r = httpx.get(f"{chosen['llm_url'].rstrip('/')}/models", headers=headers, timeout=8)
-        data = r.json().get("data", []) if r.status_code == 200 else []
-    except Exception:
-        return []
-    ids = [m["id"] for m in data if isinstance(m, dict) and isinstance(m.get("id"), str)]
-    return ids[:500]
+        r = httpx.get(f"{url.rstrip('/')}/models", headers=headers, timeout=8)
+    except httpx.HTTPError as e:
+        return [], f"Couldn't reach {url} ({type(e).__name__})."
+    if r.status_code != 200:
+        return [], f"{url} answered {r.status_code}."
+    try:
+        data = r.json().get("data", [])
+    except (ValueError, AttributeError):
+        return [], f"{url} sent a model list Troubadour can't read."
+    ids = [m["id"] for m in data if isinstance(m, dict) and isinstance(m.get("id"), str)] if isinstance(data, list) else []
+    return ids[:500], None
 
 
 def _secret(pid: str) -> str:
@@ -413,6 +427,18 @@ def _recheck_llm_soon() -> None:
     """The header's LLM status follows a switch now, not at the next 30 s health check (off the request thread:
     a hosted provider can take seconds to answer)."""
     threading.Thread(target=engine.recheck_llm, name="llm-recheck", daemon=True).start()
+
+
+@app.post("/api/llm/local/models")
+def local_models(body: LocalModelsIn):
+    """Ask a local model server what it offers now: the address typed in the Models dialog, saved or not (a
+    rescan after loading or downloading a model). `installed` also lists models chosen here before."""
+    try:
+        url = settings.normalize_llm_url(body.llm_url)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    found, error = _scan_llms(url, body.api_key.strip())
+    return {"installed": _llm_choices(found), "found": len(found), "error": error}
 
 
 @app.get("/api/llm/models")

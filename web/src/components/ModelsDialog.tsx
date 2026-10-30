@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ExternalLink, Loader2 } from "lucide-react"
+import { ExternalLink, Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -41,6 +41,7 @@ export function ModelsDialog({
   const [lists, setLists] = useState<Partial<Record<HostedId, ModelList>>>({})
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [scan, setScan] = useState<{ busy: boolean; note: string | null }>({ busy: false, note: null })
   const providers = useLlmProviders((s) => s.providers)
 
   useEffect(() => {
@@ -61,6 +62,7 @@ export function ModelsDialog({
         setApiKey(s.api_key)
         setHosted(s.hosted)
         setLlmProviders(s.providers)
+        setScan({ busy: false, note: null })
       })
       .catch((e: Error) => {
         if (!gone) setError(e.message)
@@ -110,6 +112,18 @@ export function ModelsDialog({
     : (settings?.installed ?? []).map((id) => ({ id, name: id, price: null }))
   const priceNote = chosen ? lists[chosen.id]?.price_note : LOCAL_PRICE_NOTE
   const ready = !!settings && !!pair.llm.trim() && !!pair.memory.trim() && (!chosen || connected)
+
+  // Ask the server in the address box what it offers now: after loading or downloading a model there.
+  async function rescan() {
+    setScan({ busy: true, note: null })
+    try {
+      const r = await api.scanLocalModels(url.trim(), apiKey.trim())
+      setSettings((s) => (s ? { ...s, installed: r.installed } : s))
+      setScan({ busy: false, note: r.error ?? `Found ${r.found} ${r.found === 1 ? "model" : "models"}.` })
+    } catch (e) {
+      setScan({ busy: false, note: (e as Error).message })
+    }
+  }
 
   async function save() {
     setSaving(true)
@@ -181,16 +195,35 @@ export function ModelsDialog({
               <ProviderPanel provider={chosen} onError={setError} />
             ) : (
               <>
-                <label className="block space-y-1">
-                  <span className="text-xs text-muted-foreground">Model server</span>
-                  <input
-                    className="h-8 w-full rounded-lg border bg-background px-2"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    placeholder="1235, or 10.0.0.8:1234"
-                    spellCheck={false}
-                  />
-                </label>
+                <div className="space-y-1">
+                  <label htmlFor="model-server" className="text-xs text-muted-foreground">
+                    Model server
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="model-server"
+                      className="h-8 w-full rounded-lg border bg-background px-2"
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      placeholder="1235, or 10.0.0.8:1234"
+                      spellCheck={false}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={scan.busy || !url.trim()}
+                      onClick={() => void rescan()}
+                      title="Ask this server which models it offers now"
+                    >
+                      {scan.busy ? <Loader2 className="animate-spin" /> : <RefreshCw />} Rescan
+                    </Button>
+                  </div>
+                  {scan.note && (
+                    <p role="status" className="text-xs text-muted-foreground">
+                      {scan.note}
+                    </p>
+                  )}
+                </div>
                 <label className="block space-y-1">
                   <span className="text-xs text-muted-foreground">API key</span>
                   <input
