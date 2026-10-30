@@ -5,6 +5,7 @@ import {
   estimateInCharacter,
   fixSpellings,
   improveSession,
+  markReviewed,
   mergeSessions,
   restoreSession,
   retranscribeSession,
@@ -39,6 +40,15 @@ export function useMergeSessions() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (ids: [string, string]) => mergeSessions(ids),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.sessions() }),
+  })
+}
+
+/** Mark one saved session reviewed (`mutate(true)`) or not (`mutate(false)`). */
+export function useMarkReviewed(id: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (reviewed: boolean) => markReviewed(id, reviewed),
     onSuccess: () => client.invalidateQueries({ queryKey: keys.sessions() }),
   })
 }

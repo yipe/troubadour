@@ -383,7 +383,7 @@ def test_file_source_honours_end(dirs):
 
 def test_api_cannot_pass_end(engine, monkeypatch, dirs):
     seen = {}
-    monkeypatch.setattr(engine, "start", lambda source: seen.update(source) or {})
+    monkeypatch.setattr(engine, "start", lambda source, **options: seen.update(source) or engine.session_json())
     monkeypatch.setattr(deps, "engine", engine)
     client = TestClient(app, base_url="http://127.0.0.1:8765")
     r = client.post("/api/session/start", json={"source": {"kind": "file", "name": "x.wav", "speed": 1, "end": 1}})

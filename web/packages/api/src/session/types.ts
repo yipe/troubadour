@@ -1,3 +1,4 @@
+import type { Schemas } from "../generated/index.ts"
 import type { Campaigns } from "../campaigns/types.ts"
 import type { LibraryPlayer, Player } from "../players/types.ts"
 
@@ -32,24 +33,12 @@ export interface Fix {
   end: number /* UTF-16, end exclusive */
   heard: string
 }
-export type Source =
-  | { kind: "mic"; device: string | null }
-  | { kind: "file"; name: string; speed: number }
-  | { kind: "session"; id: string /* saved session being replayed */; speed: number }
-export interface Session {
-  status: "idle" | "running" | "paused" | "stopping"
-  source: Source | null
-  t: number /* session seconds at send time */
-  llm: { url: string; model: string; ok: boolean }
-  asr: {
-    model: string
-    state: "loading" | "ready" | "error"
-  } /* Whisper + voice models, loaded at start-up */
-  training: { player_id: string } | null /* who is being trained right now */
-  /** Live level + quality read-out on (PUT /api/audio/monitor); off saves the per-frame work. */
-  audio_monitor: boolean
-  error: string | null /* e.g. models failed to load; blocks Start and Train */
-}
+/** Where a session listens from, as the start request names it. */
+export type Source = Schemas["StartIn"]["source"]
+/** The start request's choices besides the source: all optional (defaults: the server's settings). */
+export type StartOptions = Partial<Omit<Schemas["StartIn"], "source">>
+/** The live session (WS `session.updated`, and the answer to start/pause/resume/stop). */
+export type Session = Schemas["Session"]
 export type MessagePatch = { id: string } & Partial<Omit<Message, "id">>
 export interface Snapshot extends Campaigns {
   session: Session

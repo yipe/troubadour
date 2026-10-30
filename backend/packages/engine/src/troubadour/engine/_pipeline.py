@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import threading
 import time
+from typing import Any
 
 import numpy as np
 from troubadour.core import config, transcript
@@ -25,7 +26,7 @@ from troubadour.sound.voices import normalize
 
 from .buffers import AudioBuffer
 from .live_session import STOP, LiveSession
-from .model import JOIN, PROVISIONAL_BELOW, SR, Message, short_id
+from .model import JOIN, PROVISIONAL_BELOW, SR, Message, Player, short_id
 from .paths import sample_path, session_audio
 
 log = logging.getLogger("troubadour")
@@ -54,11 +55,32 @@ def keep_awake() -> subprocess.Popen | None:
 
 
 class PipelineMixin:
-    def start(self, source: dict) -> dict:
-        """source: {"kind": "file", "name", "speed"} | {"kind": "session", "id", "speed"} (replay a
+    # Set in Engine.__init__; declared for the type checker where this file's newer code uses them.
+    lock: threading.RLock
+    players: dict[str, Player]
+    campaign: str
+    voices: dict[str, Any]  # typed loosely: the older code here treats Voice fields as unchecked
+    matcher: Any  # a VoiceMatcher once the models load (start() waits for them)
+
+    def start(
+        self,
+        source: dict,
+        *,
+        title: str = "",
+        present_player_ids: list[str] | None = None,
+        record_audio: bool | None = None,
+        cleanup: bool | None = None,
+    ) -> dict:
+        """present_player_ids: seated players at the table (empty: everyone). record_audio and cleanup
+        override the process-wide settings for this session only. source: {"kind": "file", "name", "speed"} | {"kind": "session", "id", "speed"} (replay a
         saved session's audio) | {"kind": "mic", "device"} (validated by the server). A file
         source may also carry "end" (seconds; troubadour-sim only, the API never passes it)."""
         self._require_models()
+        present = list(dict.fromkeys(present_player_ids or []))
+        with self.lock:
+            unknown = [pid for pid in present if pid not in self.players]
+        if unknown:
+            raise ValueError(f"Not seated in this campaign: {', '.join(unknown)}")
         kind = source["kind"]
         if kind in ("file", "session"):
             key = "name" if kind == "file" else "id"
@@ -78,7 +100,9 @@ class PipelineMixin:
             desc = {"kind": "mic", "device": source.get("device"), "device_name": src.device_name()}
         self.stop_mic_test()  # a session needs the mic; its own meter takes over
         with self._start_lock:
-            sess = LiveSession(src, desc, self.campaign)
+            sess = LiveSession(
+                src, desc, self.campaign, title=title, present_player_ids=present, record_audio=record_audio, cleanup=cleanup
+            )
             if kind == "mic":
                 self._attach_tap(sess, src)  # before start(): the recording begins at t=0 too
             # Open the source first: if the mic is missing or busy, nothing has changed yet.
@@ -94,12 +118,14 @@ class PipelineMixin:
             with self.lock:
                 if self.live is not None:
                     self.live.abandon()  # its threads exit without touching shared state
+                    self.live.restore_absent(self.matcher)
                 self.messages.clear()
                 for vid in [v.id for v in self.voices.values() if v.status == "pending"]:
                     del self.voices[vid]
                 for v in self.voices.values():
                     v.spans = []  # spans pointed into the previous session's audio
                 self.live, self.buffer, self.source_desc, self.status = sess, sess.buffer, desc, "running"
+                sess.leave_out_absent(self.matcher, self.voices)
                 snapshot = self.snapshot()
             sess.awake = keep_awake()  # a 4-hour session must not stop when the Mac idles to sleep
             self._snapshot_setup(sess, "start")
@@ -122,7 +148,7 @@ class PipelineMixin:
             log.error("session recording stopped: %s", error)
             self.bus.emit("error", {"message": f"The audio recording stopped (the transcript still saves): {error}"})
 
-        if config.RECORD_AUDIO:
+        if sess.record_audio:
             try:
                 sess.recorder = Recorder(self.sessions_dir() / sess.id / "audio.wav", rate, on_error=failed)
             except OSError as e:
@@ -185,6 +211,8 @@ class PipelineMixin:
         # Save everything before announcing "idle": a Replay clicked the moment the UI says the
         # session ended must see the final meta.json (its duration caps the replay) and recording.
         sess.release()
+        with self.lock:
+            sess.restore_absent(self.matcher)  # before the state save: their voiceprints are written from the matcher
         self.save_transcript(force=True)
         self._save_state()  # keep voiceprints adapted during the session
         self._snapshot_setup(sess, "end")
@@ -354,10 +382,12 @@ class PipelineMixin:
         except Exception:  # an odd or broken vault never stops transcription
             return ()
 
-    def speller(self) -> cleanup.Speller | None:
+    def speller(self, live: bool = False) -> cleanup.Speller | None:
         """Known spellings for the cleanup: confirmed glossary entries, the names Setup and the
-        voices panel know (even before they're in the vault), and the D&D vocabulary."""
-        if not config.CLEANUP:
+        voices panel know (even before they're in the vault), and the D&D vocabulary.
+        live: for the running session's lines, which follow that session's own cleanup choice."""
+        sess = self.live
+        if not (sess.cleanup if live and sess is not None else config.CLEANUP):
             return None
         self._glossary_state()
         signature, entries = self._glossary[0], self._glossary[4]
@@ -411,7 +441,7 @@ class PipelineMixin:
             text = corrector(text)
         fixes: list[dict] = []
         unsure = False
-        if (speller := self.speller()) is not None:
+        if (speller := self.speller(live=True)) is not None:
             sure = [(c.start, c.end, c.options[0]) for c in speller.find(text) if c.sure]
             if sure:
                 text, fixes = cleanup.apply(text, [], sure)
@@ -516,7 +546,7 @@ class PipelineMixin:
                     self.cleanup_q.task_done()  # a campaign switch waits for these
 
     def _cleanup(self, batch: list[str]) -> None:
-        speller = self.speller()
+        speller = self.speller(live=True)
         if speller is None:
             return
         with self.lock:

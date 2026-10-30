@@ -73,6 +73,7 @@ EXPECTED = [
     ("POST", "/api/sessions/{sid}/in-character"),
     ("GET", "/api/sessions/{sid}/quality"),
     ("POST", "/api/sessions/{sid}/restore"),
+    ("POST", "/api/sessions/{sid}/reviewed"),
     ("POST", "/api/sessions/{sid}/retranscribe"),
     ("POST", "/api/sessions/{sid}/spelling"),
     ("GET", "/api/sessions/{sid}/transcript.{fmt}"),
