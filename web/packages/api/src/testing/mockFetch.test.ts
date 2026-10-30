@@ -22,3 +22,12 @@ it("records calls and routes them by method and path", async () => {
   ])
   expect(m.writes()).toHaveLength(1)
 })
+
+it("fails a GET the test didn't mock with a 404, but answers an unmocked write with 204", async () => {
+  mockFetch(() => undefined)
+  const get = await fetch("/api/models")
+  const post = await fetch("/api/players", { method: "POST", body: "{}" })
+  expect(get.status).toBe(404)
+  expect(await get.json()).toEqual({ detail: "No mock for GET /api/models" })
+  expect(post.status).toBe(204)
+})

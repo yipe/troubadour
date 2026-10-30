@@ -21,7 +21,12 @@ export function mockFetch(handler: (call: FetchCall) => unknown) {
     calls.push(call)
     const out = await handler(call)
     if (out instanceof Response) return out
-    if (out === undefined) return new Response(null, { status: 204 })
+    if (out === undefined) {
+      // A query's data can't be undefined, so a GET the test didn't mock fails like a missing route
+      // (the query sits in its error state, quietly) rather than "succeeding" with no body.
+      if (call.method === "GET") return httpError(404, `No mock for GET ${call.url}`)
+      return new Response(null, { status: 204 })
+    }
     return new Response(JSON.stringify(out), { status: 200, headers: { "Content-Type": "application/json" } })
   })
   /** Requests other than GETs, in order. */
