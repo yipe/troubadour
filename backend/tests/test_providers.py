@@ -531,3 +531,16 @@ def test_local_servers_lists_the_usual_ports_and_which_answer(api, monkeypatch):
     assert rows[8000] == {"port": 8000, "name": "MTPLX / vLLM", "url": "http://127.0.0.1:8000/v1", "running": True, "models": 2}
     assert (rows[11434]["running"], rows[1234]["running"]) == (False, False)
     assert rows[1235]["name"] == "Saved server"  # the default address isn't one of the usual ports
+
+
+def test_the_write_up_model_can_use_another_local_server(api):
+    client, _, _ = api
+    r = client.put("/api/settings/models", json={"llm_url": "1235", "memory_url": "8000", "llm": "gemma", "memory": "qwen"})
+    assert r.status_code == 200, r.text
+    assert r.json()["memory_url"] == "http://127.0.0.1:8000/v1"
+    assert (server.engine.cleanup_llm.url, server.engine.cleanup_llm.model) == ("http://127.0.0.1:1235/v1", "gemma")
+    assert (server.memory.llm.url, server.memory.llm.model) == ("http://127.0.0.1:8000/v1", "qwen")
+    assert server.asker.llm.url == "http://127.0.0.1:8000/v1"
+    client.put("/api/settings/models", json={"memory_url": ""})  # auto: the live-spelling server again
+    assert server.memory.llm.url == "http://127.0.0.1:1235/v1"
+    assert client.put("/api/settings/models", json={"memory_url": "ftp://x"}).status_code == 400

@@ -194,7 +194,7 @@ export const api = {
     body: Partial<
       Pick<
         ModelSettings,
-        "whisper" | "whisper_improve" | "llm" | "memory" | "llm_url" | "api_key" | "provider"
+        "whisper" | "whisper_improve" | "llm" | "memory" | "llm_url" | "memory_url" | "api_key" | "provider"
       >
     > & { hosted?: Partial<ModelSettings["hosted"]> },
   ) => req<ModelSettings>("PUT", "/api/settings/models", body),

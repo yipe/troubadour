@@ -38,6 +38,7 @@ def defaults() -> dict:
         "llm": config.LLM_MODEL,
         "memory": config.MEMORY_LLM_MODEL,
         "llm_url": config.LLM_URL,
+        "memory_url": "",  # "" = auto: the same server as llm_url
         "api_key": "",
     }
 
@@ -114,6 +115,9 @@ def current() -> dict:
     url = raw.get("llm_url")
     if isinstance(url, str) and url.strip():
         chosen["llm_url"] = url.strip()
+    memory_url = raw.get("memory_url")
+    if isinstance(memory_url, str):
+        chosen["memory_url"] = memory_url.strip()
     key = raw.get("api_key")
     if isinstance(key, str):
         chosen["api_key"] = key
@@ -124,12 +128,14 @@ def current() -> dict:
 
 def update(patch: dict) -> dict:
     raw = _read()
-    nxt = {k: raw[k] for k in (*_KEYS, "llm_url", "api_key", "known_llms", "provider", "hosted") if k in raw}
+    nxt = {k: raw[k] for k in (*_KEYS, "llm_url", "memory_url", "api_key", "known_llms", "provider", "hosted") if k in raw}
     for key in _KEYS:
         if patch.get(key) is not None:
             nxt[key] = _model_id(patch[key], key)
     if "llm_url" in patch and patch["llm_url"] is not None:
         nxt["llm_url"] = normalize_llm_url(patch["llm_url"])
+    if patch.get("memory_url") is not None:  # "" = auto (llm_url's server)
+        nxt["memory_url"] = normalize_llm_url(patch["memory_url"]) if patch["memory_url"].strip() else ""
     if "api_key" in patch and patch["api_key"] is not None:
         key = patch["api_key"]
         if not isinstance(key, str) or len(key) > 400:

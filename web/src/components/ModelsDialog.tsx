@@ -38,6 +38,10 @@ export function ModelsDialog({
   const [llm, setLlm] = useState("")
   const [memory, setMemory] = useState("")
   const [url, setUrl] = useState("")
+  // The write-up model's own server ("" = auto: the one above) and what it offers.
+  const [memoryUrl, setMemoryUrl] = useState("")
+  const [memoryChoices, setMemoryChoices] = useState<string[] | null>(null)
+  const [servers, setServers] = useState<LocalServer[] | null>(null)
   const [apiKey, setApiKey] = useState("")
   const [hosted, setHosted] = useState<Hosted | null>(null)
   const [lists, setLists] = useState<Partial<Record<HostedId, ModelList>>>({})
@@ -61,6 +65,8 @@ export function ModelsDialog({
         setLlm(s.llm)
         setMemory(s.memory)
         setUrl(s.llm_url)
+        setMemoryUrl(s.memory_url ?? "")
+        if (s.memory_url) void scanMemory(s.memory_url, s.api_key)
         setApiKey(s.api_key)
         setHosted(s.hosted)
         setLlmProviders(s.providers)
@@ -69,6 +75,10 @@ export function ModelsDialog({
       .catch((e: Error) => {
         if (!gone) setError(e.message)
       })
+    void api
+      .localServers()
+      .then((list) => !gone && setServers(list))
+      .catch(() => !gone && setServers([]))
     return () => {
       gone = true
     }
@@ -115,6 +125,20 @@ export function ModelsDialog({
   const priceNote = chosen ? lists[chosen.id]?.price_note : LOCAL_PRICE_NOTE
   const ready = !!settings && !!pair.llm.trim() && !!pair.memory.trim() && (!chosen || connected)
 
+  async function scanMemory(address: string, key = apiKey) {
+    setMemoryChoices(null)
+    try {
+      setMemoryChoices((await api.scanLocalModels(address, key.trim())).installed)
+    } catch {
+      setMemoryChoices([])
+    }
+  }
+
+  const memoryModels: LlmModel[] =
+    !chosen && memoryUrl && memoryChoices
+      ? memoryChoices.map((id) => ({ id, name: id, price: null }))
+      : choices
+
   // Ask the server in the address box what it offers now: after loading or downloading a model there.
   async function rescan(address = url) {
     setScan({ busy: true, note: null })
@@ -137,7 +161,13 @@ export function ModelsDialog({
         provider,
         ...(chosen && hosted
           ? { hosted: { [chosen.id]: { llm: pair.llm.trim(), memory: pair.memory.trim() } } }
-          : { llm: llm.trim(), memory: memory.trim(), llm_url: url.trim(), api_key: apiKey.trim() }),
+          : {
+              llm: llm.trim(),
+              memory: memory.trim(),
+              llm_url: url.trim(),
+              memory_url: memoryUrl,
+              api_key: apiKey.trim(),
+            }),
       })
       setSettings(s)
       onOpenChange(false)
@@ -221,7 +251,7 @@ export function ModelsDialog({
                     </Button>
                   </div>
                   <CommonServers
-                    open={open}
+                    servers={servers}
                     onPick={(address) => {
                       setUrl(address)
                       void rescan(address)
@@ -257,9 +287,34 @@ export function ModelsDialog({
             <ModelPicker
               label="Questions, write-ups, and facts"
               value={pair.memory}
-              models={choices}
+              models={memoryModels}
               onChange={(v) => setPair("memory", v)}
             />
+            {!chosen && (
+              <label className="block space-y-1">
+                <span className="text-xs text-muted-foreground">Its server</span>
+                <NativeSelect
+                  aria-label="Server for questions, write-ups, and facts"
+                  className="h-8 w-full text-xs"
+                  value={memoryUrl}
+                  onChange={(e) => {
+                    setMemoryUrl(e.target.value)
+                    if (e.target.value) void scanMemory(e.target.value)
+                    else setMemoryChoices(null)
+                  }}
+                >
+                  <option value="">Auto (the model server above)</option>
+                  {memoryUrl && !servers?.some((s) => s.url === memoryUrl) && (
+                    <option value={memoryUrl}>{memoryUrl}</option>
+                  )}
+                  {(servers ?? []).map((s) => (
+                    <option key={s.port} value={s.url}>
+                      {serverLabel(s)}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </label>
+            )}
             {priceNote && <p className="text-xs text-muted-foreground">{priceNote}</p>}
             {chosen ? (
               <p className="text-xs text-muted-foreground">
@@ -529,21 +584,20 @@ function ServerStatus({ scanned }: { scanned: string | null }) {
 
 type LocalServer = { port: number; name: string; url: string; running: boolean; models: number }
 
+function serverLabel(s: LocalServer): string {
+  const state = s.running ? `running, ${s.models} ${s.models === 1 ? "model" : "models"}` : "not running"
+  return `${s.name} · ${s.port} · ${state}`
+}
+
 /** The usual local model servers (LM Studio, Ollama, MTPLX, ...), checked when the dialog opens: picking one
  * fills in its address and rescans it. */
-function CommonServers({ open, onPick }: { open: boolean; onPick: (url: string) => void }) {
-  const [servers, setServers] = useState<LocalServer[] | null>(null)
-  useEffect(() => {
-    if (!open) return
-    let gone = false
-    void api
-      .localServers()
-      .then((list) => !gone && setServers(list))
-      .catch(() => !gone && setServers([]))
-    return () => {
-      gone = true
-    }
-  }, [open])
+function CommonServers({
+  servers,
+  onPick,
+}: {
+  servers: LocalServer[] | null
+  onPick: (url: string) => void
+}) {
   if (!servers?.length) return null
   return (
     <NativeSelect
@@ -555,8 +609,7 @@ function CommonServers({ open, onPick }: { open: boolean; onPick: (url: string) 
       <option value="">Common servers on this Mac…</option>
       {servers.map((s) => (
         <option key={s.port} value={s.url}>
-          {s.name} · {s.port} ·{" "}
-          {s.running ? `running, ${s.models} ${s.models === 1 ? "model" : "models"}` : "not running"}
+          {serverLabel(s)}
         </option>
       ))}
     </NativeSelect>

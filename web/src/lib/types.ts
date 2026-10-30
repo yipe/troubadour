@@ -378,6 +378,7 @@ export interface ModelSettings {
   llm: string
   memory: string
   llm_url: string
+  memory_url: string /* the write-up model's server; "" = auto, llm_url's */
   api_key: string
   provider: LlmProviderId
   hosted: Record<LlmProvider["id"], { llm: string; memory: string }>

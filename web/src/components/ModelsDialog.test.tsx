@@ -32,6 +32,7 @@ function settings(over: Partial<ModelSettings> = {}): ModelSettings {
     llm: "gemma",
     memory: "qwen",
     llm_url: "http://127.0.0.1:1235/v1",
+    memory_url: "",
     api_key: "",
     provider: "local",
     hosted: {
@@ -84,6 +85,7 @@ describe("Models dialog", () => {
       llm: "gemma",
       memory: "gemma",
       llm_url: "http://127.0.0.1:1235/v1",
+      memory_url: "",
       api_key: "",
     })
   })
@@ -133,6 +135,34 @@ describe("Models dialog", () => {
         body: { llm_url: "http://127.0.0.1:8000/v1", api_key: "" },
       },
     ])
+  })
+
+  it("can put the write-up model on another server, Auto by default", async () => {
+    const { writes } = mockFetch((call) => {
+      if (call.url === "/api/settings/models" && call.method === "GET") return settings()
+      if (call.url === "/api/llm/local/servers")
+        return [
+          { port: 8000, name: "MTPLX / vLLM", url: "http://127.0.0.1:8000/v1", running: true, models: 1 },
+        ]
+      if (call.url === "/api/llm/local/models") return { installed: ["mtplx-qwen"], found: 1, error: null }
+      if (call.url === "/api/settings/models") return settings()
+    })
+    await openDialog()
+    const server = screen.getByRole("combobox", { name: "Server for questions, write-ups, and facts" })
+    expect(server).toHaveValue("")
+    expect((server as HTMLSelectElement).options[0].text).toBe("Auto (the model server above)")
+    fireEvent.change(server, { target: { value: "http://127.0.0.1:8000/v1" } })
+    await act(async () => {})
+    pick("Questions, write-ups, and facts", "mtplx-qwen") // its list is that server's models
+    expect(screen.getByLabelText("Live spelling")).toHaveValue("gemma")
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await act(async () => {})
+    expect(writes().at(-1)?.body).toMatchObject({
+      llm: "gemma",
+      memory: "mtplx-qwen",
+      llm_url: "http://127.0.0.1:1235/v1",
+      memory_url: "http://127.0.0.1:8000/v1",
+    })
   })
 
   it("says why a rescan found nothing", async () => {

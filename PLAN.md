@@ -599,6 +599,8 @@ the user signs in or adds a key **and** picks it. Signing out of the provider in
   thinking headroom on `max_tokens`. DeepSeek is OpenAI-compatible chat.
 - API: `GET /api/settings/models` adds `provider`, `hosted`, `providers` (status, never secrets);
   `PUT /api/settings/models {provider?, hosted?: {id: {llm?, memory?}}}` (400 unless signed in);
+  local only: `memory_url` gives the write-up/question model its own server ("" = auto, `llm_url`'s), e.g.
+  MTPLX for write-ups and LM Studio for live spelling; `GET /api/llm/local/servers` probes the usual ports;
   `GET /api/llm/models?provider=` → `{models: [{id, name, price}], error, price_note}` (only OpenRouter's
   list has prices, as USD per 1M tokens in/out; the others get a `price_note`); `POST /api/llm/{id}/connect {fresh?}` →
   `{authorize_url}`; `GET /auth/callback` (ChatGPT), `GET /api/llm/openrouter/callback`;

@@ -295,6 +295,7 @@ class ModelsIn(BaseModel):
     llm: str | None = None
     memory: str | None = None
     llm_url: str | None = None
+    memory_url: str | None = Field(None, max_length=300)  # "" = auto: llm_url's server
     api_key: str | None = None
     provider: str | None = Field(None, max_length=20)
     hosted: dict[str, HostedModelsIn] | None = Field(None, max_length=len(PROVIDERS))
@@ -355,6 +356,7 @@ def _apply_models(chosen: dict) -> None:
     if pid == providers.LOCAL:
         url, wire, key, token = chosen["llm_url"], "chat", chosen.get("api_key") or "", None
         live, memory_model = chosen["llm"], chosen["memory"]
+        memory_url = chosen.get("memory_url") or url
     else:
         p = PROVIDERS[pid]
         url, wire = p.url, p.wire
@@ -364,13 +366,14 @@ def _apply_models(chosen: dict) -> None:
         except providers.NotConnected:
             key = ""  # the health check shows the model as unavailable until a key is added
         live, memory_model = chosen["hosted"][pid]["llm"], chosen["hosted"][pid]["memory"]
-    for llm, model in (
-        (engine.cleanup_llm, live),
-        (memory.llm, memory_model),
-        (asker.llm, memory_model),
+        memory_url = url
+    for llm, model, at in (
+        (engine.cleanup_llm, live, url),
+        (memory.llm, memory_model, memory_url),
+        (asker.llm, memory_model, memory_url),
     ):
         llm.model = model
-        llm.url = url.rstrip("/")
+        llm.url = at.rstrip("/")
         llm.api_key = key
         llm.wire = wire
         llm.token = token
