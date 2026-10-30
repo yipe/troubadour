@@ -8,9 +8,9 @@ packages, and leaves a clean base to iterate from. The work is cut into **70 sma
 |---|---|
 | `dag.toml` | Task ids, dependencies, the files each task owns. The source of truth. |
 | `dag.py` | Checks the DAG and file ownership, prints waves and the tasks that are ready to start. |
-| `architecture.md` | Target layout (Python packages, web packages), tech choices, API contract changes, decisions. |
+| `../architecture.md` (moved by X2) | Target layout (Python packages, web packages), tech choices, API contract changes, decisions. |
 | `design-system.md` | Tokens (shared with DPRcalc), Tailwind mapping, the component catalogue and where each component lives. |
-| `conventions.md` | The working agreements the rebuild leaves behind: what tools enforce, file and naming rules, deterministic tests, contracts, how to write agent-ready specs, glossary. |
+| `../conventions.md`, `../glossary.md` (moved by X2) | The working agreements the rebuild leaves behind: what tools enforce, file and naming rules, deterministic tests, contracts, how to write agent-ready specs, glossary. |
 | `review.md` | The self-review of this plan: footguns found and how the plan handles them. |
 | `page-map.md` | Each design screen mapped to its route, the current code and its tasks. Also where every existing feature ends up, and what is deferred. |
 | `tasks/*.md` | One spec per task. |

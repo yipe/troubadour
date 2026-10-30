@@ -28,3 +28,47 @@ jobs:
       - run: yarn install --immutable
       - run: yarn setup
       - run: yarn check
+
+  smoke:
+    # Visits every route of the built UI against a seeded throwaway server: no models, no LLM, no audio.
+    needs: check
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install ffmpeg
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: corepack enable
+      - run: yarn install --immutable
+      - run: yarn setup
+      - run: pnpm exec playwright install chromium
+        working-directory: web/app
+      - run: yarn build # the scratch server serves web/dist
+      - name: Start the scratch server
+        run: |
+          scripts/scratch.sh 8790 > /tmp/scratch.log 2>&1 &
+          for _ in $(seq 1 90); do
+            curl -sf http://127.0.0.1:8790/api/state > /dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/scratch.log
+          exit 1
+      - run: pnpm -C web/app smoke --port 8790
+        env:
+          COREPACK_ENABLE_STRICT: "0"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-screenshots
+          path: /tmp/smoke
+          if-no-files-found: ignore
