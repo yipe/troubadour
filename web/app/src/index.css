@@ -1,1 +1,2 @@
-@import "tailwindcss";
+@import "@troubadour/ui/theme.css";
+@source "./";
