@@ -129,15 +129,15 @@ def test_mic_records_native_audio_and_feeds_the_pipeline_16k(monkeypatch):
 @pytest.fixture
 def mic_start(engine, monkeypatch):
     """engine.start for a 48 kHz mic, with the real segmenter; returns (tap, sink, end)."""
-    monkeypatch.setattr("troubadour.engine.live.keep_awake", lambda: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.keep_awake", lambda: None)
     monkeypatch.setattr(engine, "_worker_loop", lambda sess: None)
-    monkeypatch.setattr("troubadour.engine.live.MicSource.native_rate", lambda self: 48000)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.native_rate", lambda self: 48000)
     fed = {}
 
     def capture(self, sink, on_end):
         fed.update(tap=self.tap, sink=sink, end=on_end)
 
-    monkeypatch.setattr("troubadour.engine.live.MicSource.start", capture)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.start", capture)
 
     def start():
         engine.start({"kind": "mic", "device": None})
@@ -174,12 +174,12 @@ def test_recording_failure_mid_session_reaches_the_ui(engine, mic_start, monkeyp
 
 
 def test_mic_that_fails_to_open_leaves_no_recording(engine, monkeypatch):
-    monkeypatch.setattr("troubadour.engine.live.MicSource.native_rate", lambda self: 48000)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.native_rate", lambda self: 48000)
 
     def broken(self, sink, on_end):
         raise RuntimeError("device busy")
 
-    monkeypatch.setattr("troubadour.engine.live.MicSource.start", broken)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.start", broken)
     with pytest.raises(ValueError, match="Couldn't open mic"):
         engine.start({"kind": "mic", "device": None})
     assert list(engine.sessions_dir().glob("*/audio.wav")) == []
@@ -192,8 +192,8 @@ def test_recording_can_be_turned_off(engine, mic_start, monkeypatch):
 
 
 def test_file_replays_are_not_recorded(engine, dirs, monkeypatch):
-    monkeypatch.setattr("troubadour.engine.live.keep_awake", lambda: None)
-    monkeypatch.setattr("troubadour.engine.live.FileSource.start", lambda self, sink, on_end: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.keep_awake", lambda: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.FileSource.start", lambda self, sink, on_end: None)
     monkeypatch.setattr(engine, "_segment_loop", lambda sess: None)
     monkeypatch.setattr(engine, "_worker_loop", lambda sess: None)
     write_wav(dirs[1] / "scene.wav", tone(ALICE, 1.0))
@@ -254,7 +254,7 @@ def test_wav_round_trips_at_16_and_24_bits(tmp_path):
 
 def test_train_on_its_own_mic_keeps_a_lossless_full_rate_clip(engine, monkeypatch, fake_vad):
     engine.status, engine.live = "idle", None
-    monkeypatch.setattr("troubadour.engine.live.MicSource.native_rate", lambda self: 48000)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.native_rate", lambda self: 48000)
     native = (0.3 * np.sin(2 * np.pi * 9000 * np.arange(6 * 48000) / 48000)).astype(np.float32)  # above 16 kHz's 8 kHz limit
 
     def mic(self, sink, on_end):  # the device delivers 6 s at once; the job wants 5
@@ -263,7 +263,7 @@ def test_train_on_its_own_mic_keeps_a_lossless_full_rate_clip(engine, monkeypatc
         for frame in frames(tone(ALICE, 6)):
             sink(frame)
 
-    monkeypatch.setattr("troubadour.engine.live.MicSource.start", mic)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.start", mic)
     p = engine.add_player("Alice")
     engine.train(p["id"], 5)
     _train_done(engine)
@@ -420,8 +420,8 @@ def test_replay_api(api, engine, monkeypatch):
     start = lambda src: api.post("/api/session/start", json={"source": src})  # noqa: E731
     assert start({"kind": "session", "id": "2026-01-01_000000-ffff", "speed": 1}).status_code == 404
     assert start({"kind": "session", "id": A, "speed": 99}).status_code == 422
-    monkeypatch.setattr("troubadour.engine.live.keep_awake", lambda: None)
-    monkeypatch.setattr("troubadour.engine.live.FileSource.start", lambda self, sink, on_end: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.keep_awake", lambda: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.FileSource.start", lambda self, sink, on_end: None)
     monkeypatch.setattr(engine, "_segment_loop", lambda sess: None)
     monkeypatch.setattr(engine, "_worker_loop", lambda sess: None)
     r = start({"kind": "session", "id": A, "speed": 2})

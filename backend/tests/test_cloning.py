@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from test_engine import ALICE, named_voice
 from troubadour.core import config
 from troubadour.core.config import SR
-from troubadour.engine import live as engine_module
+from troubadour.engine import _training, core
 from troubadour.engine.cloning import Cloning
 from troubadour.lore.talk import TEMPO_RANGE
 from troubadour.server import app as server
@@ -133,7 +133,7 @@ def test_train_clip_prefers_the_lossless_copy(engine, fake_vad):
 
 
 def test_wait_idle_holds_a_job_while_a_session_runs(engine, monkeypatch):
-    monkeypatch.setattr(engine_module, "IDLE_POLL_S", 0.01)
+    monkeypatch.setattr(core, "IDLE_POLL_S", 0.01)
     j, said = job(), []
     j.update(message="Trying the Train recording…")
     j.on_change = lambda: said.append(j.message)
@@ -243,7 +243,7 @@ def test_likeness_is_the_cosine_to_a_voiceprint(engine, cloning):
 def test_build_needs_a_train_clip_without_listening_to_it(engine, cloning, monkeypatch):
     pid = engine.add_player("Alice")["id"]
     engine.update_player(pid, {"clone_ok": True})
-    monkeypatch.setattr(engine_module, "speech_spans", lambda a: pytest.fail("the request mustn't run the VAD"))
+    monkeypatch.setattr(_training, "speech_spans", lambda a: pytest.fail("the request mustn't run the VAD"))
     with pytest.raises(ValueError, match="Train them first"):
         cloning.build_job(pid)
 
