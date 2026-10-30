@@ -504,6 +504,27 @@ size = "S"
 deps = ["F1"]
 owns = ["{app}pages/home/LastSession.tsx", "{app}pages/home/LastSession.test.tsx", "{app}components/people/TalkShareBar.tsx", "{app}components/people/TalkShareBar.test.tsx"]
 
+[[task]]
+id = "F24"
+title = "The table's name (party name), default \"The table\""
+size = "M"
+deps = ["F1", "F3", "S11"]
+owns = ["backend/packages/engine/src/troubadour/engine/state.py", "backend/packages/engine/src/troubadour/engine/_library.py", "backend/packages/engine/src/troubadour/engine/_sessions.py", "{server}routers/players.py", "{tests}test_table_name.py", "{api}campaigns/", "{app}lib/table.ts", "{app}lib/table.test.ts", "{app}pages/welcome/", "{app}pages/home/TheTable.tsx", "{app}pages/home/TheTable.test.tsx", "{app}pages/ready/index.tsx", "{app}shell/CampaignSwitcher.tsx", "{app}shell/CampaignSwitcher.test.tsx"]
+
+[[task]]
+id = "F25"
+title = "Players & voices: Role as a dropdown"
+size = "S"
+deps = ["S8", "F20"]
+owns = ["{app}components/players/"]
+
+[[task]]
+id = "R1"
+title = "Responsive layouts: wrap to two columns, then one"
+size = "L"
+deps = ["F24", "F25", "F23", "X3"]
+owns = ["{ui}components/rail-layout.tsx", "{app}shell/", "{app}pages/", "{app}components/", "web/app/scripts/smoke.ts"]
+
 # ---------------------------------------------------------------- X: finish
 [[task]]
 id = "X1"
