@@ -9,6 +9,7 @@
   },
   "scripts": {
     "test": "TZ=UTC vitest run --passWithNoTests",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sync": "node scripts/sync.ts"
   }
 }
