@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { mergeFetched } from "../query/cache.ts"
 import { campaignWritesSettled } from "../query/campaignWrite.ts"
 import { keys } from "../query/keys.ts"
-import { campaign, campaignSuggestions } from "./endpoints.ts"
+import { campaign, campaignSuggestions, fetchEntity } from "./endpoints.ts"
 import type { Campaign } from "./types.ts"
 
 /**
@@ -21,12 +21,21 @@ export function useCampaign() {
   })
 }
 
-/** One glossary entry, read from the campaign (the API has no single-entry GET). */
+/**
+ * One glossary entry. The note comes from the campaign (so edits show at once); `appearances` comes
+ * from the single-entry GET, which sits under the campaign key so `campaign.updated` refetches it.
+ */
 export function useEntity(name: string | null | undefined) {
   const query = useCampaign()
+  const detail = useQuery({
+    queryKey: [...keys.campaign(), ...keys.entity(name ?? "")],
+    queryFn: () => fetchEntity(name ?? ""),
+    enabled: !!name,
+  })
+  const base = name ? query.data?.entities.find((e) => e.name === name) : undefined
   return {
     ...query,
-    data: name ? query.data?.entities.find((e) => e.name === name) : undefined,
+    data: base && { ...base, appearances: detail.data?.appearances },
   }
 }
 

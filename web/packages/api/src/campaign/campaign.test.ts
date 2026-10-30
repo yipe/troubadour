@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query"
-import { act, renderHook } from "@testing-library/react"
+import { act, renderHook, waitFor } from "@testing-library/react"
 import { createElement, type ReactNode } from "react"
 import { afterEach, expect, it, vi } from "vitest"
 import { makeQueryClient } from "../query/client.ts"
@@ -12,6 +12,7 @@ import {
   deleteEntityFact,
   editEntityFact,
   useDeleteFact,
+  useEntity,
   useEditFact,
   useReviewFact,
 } from "./index.ts"
@@ -82,4 +83,16 @@ it("useEditFact and useDeleteFact skip a fact that is no longer there", async ()
 
   await act(() => del.result.current.mutateAsync({ name: "Elara", factId: "f1" }))
   expect(m.calls[0]).toMatchObject({ method: "DELETE", url: "/api/campaign/entities/Elara/facts/f1" })
+})
+
+it("useEntity returns the campaign's entry with the detail endpoint's appearances", async () => {
+  const client = makeQueryClient()
+  client.setQueryData(keys.campaign(), campaign({ entities: [entity({ name: "Pip" })] }))
+  const appearances = [{ session_id: "s1", n: 1, count: 2 }]
+  const m = mockFetch(() => entity({ name: "Pip", appearances }))
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(QueryClientProvider, { client }, children)
+  const { result } = renderHook(() => useEntity("Pip"), { wrapper })
+  await waitFor(() => expect(result.current.data?.appearances).toEqual(appearances))
+  expect(m.calls.some((c) => c.method === "GET" && c.url === "/api/campaign/entities/Pip")).toBe(true)
 })
