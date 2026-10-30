@@ -155,7 +155,7 @@ describe("History viewer: write up for campaign", () => {
     send(stats)
     const marquee = () => screen.getByTestId("write-up-marquee")
     expect(marquee()).toHaveTextContent("2:39:58 of play, 1,754 lines, 5 at the table")
-    act(() => vi.advanceTimersByTime(4000))
+    act(() => vi.advanceTimersByTime(12000))
     expect(marquee()).toHaveTextContent("Natural 20s called out: 5")
 
     send([
@@ -163,11 +163,11 @@ describe("History viewer: write up for campaign", () => {
       { kind: "beat", at: "1:14:26", text: "The turtle swallowed Thoronn." },
       { kind: "person", at: "", text: "Mama: one of three hags." },
     ])
-    act(() => vi.advanceTimersByTime(4000))
+    act(() => vi.advanceTimersByTime(12000))
     expect(marquee()).toHaveTextContent("Noted · 1:14:26 · The turtle swallowed Thoronn.")
-    act(() => vi.advanceTimersByTime(4000))
+    act(() => vi.advanceTimersByTime(12000))
     expect(marquee()).toHaveTextContent("Met · Mama: one of three hags.")
-    act(() => vi.advanceTimersByTime(4000)) // nothing new from the model: back to the stats
+    act(() => vi.advanceTimersByTime(12000)) // nothing new from the model: back to the stats
     expect(marquee()).toHaveTextContent("2:39:58 of play")
     vi.useRealTimers()
   })

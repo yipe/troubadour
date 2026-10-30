@@ -162,7 +162,7 @@ export function JobSteps({ job: j }: { job: CampaignJob | undefined }) {
   )
 }
 
-const MARQUEE_MS = 4000
+const MARQUEE_MS = 12000
 const PREFIX: Record<JobSnippet["kind"], string> = {
   stat: "",
   beat: "Noted",
