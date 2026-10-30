@@ -1,9 +1,5 @@
-import { PageHeading } from "@troubadour/ui/page-heading"
+import { LivePage } from "./LivePage.tsx"
 
 export function Component() {
-  return (
-    <div className="p-8">
-      <PageHeading title="Live" subtitle="Coming in task F4" />
-    </div>
-  )
+  return <LivePage />
 }
