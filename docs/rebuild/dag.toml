@@ -1,0 +1,520 @@
+# The rebuild DAG. Single source of truth for task ids, dependencies and file ownership.
+# Validate and print waves:  python3 docs/rebuild/dag.py
+# What can start now:        python3 docs/rebuild/dag.py --done P0,B1,W1
+#
+# owns: paths (files, or directories ending in "/") the task may create, edit or delete.
+# Two tasks that can run at the same time (neither depends on the other, directly or not) must not
+# own overlapping paths; dag.py checks this. Existing test files and the seed are the only exceptions
+# (see README.md, "Shared files").
+
+[vars]
+core = "backend/packages/core/src/troubadour/core/"
+sound = "backend/packages/sound/src/troubadour/sound/"
+lore = "backend/packages/lore/src/troubadour/lore/"
+cloud = "backend/packages/cloud/src/troubadour/cloud/"
+engine = "backend/packages/engine/src/troubadour/engine/"
+server = "backend/packages/server/src/troubadour/server/"
+tests = "backend/tests/"
+seed = "backend/spike/seed/"
+api = "web/packages/api/src/"
+ui = "web/packages/ui/src/"
+app = "web/app/src/"
+
+# ---------------------------------------------------------------- P: prep
+[[task]]
+id = "P0"
+title = "Design references in docs/, scratch-server script"
+size = "S"
+deps = []
+owns = ["docs/design/", ".gitignore", "scripts/scratch.sh", "shared/test-vectors/"]
+
+# ---------------------------------------------------------------- B: backend restructure
+[[task]]
+id = "B1"
+title = "uv workspace: move modules into six packages, layer contract"
+size = "L"
+deps = ["P0"]
+owns = ["backend/"]
+
+[[task]]
+id = "B2"
+title = "Split the engine module into focused modules"
+size = "L"
+deps = ["B1"]
+owns = ["{engine}", "{tests}"]
+
+[[task]]
+id = "B3"
+title = "Split the server into routers + dependency module"
+size = "L"
+deps = ["B2"]
+owns = ["{server}", "{tests}"]
+
+[[task]]
+id = "B4"
+title = "Demo seed: a scratch data dir with The Sunken Crown"
+size = "M"
+deps = ["B1"]
+owns = ["{seed}", "backend/spike/seed_demo.py"]
+
+[[task]]
+id = "B5"
+title = "Python type checking with a committed baseline"
+size = "S"
+deps = ["B3", "W1"]
+owns = ["backend/pyproject.toml", "backend/.basedpyright/", "package.json"]
+
+[[task]]
+id = "B6"
+title = "API types generated from the server's OpenAPI schema"
+size = "M"
+deps = ["B5", "A1"]
+owns = ["{server}openapi.py", "{server}routers/players.py", "web/packages/api/scripts/", "{api}campaigns/types.ts", "{tests}test_openapi.py"]
+
+# ---------------------------------------------------------------- W: web workspace + tooling
+[[task]]
+id = "W1"
+title = "pnpm workspace (tokens, ui, api, app), boundary lint rules, legacy app parked, all deps pinned"
+size = "M"
+deps = ["P0"]
+owns = ["web/", "package.json", "scripts/dev.sh", ".github/workflows/ci.yml"]
+
+[[task]]
+id = "W2"
+title = "Headless screenshot + route smoke tool"
+size = "S"
+deps = ["W1", "B4"]
+owns = ["web/app/scripts/"]
+
+# ---------------------------------------------------------------- U: design tokens (shared with DPRcalc) + @troubadour/ui
+[[task]]
+id = "U0"
+title = "@yipe/tokens: colour tokens + class/rarity/swatch data, synced from DPRcalc"
+size = "M"
+deps = ["W1"]
+owns = ["web/packages/tokens/"]
+
+[[task]]
+id = "U1"
+title = "Theme mapping, base components, gallery"
+size = "M"
+deps = ["U0"]
+owns = ["{ui}"]
+
+[[task]]
+id = "U2"
+title = "Form controls + ColorSwatchPicker"
+size = "M"
+deps = ["U1"]
+owns = ["{ui}components/input.tsx", "{ui}components/textarea.tsx", "{ui}components/search-input.tsx", "{ui}components/native-select.tsx", "{ui}components/switch.tsx", "{ui}components/checkbox.tsx", "{ui}components/slider.tsx", "{ui}components/field.tsx", "{ui}components/color-swatch-picker.tsx", "{ui}gallery/sections/forms.tsx", "{ui}components/forms.test.tsx"]
+
+[[task]]
+id = "U3"
+title = "Overlays: dialog, confirm, popover, tooltip, menu, command, toasts"
+size = "M"
+deps = ["U1"]
+owns = ["{ui}components/dialog.tsx", "{ui}components/confirm-dialog.tsx", "{ui}components/popover.tsx", "{ui}components/tooltip.tsx", "{ui}components/dropdown-menu.tsx", "{ui}components/command.tsx", "{ui}components/toast.tsx", "{ui}gallery/sections/overlays.tsx", "{ui}components/overlays.test.tsx"]
+
+[[task]]
+id = "U4"
+title = "Layout + data display: rail, nav item, tabs, pills, bars, chips, table"
+size = "M"
+deps = ["U1"]
+owns = ["{ui}components/rail-layout.tsx", "{ui}components/nav-item.tsx", "{ui}components/underline-tabs.tsx", "{ui}components/pill-group.tsx", "{ui}components/segmented-bar.tsx", "{ui}components/chip.tsx", "{ui}components/table.tsx", "{ui}components/progress.tsx", "{ui}components/empty-state.tsx", "{ui}components/icon-tile.tsx", "{ui}gallery/sections/layout.tsx", "{ui}components/layout.test.tsx"]
+
+# ---------------------------------------------------------------- A: @troubadour/api
+[[task]]
+id = "A1"
+title = "HTTP client, contract types and endpoints by domain, test kit"
+size = "L"
+deps = ["W1"]
+owns = ["{api}"]
+
+[[task]]
+id = "A2"
+title = "WebSocket client + live-session store"
+size = "M"
+deps = ["A1"]
+owns = ["{api}socket/", "{api}live/"]
+
+[[task]]
+id = "A3"
+title = "Query layer: client, keys, read hooks, serial campaign writes, WS bridge"
+size = "L"
+deps = ["A2"]
+owns = ["{api}query/", "{api}players/queries.ts", "{api}campaigns/queries.ts", "{api}session/queries.ts", "{api}sessions/queries.ts", "{api}campaign/queries.ts", "{api}campaign/mutations.ts", "{api}ask/queries.ts", "{api}cloud/queries.ts", "{api}llm/queries.ts", "{api}audio/queries.ts", "{api}clones/queries.ts", "{api}notebook/queries.ts", "{api}review/queries.ts", "{api}timeline/queries.ts", "{api}recap/queries.ts", "{api}storage/queries.ts"]
+
+# ---------------------------------------------------------------- S: app shell + shared domain components
+[[task]]
+id = "S1"
+title = "App shell: providers, routes (stubs), top nav, redirects"
+size = "L"
+deps = ["U2", "U3", "U4", "A3"]
+owns = ["{app}main.tsx", "{app}index.css", "{app}App.tsx", "{app}routes.tsx", "{app}paths.ts", "{app}shell/", "{app}pages/", "{app}test/", "{app}components/audio/SessionAudioProvider.tsx"]
+
+[[task]]
+id = "S2"
+title = "Domain helpers: formatting, talk time, colors, confidence, entities"
+size = "M"
+deps = ["A1"]
+owns = ["{app}lib/"]
+
+[[task]]
+id = "S3"
+title = "People, entity and timestamp atoms"
+size = "M"
+deps = ["S1", "S2"]
+owns = ["{app}components/people/", "{app}components/entity/", "{app}components/audio/"]
+
+[[task]]
+id = "S4"
+title = "TranscriptLine + virtualized TranscriptList"
+size = "M"
+deps = ["S3"]
+owns = ["{app}components/transcript/"]
+
+[[task]]
+id = "S5"
+title = "SuggestionCard, AskAnswer, FactsTable"
+size = "M"
+deps = ["S3", "C6", "C14"]
+owns = ["{app}components/suggestion/", "{app}components/ask/", "{app}components/facts-table/"]
+
+[[task]]
+id = "S6"
+title = "JobStatus (one job progress component)"
+size = "M"
+deps = ["S1", "S2"]
+owns = ["{app}components/jobs/"]
+
+[[task]]
+id = "S7"
+title = "MicCard: device, level meter, checklist, mic test"
+size = "M"
+deps = ["S1", "S2"]
+owns = ["{app}components/mic/"]
+
+[[task]]
+id = "S8"
+title = "PlayersTable + TrainDialog"
+size = "M"
+deps = ["S3", "C1"]
+owns = ["{app}components/players/"]
+
+[[task]]
+id = "S9"
+title = "ModelsSettings (port of ModelsDialog as a section)"
+size = "L"
+deps = ["S1"]
+owns = ["{app}components/models/"]
+
+[[task]]
+id = "S10"
+title = "ImportNotes"
+size = "S"
+deps = ["S6"]
+owns = ["{app}components/import-notes/"]
+
+[[task]]
+id = "S11"
+title = "CampaignSwitcher (switch, new, rename)"
+size = "S"
+deps = ["S1"]
+owns = ["{app}shell/CampaignSwitcher.tsx", "{app}shell/CampaignSwitcher.test.tsx"]
+
+[[task]]
+id = "S12"
+title = "Cloud chip + popover (2b) and first-connect dialog (2a)"
+size = "M"
+deps = ["S1", "C12"]
+owns = ["{app}shell/CloudChip.tsx", "{app}shell/CloudChip.test.tsx", "{app}components/cloud/"]
+
+[[task]]
+id = "S13"
+title = "AccountMenu"
+size = "S"
+deps = ["S1"]
+owns = ["{app}shell/AccountMenu.tsx", "{app}shell/AccountMenu.test.tsx"]
+
+[[task]]
+id = "S14"
+title = "ReadAloud"
+size = "S"
+deps = ["S6"]
+owns = ["{app}components/read-aloud/"]
+
+# ---------------------------------------------------------------- C: backend features + contract
+[[task]]
+id = "C1"
+title = "Classes list (built-in SRD + user-added), player class, colour override"
+size = "M"
+deps = ["B3", "B4", "A3", "B6"]
+owns = ["{engine}model.py", "{engine}state.py", "{engine}_library.py", "{core}transcript.py", "{core}classes.py", "{server}routers/players.py", "{api}players/", "{tests}test_player_class.py", "{seed}players.py"]
+
+[[task]]
+id = "C2"
+title = "Session start options + saved-session summary fields + reviewed flag"
+size = "L"
+deps = ["B3", "B4", "A3", "B6"]
+owns = ["{engine}live_session.py", "{engine}_pipeline.py", "{engine}_sessions.py", "{lore}pages.py", "{server}routers/session.py", "{server}routers/sessions.py", "{api}session/", "{api}sessions/", "{tests}test_session_meta.py", "{seed}sessions.py"]
+
+[[task]]
+id = "C3"
+title = "Notebook store, pins, keep/dismiss, notebook.updated event"
+size = "M"
+deps = ["C2"]
+owns = ["{engine}notebook.py", "{engine}_pipeline.py", "{server}routers/notebook.py", "{api}notebook/", "{api}events/", "{api}query/bridge.ts", "{tests}test_notebook_api.py", "{seed}notebook.py"]
+
+[[task]]
+id = "C4"
+title = "Notebook LLM pass every ~3 min of new speech"
+size = "L"
+deps = ["C3", "C5"]
+owns = ["{lore}notebook.py", "{engine}notebook.py", "{tests}test_notebook_llm.py"]
+
+[[task]]
+id = "C5"
+title = "Fact model: parse/render vault bullets with source, speaker, confidence, history"
+size = "M"
+deps = ["B3"]
+owns = ["{lore}facts.py", "{tests}test_facts_model.py"]
+
+[[task]]
+id = "C6"
+title = "Structured facts through the vault, API and every consumer"
+size = "L"
+deps = ["C5", "B3", "A3", "B4", "B6"]
+owns = ["{lore}campaign.py", "{lore}memory.py", "{lore}ask.py", "{lore}cleanup.py", "{lore}talk.py", "{server}routers/campaign.py", "{api}campaign/", "{tests}test_facts_vault.py", "{seed}vault.py"]
+
+[[task]]
+id = "C7"
+title = "Write-up: fact sources, confidence, updates; scenes from beats"
+size = "L"
+deps = ["C6", "C2"]
+owns = ["{lore}writeup.py", "{lore}memory.py", "{engine}_sessions.py", "{api}sessions/", "{tests}test_writeup_sources.py", "{seed}sessions.py", "{seed}vault.py"]
+
+[[task]]
+id = "C8"
+title = "Review endpoint: suggestions anchored to transcript lines"
+size = "L"
+deps = ["C7", "C3"]
+owns = ["{lore}review.py", "{server}routers/review.py", "{api}review/", "{tests}test_review.py"]
+
+[[task]]
+id = "C9"
+title = "Timeline endpoint + entity appearances"
+size = "M"
+deps = ["C7"]
+owns = ["{lore}timeline.py", "{server}routers/timeline.py", "{server}routers/campaign.py", "{api}timeline/", "{api}campaign/", "{tests}test_timeline.py"]
+
+[[task]]
+id = "C10"
+title = "Recap generator job (reviewed facts only)"
+size = "M"
+deps = ["C6", "C2"]
+owns = ["{lore}recap.py", "{server}routers/recap.py", "{api}recap/", "{tests}test_recap.py"]
+
+[[task]]
+id = "C11"
+title = "Storage usage endpoint"
+size = "S"
+deps = ["B3", "A3", "B6"]
+owns = ["{server}routers/storage.py", "{api}storage/", "{tests}test_storage.py"]
+
+[[task]]
+id = "C12"
+title = "Cloud: main device, pause while live, backup history, restore point"
+size = "L"
+deps = ["B3", "A3", "B6"]
+owns = ["{cloud}backup.py", "{server}routers/cloud.py", "{server}deps.py", "{api}cloud/", "{tests}test_cloud_history.py"]
+
+[[task]]
+id = "C13"
+title = "_Overview/ meta pages generated on backup"
+size = "M"
+deps = ["C12", "C9"]
+owns = ["{cloud}overview.py", "{cloud}backup.py", "{tests}test_overview.py"]
+
+[[task]]
+id = "C14"
+title = "Ask: answer stats (time, transcripts, notes)"
+size = "S"
+deps = ["C6", "B6"]
+owns = ["{lore}ask.py", "{server}routers/ask.py", "{api}ask/", "{tests}test_ask_stats.py"]
+
+# ---------------------------------------------------------------- F: pages
+[[task]]
+id = "F1"
+title = "Home (1b)"
+size = "M"
+deps = ["S3", "C8", "S6"]
+owns = ["{app}pages/home/"]
+
+[[task]]
+id = "F2"
+title = "Ready check (1c)"
+size = "L"
+deps = ["S7", "S3", "S14", "C2"]
+owns = ["{app}pages/ready/"]
+
+[[task]]
+id = "F3"
+title = "First-run wizard (1a)"
+size = "L"
+deps = ["S8", "S7", "S9", "S10"]
+owns = ["{app}pages/welcome/"]
+
+[[task]]
+id = "F4"
+title = "Live: layout, speaker rail, pending voice, voices popover, pause/end"
+size = "L"
+deps = ["S3", "C2"]
+owns = ["{app}pages/live/"]
+
+[[task]]
+id = "F5"
+title = "Live: transcript + ask bar (ask inline, pin)"
+size = "L"
+deps = ["F4", "S4", "S5", "C3", "C14"]
+owns = ["{app}pages/live/transcript/"]
+
+[[task]]
+id = "F6"
+title = "Live: Tonight's notebook"
+size = "M"
+deps = ["F4", "S5", "C3"]
+owns = ["{app}pages/live/notebook/"]
+
+[[task]]
+id = "F7"
+title = "Live: end-session summary modal -> write-up"
+size = "S"
+deps = ["F4", "S6", "C3"]
+owns = ["{app}pages/live/end/"]
+
+[[task]]
+id = "F8"
+title = "Post-session review (1h)"
+size = "L"
+deps = ["S4", "S5", "C8", "S6"]
+owns = ["{app}pages/review/"]
+
+[[task]]
+id = "F9"
+title = "Sessions: list + detail (1o)"
+size = "L"
+deps = ["S3", "S6", "C7"]
+owns = ["{app}pages/sessions/"]
+
+[[task]]
+id = "F10"
+title = "Session tools: export, improve, quality, merge"
+size = "M"
+deps = ["F9"]
+owns = ["{app}pages/sessions/tools/"]
+
+[[task]]
+id = "F11"
+title = "Transcript viewer"
+size = "M"
+deps = ["S4"]
+owns = ["{app}pages/transcript/"]
+
+[[task]]
+id = "F12"
+title = "Timeline: the story so far (4a)"
+size = "M"
+deps = ["S3", "C9"]
+owns = ["{app}pages/timeline/"]
+
+[[task]]
+id = "F13"
+title = "Facts (1k)"
+size = "M"
+deps = ["S5", "C6"]
+owns = ["{app}pages/facts/"]
+
+[[task]]
+id = "F14"
+title = "Codex: entry list + entry page (1n)"
+size = "L"
+deps = ["S5", "C9", "S6"]
+owns = ["{app}pages/codex/"]
+
+[[task]]
+id = "F15"
+title = "Codex: edit, heard-as review, merge, delete, look for facts"
+size = "M"
+deps = ["F14", "S6"]
+owns = ["{app}pages/codex/edit/"]
+
+[[task]]
+id = "F16"
+title = "Recap to share (1p)"
+size = "M"
+deps = ["C10", "S14", "S3"]
+owns = ["{app}pages/recap/"]
+
+[[task]]
+id = "F17"
+title = "Ask page"
+size = "S"
+deps = ["S5", "C14"]
+owns = ["{app}pages/ask/"]
+
+[[task]]
+id = "F18"
+title = "Settings shell + Models & privacy (1q)"
+size = "M"
+deps = ["S9", "C11"]
+owns = ["{app}pages/settings/"]
+
+[[task]]
+id = "F19"
+title = "Settings: Microphone"
+size = "M"
+deps = ["F18", "S7"]
+owns = ["{app}pages/settings/sections/microphone/"]
+
+[[task]]
+id = "F20"
+title = "Settings: Players & voices (+ voice clones)"
+size = "L"
+deps = ["F18", "S8", "S6"]
+owns = ["{app}pages/settings/sections/players/"]
+
+[[task]]
+id = "F21"
+title = "Settings: Obsidian vault"
+size = "S"
+deps = ["F18", "S10"]
+owns = ["{app}pages/settings/sections/vault/"]
+
+[[task]]
+id = "F22"
+title = "Settings: Troubadour Cloud (2c)"
+size = "M"
+deps = ["F18", "S12"]
+owns = ["{app}pages/settings/sections/cloud/"]
+
+# ---------------------------------------------------------------- X: finish
+[[task]]
+id = "X1"
+title = "App icon: the Listening die (1r)"
+size = "S"
+deps = ["W1"]
+owns = ["web/app/public/", "site/favicon.svg"]
+
+[[task]]
+id = "X2"
+title = "Cutover: delete legacy, update docs"
+size = "M"
+deps = ["F1", "F2", "F3", "F5", "F6", "F7", "F8", "F10", "F11", "F12", "F13", "F15", "F16", "F17", "F19", "F20", "F21", "F22", "S11", "S13", "C4", "C13", "X1", "W2"]
+owns = ["web/legacy/", "AGENTS.md", "web/AGENTS.md", "backend/AGENTS.md", "PLAN.md", "README.md", ".github/workflows/ci.yml", "docs/adr/", "docs/architecture.md", "docs/conventions.md", "docs/glossary.md"]
+
+[[task]]
+id = "X3"
+title = "Final gate: smoke every route, design diff, DRY/YAGNI audit"
+size = "M"
+deps = ["X2"]
+owns = ["docs/rebuild/REPORT.md"]
