@@ -207,6 +207,7 @@ describe("bridgeSocket", () => {
     bridgeSocket(socket, client)
     const spy = vi.spyOn(client, "invalidateQueries")
     emit({ type: "snapshot", data: snapshot({ session: session({ status: "running" }) }) })
+    spy.mockClear() // the snapshot's own notebook refetch
     emit({ type: "session.updated", data: session({ status: "running" }) })
     expect(spy).not.toHaveBeenCalled()
     emit({ type: "session.updated", data: session({ status: "idle" }) })

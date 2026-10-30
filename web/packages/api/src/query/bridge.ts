@@ -56,11 +56,14 @@ export function bridgeSocket(socket: Socket, client: QueryClient, opts: BridgeOp
     socket.on("campaign.answer", (answer) => editCampaign(client, withAnswer(answer))),
     socket.on("cloud.updated", (data) => client.setQueryData(keys.cloud(), data)),
     socket.on("llm.updated", (data) => putLlmState(client, data)),
+    socket.on("notebook.updated", (data) => client.setQueryData(keys.notebook(), data)),
     socket.on("campaigns.updated", (data) => client.setQueryData(keys.campaigns(), data)),
     socket.on("session.updated", (session) => sessionStatus(session.status)),
     socket.on("snapshot", (snap) => {
       client.setQueryData(keys.campaigns(), { campaign: snap.campaign, campaigns: snap.campaigns })
       sessionStatus(snap.session.status)
+      // A snapshot starts or ends a session, and the notebook is not part of it.
+      void client.invalidateQueries({ queryKey: keys.notebook(), exact: true })
       const switched = campaignId !== undefined && campaignId !== snap.campaign
       campaignId = snap.campaign
       if (!switched) return

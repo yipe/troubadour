@@ -13,6 +13,7 @@ from troubadour.sound.voices import VoiceMatcher
 
 from .buffers import AudioBuffer
 from .model import Voice
+from .notebook import Notebook
 from .state import MAIN_CAMPAIGN
 
 STOP = object()
@@ -49,6 +50,7 @@ class LiveSession:
         self.frames_q: queue.Queue = queue.Queue()
         self.utt_q: queue.Queue = queue.Queue()
         self.abandoned = False
+        self.notebook = Notebook(self.id)  # the engine wires its emit and is-live check when the session starts
         self.paused = False  # source is held; the segmenter must not treat the silence as a dead mic
         self.awake: subprocess.Popen | None = None  # sleep assertion while listening
         self.recorder: Recorder | None = None  # mic sessions: audio.wav in the session folder
