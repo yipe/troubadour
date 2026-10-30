@@ -5,3 +5,6 @@ export type TimelineSession = Schemas["TimelineSession"]
 /** A confirmed entry whose first mention is in that session. */
 export type NewEntity = Schemas["NewEntity"]
 export type Timeline = Schemas["TimelineOut"]
+
+/** Sessions oldest first, and each mentioned entry's mentions per session in the same order. */
+export type Appearances = Schemas["AppearancesOut"]

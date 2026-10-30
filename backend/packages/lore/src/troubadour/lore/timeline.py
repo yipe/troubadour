@@ -172,3 +172,16 @@ def appearances(vault: Vault, sessions_dir: Path, rows: list[dict], numbers: dic
         for r in _oldest_first(rows)
         if r["id"] in numbers
     ]
+
+
+def all_appearances(vault: Vault, sessions_dir: Path, rows: list[dict], numbers: dict[str, int]) -> dict:
+    """{sessions: [{id, n}], counts: {entry: [count per session]}} for every entry in one pass over the
+    cached scans. Entries never mentioned are left out (the caller treats a missing entry as all zeros)."""
+    needles = _needles(vault.entities())
+    ordered = [r for r in _oldest_first(rows) if r["id"] in numbers]
+    per_session = [session_mentions(sessions_dir, r["id"], needles).counts for r in ordered]
+    names = {name for counts in per_session for name in counts}
+    return {
+        "sessions": [{"id": r["id"], "n": numbers[r["id"]]} for r in ordered],
+        "counts": {name: [counts.get(name, 0) for counts in per_session] for name in sorted(names)},
+    }
