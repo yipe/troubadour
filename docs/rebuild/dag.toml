@@ -533,10 +533,31 @@ deps = ["F17", "C14"]
 owns = ["{lore}ask.py", "{server}routers/ask.py", "{tests}test_ask_delete.py", "{api}ask/", "{app}pages/ask/"]
 
 [[task]]
+id = "F30"
+title = "Manage sessions: delete, merge from the list, tidy very short ones"
+size = "M"
+deps = ["F9", "F10", "F24"]
+owns = ["backend/packages/engine/src/troubadour/engine/_sessions.py", "{server}routers/sessions.py", "{tests}test_session_delete.py", "{api}sessions/", "{app}pages/sessions/"]
+
+[[task]]
+id = "F31"
+title = "Microphone picker: live availability, refresh, and visible test errors"
+size = "S"
+deps = ["S7", "F19"]
+owns = ["{app}components/mic/", "{sound}mics.py", "{server}routers/audio.py", "backend/packages/engine/src/troubadour/engine/core.py", "{tests}test_mic_availability.py", "{api}audio/"]
+
+[[task]]
+id = "F29"
+title = "Codex list: a mention bitmap under each entry"
+size = "M"
+deps = ["F14", "F15", "C9"]
+owns = ["{lore}timeline.py", "{server}routers/timeline.py", "{tests}test_appearances.py", "{api}timeline/", "{app}pages/codex/"]
+
+[[task]]
 id = "R1"
 title = "Responsive layouts: wrap to two columns, then one"
 size = "L"
-deps = ["F24", "F25", "F26", "F28", "F23", "X3"]
+deps = ["F24", "F25", "F26", "F28", "F29", "F30", "F31", "F23", "X3"]
 owns = ["{ui}components/rail-layout.tsx", "{app}shell/", "{app}pages/", "{app}components/", "web/app/scripts/smoke.ts"]
 
 # ---------------------------------------------------------------- X: finish
