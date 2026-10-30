@@ -2,8 +2,11 @@ import { fireEvent, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { keys } from "@troubadour/api/query"
 import { answerSource, bodyOf, campaign, campaignAnswer, mockFetch } from "@troubadour/api/testing"
+import { notify } from "@troubadour/ui/toast"
 import { renderWithProviders } from "../../test/render.tsx"
 import { Component } from "./index.tsx"
+
+vi.mock("@troubadour/ui/toast", () => ({ notify: vi.fn() }))
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -61,5 +64,35 @@ describe("Ask page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }))
     await waitFor(() => expect(m.calls).toHaveLength(1))
     expect(bodyOf(m.calls[0]!)).toEqual({ question: "Why?" })
+  })
+
+  it("the X deletes a question at once and selects the next newest", async () => {
+    const m = mockFetch(() => undefined)
+    show()
+    fireEvent.click(screen.getByRole("button", { name: "Delete \u201CWhere is the gem?\u201D" }))
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Where is the gem?" })).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole("heading", { name: "Who guards the abbey?" })).toBeInTheDocument()
+    await waitFor(() => expect(m.calls.some((c) => c.method === "DELETE")).toBe(true))
+    expect(m.calls.find((c) => c.method === "DELETE")).toMatchObject({ url: "/api/campaign/answers/a2" })
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Question deleted"))
+  })
+
+  it("brings the question back when the server refuses", async () => {
+    let refuse = () => {}
+    const refused = new Promise<void>((resolve) => (refuse = resolve))
+    mockFetch(async (c) => {
+      if (c.method !== "DELETE") return undefined
+      await refused
+      return new Response(JSON.stringify({ detail: "nope" }), { status: 500 })
+    })
+    show()
+    fireEvent.click(screen.getByRole("button", { name: "Delete \u201CWho guards the abbey?\u201D" }))
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Who guards the abbey?" })).not.toBeInTheDocument(),
+    )
+    refuse()
+    expect(await screen.findByRole("button", { name: "Who guards the abbey?" })).toBeInTheDocument()
   })
 })

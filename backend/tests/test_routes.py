@@ -7,6 +7,7 @@ EXPECTED = [
     ("PUT", "/api/audio/monitor"),
     ("GET", "/api/campaign"),
     ("POST", "/api/campaign/ask"),
+    ("DELETE", "/api/campaign/answers/{answer_id}"),
     ("POST", "/api/campaign/entities"),
     ("DELETE", "/api/campaign/entities/{name}"),
     ("GET", "/api/campaign/entities/{name}"),

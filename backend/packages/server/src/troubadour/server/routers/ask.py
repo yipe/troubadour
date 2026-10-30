@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Path
 from pydantic import BaseModel, Field
 from troubadour.server import deps
 
@@ -50,3 +50,9 @@ def ask(body: AskIn):
     """A question about the campaign → answered in the background (`campaign.answer` events),
     from the open campaign's transcripts and notes."""
     return deps._call(deps.asker.ask, body.question, body.t).to_json()
+
+
+@router.delete("/api/campaign/answers/{answer_id}", status_code=204)
+def delete_answer(answer_id: str = Path(pattern=r"^[0-9a-f]{8}$")):
+    """Forget a past question of the open campaign."""
+    deps._call(deps.asker.delete, answer_id)
