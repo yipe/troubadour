@@ -6,6 +6,7 @@ WebSocket or calling mutating endpoints (CSRF / DNS rebinding).
 """
 
 import asyncio
+import concurrent.futures
 import html
 import json
 import logging
@@ -439,6 +440,40 @@ def local_models(body: LocalModelsIn):
         raise HTTPException(400, str(e)) from e
     found, error = _scan_llms(url, body.api_key.strip())
     return {"installed": _llm_choices(found), "found": len(found), "error": error}
+
+
+# Where local model servers listen by default (this Mac only). Several share 8000/8080; the label says so.
+LOCAL_SERVERS = (
+    (1234, "LM Studio"),
+    (8000, "MTPLX / vLLM"),
+    (8080, "llama.cpp / mlx-lm / LocalAI"),
+    (11434, "Ollama"),
+    (1337, "Jan"),
+    (5000, "text-generation-webui"),
+    (5001, "KoboldCpp"),
+)
+
+
+@app.get("/api/llm/local/servers")
+def local_servers():
+    """The usual local model server ports, each asked at once whether it answers and how many models it has
+    (unanswered ones too: the dialog lists them as choices). The saved port is listed if it's another one."""
+    ports = list(LOCAL_SERVERS)
+    saved = urlparse(settings.current()["llm_url"])
+    if saved.hostname in ("127.0.0.1", "localhost") and saved.port and saved.port not in {p for p, _ in ports}:
+        ports.insert(0, (saved.port, "Saved server"))
+
+    def probe(port: int, name: str) -> dict:
+        url = f"http://127.0.0.1:{port}/v1"
+        try:
+            r = httpx.get(f"{url}/models", timeout=1.5)
+            models = providers.model_ids("chat", r.json()) if r.status_code == 200 else None
+        except (httpx.HTTPError, ValueError):
+            models = None
+        return {"port": port, "name": name, "url": url, "running": models is not None, "models": len(models or [])}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(ports)) as pool:
+        return list(pool.map(lambda p: probe(*p), ports))
 
 
 @app.get("/api/llm/models")

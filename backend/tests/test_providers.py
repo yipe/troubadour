@@ -514,3 +514,20 @@ def test_rescan_asks_the_typed_local_server_for_its_models(api, monkeypatch):
     r = client.post("/api/llm/local/models", json={"llm_url": "10.0.0.8:1234"})
     assert (r.json()["found"], r.json()["error"]) == (0, "Couldn't reach http://10.0.0.8:1234/v1 (ConnectError).")
     assert client.post("/api/llm/local/models", json={"llm_url": "ftp://x"}).status_code == 400
+
+
+def test_local_servers_lists_the_usual_ports_and_which_answer(api, monkeypatch):
+    client, _, _ = api
+
+    def get(url, timeout):
+        if ":8000/" in url:
+            return httpx.Response(200, json={"data": [{"id": "qwen"}, {"id": "gemma"}]})
+        if ":11434/" in url:
+            return httpx.Response(500)
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(server.httpx, "get", get)
+    rows = {r["port"]: r for r in client.get("/api/llm/local/servers").json()}
+    assert rows[8000] == {"port": 8000, "name": "MTPLX / vLLM", "url": "http://127.0.0.1:8000/v1", "running": True, "models": 2}
+    assert (rows[11434]["running"], rows[1234]["running"]) == (False, False)
+    assert rows[1235]["name"] == "Saved server"  # the default address isn't one of the usual ports

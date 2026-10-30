@@ -106,6 +106,35 @@ describe("Models dialog", () => {
     expect(screen.getByLabelText("Live spelling")).toHaveValue("qwen3.8-27b")
   })
 
+  it("offers the usual local servers, and picking one rescans it", async () => {
+    const { writes } = mockFetch((call) => {
+      if (call.url === "/api/settings/models") return settings()
+      if (call.url === "/api/llm/local/servers")
+        return [
+          { port: 1234, name: "LM Studio", url: "http://127.0.0.1:1234/v1", running: false, models: 0 },
+          { port: 8000, name: "MTPLX / vLLM", url: "http://127.0.0.1:8000/v1", running: true, models: 1 },
+        ]
+      if (call.url === "/api/llm/local/models") return { installed: ["mtplx-qwen"], found: 1, error: null }
+    })
+    await openDialog()
+    const pick = screen.getByRole("combobox", { name: "Common servers" })
+    expect([...(pick as HTMLSelectElement).options].map((o) => o.text)).toEqual([
+      "Common servers on this Mac…",
+      "LM Studio · 1234 · not running",
+      "MTPLX / vLLM · 8000 · running, 1 model",
+    ])
+    fireEvent.change(pick, { target: { value: "http://127.0.0.1:8000/v1" } })
+    await act(async () => {})
+    expect(screen.getByLabelText("Model server")).toHaveValue("http://127.0.0.1:8000/v1")
+    expect(writes()).toEqual([
+      {
+        method: "POST",
+        url: "/api/llm/local/models",
+        body: { llm_url: "http://127.0.0.1:8000/v1", api_key: "" },
+      },
+    ])
+  })
+
   it("says why a rescan found nothing", async () => {
     mockFetch((call) => {
       if (call.url === "/api/settings/models") return settings()

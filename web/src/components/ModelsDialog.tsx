@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { NativeSelect } from "@/components/ui/native-select"
 import { api } from "@/lib/api"
 import { setLlmProviders, useLlmProviders } from "@/lib/llmStore"
 import { useStore } from "@/lib/store"
@@ -115,10 +116,10 @@ export function ModelsDialog({
   const ready = !!settings && !!pair.llm.trim() && !!pair.memory.trim() && (!chosen || connected)
 
   // Ask the server in the address box what it offers now: after loading or downloading a model there.
-  async function rescan() {
+  async function rescan(address = url) {
     setScan({ busy: true, note: null })
     try {
-      const r = await api.scanLocalModels(url.trim(), apiKey.trim())
+      const r = await api.scanLocalModels(address.trim(), apiKey.trim())
       setSettings((s) => (s ? { ...s, installed: r.installed } : s))
       setScan({ busy: false, note: r.error ?? `Found ${r.found} ${r.found === 1 ? "model" : "models"}.` })
     } catch (e) {
@@ -219,6 +220,13 @@ export function ModelsDialog({
                       {scan.busy ? <Loader2 className="animate-spin" /> : <RefreshCw />} Rescan
                     </Button>
                   </div>
+                  <CommonServers
+                    open={open}
+                    onPick={(address) => {
+                      setUrl(address)
+                      void rescan(address)
+                    }}
+                  />
                   <ServerStatus scanned={scan.note} />
                   {scan.note && (
                     <p role="status" className="text-xs text-muted-foreground">
@@ -516,5 +524,41 @@ function ServerStatus({ scanned }: { scanned: string | null }) {
       <span className={`size-2 rounded-full ${llm.ok ? "bg-emerald-500" : "bg-red-500"}`} />
       {llm.ok ? `Connected: ${llm.model} answers at ${llm.url}` : `Not answering: ${llm.model} at ${llm.url}`}
     </p>
+  )
+}
+
+type LocalServer = { port: number; name: string; url: string; running: boolean; models: number }
+
+/** The usual local model servers (LM Studio, Ollama, MTPLX, ...), checked when the dialog opens: picking one
+ * fills in its address and rescans it. */
+function CommonServers({ open, onPick }: { open: boolean; onPick: (url: string) => void }) {
+  const [servers, setServers] = useState<LocalServer[] | null>(null)
+  useEffect(() => {
+    if (!open) return
+    let gone = false
+    void api
+      .localServers()
+      .then((list) => !gone && setServers(list))
+      .catch(() => !gone && setServers([]))
+    return () => {
+      gone = true
+    }
+  }, [open])
+  if (!servers?.length) return null
+  return (
+    <NativeSelect
+      aria-label="Common servers"
+      className="h-8 w-full text-xs"
+      value=""
+      onChange={(e) => e.target.value && onPick(e.target.value)}
+    >
+      <option value="">Common servers on this Mac…</option>
+      {servers.map((s) => (
+        <option key={s.port} value={s.url}>
+          {s.name} · {s.port} ·{" "}
+          {s.running ? `running, ${s.models} ${s.models === 1 ? "model" : "models"}` : "not running"}
+        </option>
+      ))}
+    </NativeSelect>
   )
 }

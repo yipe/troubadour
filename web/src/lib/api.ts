@@ -201,6 +201,12 @@ export const api = {
   /** What a hosted provider offers the signed-in account; `error` says why the list is empty, and
    * `price_note` stands in when the provider's list has no prices. */
   /** What a local model server offers now (the typed address, saved or not), plus models chosen before. */
+  /** The usual local model server ports on this Mac, and which of them answer. */
+  localServers: () =>
+    req<{ port: number; name: string; url: string; running: boolean; models: number }[]>(
+      "GET",
+      "/api/llm/local/servers",
+    ),
   scanLocalModels: (llm_url: string, api_key: string) =>
     req<{ installed: string[]; found: number; error: string | null }>("POST", "/api/llm/local/models", {
       llm_url,
