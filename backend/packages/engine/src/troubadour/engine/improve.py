@@ -22,7 +22,9 @@ from troubadour.sound import asr
 from troubadour.sound.audio import load_audio
 from troubadour.sound.voices import MIN_EMBED_S, embed_span
 
-from .live import PROVISIONAL_BELOW, Engine, session_audio
+from .core import Engine
+from .model import PROVISIONAL_BELOW
+from .paths import session_audio
 
 SR = config.SR
 

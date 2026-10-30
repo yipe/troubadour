@@ -248,7 +248,7 @@ def test_switching_lets_the_last_spelling_fixes_land_before_saving(engine, monke
 
 
 def test_switching_waits_for_the_cleanup_only_so_long(engine, monkeypatch):
-    monkeypatch.setattr("troubadour.engine.live.SETTLE_S", 0.2)
+    monkeypatch.setattr("troubadour.engine._library.SETTLE_S", 0.2)
     engine.cleanup_q.put("m-stuck")  # nobody will ever take it (the cleanup loop is wedged)
     t0 = time.monotonic()
     idle(engine).open_campaign(engine.create_campaign("Morvath")["id"])

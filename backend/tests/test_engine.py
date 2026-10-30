@@ -280,9 +280,9 @@ def test_audio_monitor_switches_the_live_meter_off_and_on(engine):
 
 def test_audio_monitor_setting_applies_to_the_next_session(engine, monkeypatch):
     monkeypatch.setattr(
-        "troubadour.engine.live.subprocess.Popen", lambda cmd, **kw: type("P", (), {"terminate": lambda s: None})()
+        "troubadour.engine._pipeline.subprocess.Popen", lambda cmd, **kw: type("P", (), {"terminate": lambda s: None})()
     )
-    monkeypatch.setattr("troubadour.engine.live.MicSource.start", lambda self, sink, on_end: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.start", lambda self, sink, on_end: None)
     monkeypatch.setattr(engine, "_segment_loop", lambda sess: None)
     monkeypatch.setattr(engine, "_worker_loop", lambda sess: None)
     engine.status, engine.live = "idle", None
@@ -363,8 +363,8 @@ def test_keep_awake_survives_a_spawn_failure(monkeypatch):
     def boom(*args, **kwargs):
         raise OSError("fork failed")
 
-    monkeypatch.setattr("troubadour.engine.live.shutil.which", lambda name: "/usr/bin/caffeinate")
-    monkeypatch.setattr("troubadour.engine.live.subprocess.Popen", boom)
+    monkeypatch.setattr("troubadour.engine._pipeline.shutil.which", lambda name: "/usr/bin/caffeinate")
+    monkeypatch.setattr("troubadour.engine._pipeline.subprocess.Popen", boom)
     assert keep_awake() is None
 
 
@@ -487,9 +487,9 @@ def test_session_holds_a_sleep_assertion_until_it_ends(engine, monkeypatch):
         def terminate(self):
             self.terminated = True
 
-    monkeypatch.setattr("troubadour.engine.live.shutil.which", lambda name: "/usr/bin/caffeinate")
-    monkeypatch.setattr("troubadour.engine.live.subprocess.Popen", FakeProc)
-    monkeypatch.setattr("troubadour.engine.live.MicSource.start", lambda self, sink, on_end: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.shutil.which", lambda name: "/usr/bin/caffeinate")
+    monkeypatch.setattr("troubadour.engine._pipeline.subprocess.Popen", FakeProc)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.start", lambda self, sink, on_end: None)
     monkeypatch.setattr(engine, "_segment_loop", lambda sess: None)
     monkeypatch.setattr(engine, "_worker_loop", lambda sess: None)
     engine.status, engine.live = "idle", None
@@ -514,7 +514,7 @@ def _run_segmenter(engine, kind: str) -> tuple[LiveSession, threading.Thread]:
 
 
 def test_silent_mic_warns_once(engine, monkeypatch):
-    monkeypatch.setattr("troubadour.engine.live.MIC_STALL_S", 0.6)
+    monkeypatch.setattr("troubadour.engine._pipeline.MIC_STALL_S", 0.6)
     sess, t = _run_segmenter(engine, "mic")
     deadline = time.monotonic() + 5
     while not engine.bus.of("error") and time.monotonic() < deadline:
@@ -529,7 +529,7 @@ def test_silent_mic_warns_once(engine, monkeypatch):
 
 
 def test_silent_file_replay_does_not_warn(engine, monkeypatch):
-    monkeypatch.setattr("troubadour.engine.live.MIC_STALL_S", 0.3)
+    monkeypatch.setattr("troubadour.engine._pipeline.MIC_STALL_S", 0.3)
     sess, t = _run_segmenter(engine, "file")
     time.sleep(1.2)
     sess.abandon()
@@ -589,7 +589,7 @@ def test_refine_tidies_pending_even_before_anyone_is_named(engine):
 def test_new_lines_use_the_campaign_glossary(engine, tmp_path, monkeypatch):
     from troubadour.lore.campaign import Vault
 
-    monkeypatch.setattr("troubadour.engine.live.GLOSSARY_CHECK_S", 0.0)
+    monkeypatch.setattr("troubadour.engine._pipeline.GLOSSARY_CHECK_S", 0.0)
     monkeypatch.setattr("troubadour.sound.asr.transcribe", lambda audio: "Dilara takes 12 slashing damage")
     engine.vault = Vault(tmp_path / "campaign")
     engine.vault.create("Elara", "pc", heard_as=["Dilara"])
@@ -640,7 +640,7 @@ def test_a_big_glossary_never_pushes_the_tables_names_out_of_whispers_prompt(eng
     from troubadour.lore.campaign import Vault
 
     monkeypatch.setattr(config, "ASR_PROMPT", True)
-    monkeypatch.setattr("troubadour.engine.live.GLOSSARY_CHECK_S", 0.0)
+    monkeypatch.setattr("troubadour.engine._pipeline.GLOSSARY_CHECK_S", 0.0)
     heard = iter(["We sail past Npc7 Stormwhistle. " * 8, "And then?"])
     prompts = []
     monkeypatch.setattr("troubadour.sound.asr.transcribe", lambda audio, prompt=None: prompts.append(prompt) or next(heard))
@@ -673,7 +673,7 @@ def test_a_nickname_said_lately_reaches_whispers_prompt(engine, tmp_path, monkey
     from troubadour.lore.campaign import Vault
 
     monkeypatch.setattr(config, "ASR_PROMPT", True)
-    monkeypatch.setattr("troubadour.engine.live.GLOSSARY_CHECK_S", 0.0)
+    monkeypatch.setattr("troubadour.engine._pipeline.GLOSSARY_CHECK_S", 0.0)
     heard = iter(["Ask Faryn about it.", "Sure."])
     prompts = []
     monkeypatch.setattr("troubadour.sound.asr.transcribe", lambda audio, prompt=None: prompts.append(prompt) or next(heard))
@@ -687,7 +687,7 @@ def test_a_nickname_said_lately_reaches_whispers_prompt(engine, tmp_path, monkey
 def test_spelling_cleanup_live(engine, tmp_path, monkeypatch):
     from troubadour.lore.campaign import Vault
 
-    monkeypatch.setattr("troubadour.engine.live.GLOSSARY_CHECK_S", 0.0)
+    monkeypatch.setattr("troubadour.engine._pipeline.GLOSSARY_CHECK_S", 0.0)
     engine.vault = Vault(tmp_path / "campaign")
     engine.vault.create("Elara", "pc", description="Theo's paladin.")
     engine.vault.create("Delara", "npc", description="An NPC Theo plays.")
@@ -733,3 +733,26 @@ def test_cleanup_skips_a_line_that_changed_meanwhile(engine, monkeypatch, tmp_pa
     monkeypatch.setattr(engine.cleanup_llm, "json", llm)
     engine._cleanup([m["id"]])
     assert engine.messages[m["id"]].text == "Dallara rolls a 20"
+
+
+def test_models_off_switch_skips_loading(engine, monkeypatch, caplog):
+    import logging
+    import threading
+
+    def touched(*a, **k):
+        raise AssertionError("TROUBADOUR_MODELS=0 must not touch troubadour.sound.asr")
+
+    monkeypatch.setenv("TROUBADOUR_MODELS", "0")
+    monkeypatch.setattr("troubadour.sound.asr.warm_up", touched)
+    monkeypatch.setattr("troubadour.sound.asr.transcribe", touched)
+    engine.ready.clear()
+    for loop in ("_llm_health_loop", "_refine_loop", "_cleanup_loop"):  # not under test; they poll the network
+        monkeypatch.setattr(engine, loop, lambda: None)
+    with caplog.at_level(logging.INFO, logger="troubadour"):
+        engine.start_background()
+        for t in threading.enumerate():
+            if t.name == "load-models":
+                t.join(5)
+    assert not engine.ready.is_set()
+    assert engine.load_error is None
+    assert "TROUBADOUR_MODELS=0" in caplog.text

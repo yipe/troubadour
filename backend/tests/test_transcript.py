@@ -95,8 +95,8 @@ def test_no_transcript_before_any_line(engine):
 
 
 def test_starting_a_new_session_saves_the_old_one_first(engine, monkeypatch):
-    monkeypatch.setattr("troubadour.engine.live.keep_awake", lambda: None)
-    monkeypatch.setattr("troubadour.engine.live.MicSource.start", lambda self, sink, on_end: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.keep_awake", lambda: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.start", lambda self, sink, on_end: None)
     monkeypatch.setattr(engine, "_segment_loop", lambda sess: None)
     monkeypatch.setattr(engine, "_worker_loop", lambda sess: None)
     say(engine, ALICE, 2.0)
