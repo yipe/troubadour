@@ -22,7 +22,7 @@ the LLM. No audio or text leaves the machine unless you opt in to a hosted langu
   suggested spellings, all for you to review. Notes stay editable in Obsidian.
 - **Ask about the campaign.** "Who did we suspect has the diamond?" The local LLM searches every
   transcript and note, knows who's a player, a PC or an NPC, and answers with its sources.
-- **History.** Every session autosaves its transcript, recording and setup, with Markdown/JSON
+- **Sessions.** Every session autosaves its transcript, recording and setup, with Markdown/JSON
   export, an audio-quality report and an "Improve transcript" pass.
 
 ## Requirements
@@ -48,12 +48,12 @@ lms server start --port 1235 && lms load google/gemma-4-26b-a4b-qat --yes   # or
 HF_TOKEN=hf_… yarn start           # → http://127.0.0.1:8765
 ```
 
-Then: add the players on **Setup**, pick the microphone, start a session. An omnidirectional
+Then: the first-run wizard adds your players and campaign; pick the microphone on the ready check and start a session. An omnidirectional
 or boundary mic in the middle of the table works best; Troubadour's mic check tells you if yours isn't.
 
 ## Configuration
 
-Environment variables (see `backend/src/troubadour/config.py`):
+Environment variables (see `backend/packages/core/src/troubadour/core/config.py`):
 
 | Variable | Default | |
 |---|---|---|
@@ -88,20 +88,24 @@ yarn format
 
 | Path | |
 |---|---|
-| `backend/src/troubadour/` | Python engine and FastAPI server |
+| `backend/packages/` | Python packages: `core`, `sound`, `lore`, `cloud`, `engine`, `server` |
 | `backend/tests/` | pytest |
-| `backend/spike/` | benchmarks and research scripts (`uv run --group spike …`) |
-| `web/src/` | React 19, Vite, Tailwind v4, shadcn/ui |
+| `backend/spike/` | benchmarks, research scripts (`uv run --group spike …`) and the demo seed |
+| `web/app/`, `web/packages/` | React 19, Vite, Tailwind v4: the app, `ui`, `api`, `tokens` |
+| `docs/` | architecture, conventions, glossary, decision records (`docs/adr/`) |
+
+To look around without touching your data or loading models, `scripts/scratch.sh 8790` starts a seeded
+throwaway server on another port.
 
 Design notes, measurements and the reasoning behind the thresholds are in [PLAN.md](PLAN.md).
 Contributor/agent guides: [AGENTS.md](AGENTS.md), [backend/AGENTS.md](backend/AGENTS.md),
-[web/AGENTS.md](web/AGENTS.md).
+[web/AGENTS.md](web/AGENTS.md); [docs/architecture.md](docs/architecture.md), [docs/conventions.md](docs/conventions.md).
 
 ## License
 
 [MIT](LICENSE).
 
-The built-in D&D vocabulary (`backend/src/troubadour/srd_terms.json`) holds names from the System
+The built-in D&D vocabulary (`backend/packages/lore/src/troubadour/lore/srd_terms.json`) holds names from the System
 Reference Document 5.1 and 5.2 by Wizards of the Coast LLC, available at
 <https://www.dndbeyond.com/srd>, licensed under
 [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/legalcode). Troubadour is unofficial and not
