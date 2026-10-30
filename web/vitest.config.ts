@@ -1,12 +1,6 @@
-import { defineConfig, mergeConfig } from "vitest/config"
-import viteConfig from "./vite.config.ts"
+import { defineConfig } from "vitest/config"
 
-export default mergeConfig(
-  viteConfig,
-  defineConfig({
-    test: {
-      environment: "jsdom",
-      setupFiles: ["./src/test/setup.ts"],
-    },
-  }),
-)
+// One vitest process for the whole workspace. Each project has its own config.
+export default defineConfig({
+  test: { projects: ["app/vitest.config.ts", "app/vitest.browser.config.ts", "packages/*"] },
+})

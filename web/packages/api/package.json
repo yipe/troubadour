@@ -1,0 +1,26 @@
+{
+  "name": "@troubadour/api",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*/index.ts"
+  },
+  "scripts": {
+    "gen": "node scripts/gen.ts",
+    "pretypecheck": "pnpm gen",
+    "typecheck": "tsc --noEmit",
+    "test": "TZ=UTC vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.100.0",
+    "zustand": "^5.0.15"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "openapi-typescript": "^7.13.0"
+  }
+}

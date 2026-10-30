@@ -1,14 +1,56 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
+  "plugins": ["react", "typescript", "oxc", "import"],
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "import/no-default-export": "error"
   },
   "overrides": [
     {
-      "files": ["src/components/ui/**"],
-      "rules": { "react/only-export-components": "off" }
+      "files": ["**/*.config.ts"],
+      "rules": { "import/no-default-export": "off" }
+    },
+    {
+      "files": ["packages/ui/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@troubadour/api", "@troubadour/api/*"],
+                "message": "@troubadour/ui is domain-free: it must not import @troubadour/api."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["app/src/**", "packages/ui/**"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          { "name": "fetch", "message": "Use a query hook from @troubadour/api." }
+        ]
+      }
+    },
+    {
+      "files": ["app/src/pages/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/pages/**", "@/pages/*"],
+                "message": "Promote shared code to app/src/components."
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }
