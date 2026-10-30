@@ -59,3 +59,4 @@ Items marked done in the git log (cn export, SessionAudioProvider in tests, Reco
 - F8: unknown-word accept always creates a 'term' (ReviewAction has no type). Entry edit links to codex. SuggestionCard entry heading/double 'Spelling' label. Rows styled via :has() on data-review (TranscriptList has no per-row class).
 - F15: rename/merge navigation uses a one-tick 'openLater' because codex index redirects to first entry while the cache settles; proper fix in pages/codex/index.tsx.
 - FLAKE #3: a welcome-rail test failed once under load (F25's yarn check), passed on rerun.
+- F30: _concat_wav reads both recordings fully into memory (multi-GB for long sessions); stream it. Unmerge's no-hardlink fallback assumes a 44-byte WAV header. Web list treats the newest row as live while running (no live session id).
