@@ -84,8 +84,9 @@ describe("startup", () => {
       ...returning,
       live: { ...returning.live, session: session({ status: "paused" }) },
       route: "/timeline",
+      queryData: [...returning.queryData, [keys.timeline(), { sessions: [] }]],
     })
-    expect(await screen.findByRole("heading", { name: "Timeline" })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: "The story so far" })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/timeline")
   })
 
