@@ -57,3 +57,4 @@ Items marked done in the git log (cn export, SessionAudioProvider in tests, Reco
 - F14: entries don't carry the session that suggested them ("suggested from S12" impossible). /codex picks first in server order.
 - F13: FactsTable windowing verified OK inside scrolling main (browser test).
 - F8: unknown-word accept always creates a 'term' (ReviewAction has no type). Entry edit links to codex. SuggestionCard entry heading/double 'Spelling' label. Rows styled via :has() on data-review (TranscriptList has no per-row class).
+- F15: rename/merge navigation uses a one-tick 'openLater' because codex index redirects to first entry while the cache settles; proper fix in pages/codex/index.tsx.
