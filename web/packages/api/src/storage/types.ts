@@ -1,2 +1,3 @@
-// C11 fills this in.
-export {}
+import type { Schemas } from "../generated/index.ts"
+
+export type StorageUsage = Schemas["StorageUsage"]

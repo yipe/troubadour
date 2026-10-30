@@ -80,6 +80,7 @@ EXPECTED = [
     ("PUT", "/api/settings/models"),
     ("GET", "/api/sources"),
     ("GET", "/api/state"),
+    ("GET", "/api/storage"),
     ("POST", "/api/train/cancel"),
     ("GET", "/api/transcript.{fmt}"),
     ("POST", "/api/voices/{vid}/assign"),
