@@ -7,13 +7,14 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, StringConstraints
 from troubadour.engine import SESSION_ID
-from troubadour.lore import obsidian
+from troubadour.lore import obsidian, timeline
 from troubadour.lore.campaign import TYPES, Entity, SessionIndex, mention_counts
 from troubadour.lore.facts import Confidence, Source, fact_id
 from troubadour.lore.facts import Fact as FactModel
 from troubadour.lore.memory import spelling_suggestions
 from troubadour.lore.pages import session_numbers
 from troubadour.server import deps
+from troubadour.server.routers import timeline as timeline_router
 
 router = APIRouter()
 
@@ -133,6 +134,12 @@ class FactSuggestionOut(FactOut):
     replaces: str | None  # id of the fact an update would replace
 
 
+class AppearanceOut(BaseModel):
+    session_id: str
+    n: int
+    count: int  # times the entry is named in that session's transcript
+
+
 class EntityOut(BaseModel):
     name: str
     type: Kind
@@ -147,6 +154,7 @@ class EntityOut(BaseModel):
     path: str | None
     read_only: bool
     sessions: int
+    appearances: list[AppearanceOut] | None = None  # only the single-entry GET fills this in
 
 
 class ObsidianVaultOut(BaseModel):
@@ -313,7 +321,12 @@ def create_entity(body: EntityIn):
 
 @router.get("/api/campaign/entities/{name}", response_model=EntityOut)
 def get_entity(name: str):
-    return _entity(deps._call(deps.vault.get, name))
+    """One entry, with how often it is named in each saved session (oldest first, zeros included)."""
+    e = deps._call(deps.vault.get, name)
+    vault, rows, numbers = timeline_router.session_context()
+    out = _entity(e)
+    out.appearances = [AppearanceOut(**a) for a in timeline.appearances(vault, deps.engine.sessions_dir(), rows, numbers, e.name)]
+    return out
 
 
 @router.patch("/api/campaign/entities/{name}", response_model=EntityOut)

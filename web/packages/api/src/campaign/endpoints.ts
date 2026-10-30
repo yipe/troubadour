@@ -18,6 +18,8 @@ const entityUrl = (name: string) => `/api/campaign/entities/${segment(name)}`
 export const campaign = () => req<Campaign>("GET", "/api/campaign")
 export const campaignSuggestions = () => req<CampaignSuggestions>("GET", "/api/campaign/suggestions")
 
+/** One entry with its `appearances`: one row per saved session, oldest first, zero counts included. */
+export const fetchEntity = (name: string) => req<Entity>("GET", entityUrl(name))
 export const createEntity = (b: EntityCreate) => req<Entity>("POST", "/api/campaign/entities", b)
 export const updateEntity = (name: string, b: EntityPatch) => req<Entity>("PATCH", entityUrl(name), b)
 export const deleteEntity = (name: string) => req<void>("DELETE", entityUrl(name))

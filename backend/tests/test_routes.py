@@ -24,6 +24,7 @@ EXPECTED = [
     ("DELETE", "/api/campaign/ignore/{word}"),
     ("POST", "/api/campaign/import"),
     ("GET", "/api/campaign/suggestions"),
+    ("GET", "/api/campaign/timeline"),
     ("POST", "/api/campaign/writeup/{sid}"),
     ("POST", "/api/campaigns"),
     ("PATCH", "/api/campaigns/{cid}"),

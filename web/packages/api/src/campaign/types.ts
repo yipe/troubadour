@@ -3,8 +3,11 @@ import type { CampaignAnswer } from "../ask/types.ts"
 import type { Schemas } from "../generated/index.ts"
 
 /* ---- Campaign memory (an Obsidian vault of notes) ---- */
+/** `appearances` is filled in only by the single-entry GET (`fetchEntity`, `useEntity`). */
 export type Entity = Schemas["EntityOut"]
 export type EntityType = Entity["type"]
+/** Times an entry is named in one saved session's transcript. */
+export type Appearance = Schemas["AppearanceOut"]
 /** A fact in its note: wording, who said it, where, how sure, and older wordings (newest first). */
 export type Fact = Schemas["FactOut"]
 /** A fact waiting for review; `kind: "update"` says which existing fact (`replaces`, an id) it would replace. */
