@@ -12,6 +12,7 @@ from troubadour.lore.campaign import TYPES, Entity, SessionIndex, mention_counts
 from troubadour.lore.facts import Confidence, Source, fact_id
 from troubadour.lore.facts import Fact as FactModel
 from troubadour.lore.memory import spelling_suggestions
+from troubadour.lore.pages import session_numbers
 from troubadour.server import deps
 
 router = APIRouter()
@@ -166,7 +167,7 @@ class CampaignOut(BaseModel):
 
 
 def _session_index() -> SessionIndex:
-    """Session numbers (the architecture's rule: oldest first, merged-away ones skipped) and page names."""
+    """Session numbers (pages.session_numbers: oldest first, merged-away ones skipped) and page names."""
     metas = []
     for folder in deps.engine.campaign_sessions():
         try:
@@ -180,12 +181,10 @@ def _session_index() -> SessionIndex:
             )
         except (OSError, ValueError, KeyError, TypeError):
             continue
-    merged = {m for meta in metas for m in meta["merged_from"]}
-    ordered = sorted((m for m in metas if m["id"] not in merged), key=lambda m: (m["started_at"], m["id"]))
     page_for = {sid: Path(rel).stem for sid, rel in deps.memory.written_up().items()}
     return SessionIndex(
         ids_for={page: sid for sid, page in page_for.items()},
-        numbers={m["id"]: i + 1 for i, m in enumerate(ordered)},
+        numbers=session_numbers(metas),
         page_for=page_for,
     )
 

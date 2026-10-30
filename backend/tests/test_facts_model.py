@@ -42,13 +42,6 @@ def test_parse_hms_inverse():
     assert parse_hms("38:02") == 2282
 
 
-def test_norm_matches_campaign():
-    from troubadour.lore.facts import _norm
-
-    for s in ["The Tide, turns!", "  Orsa's gold ", "THE the", "Ünïcode"]:
-        assert _norm(s) == campaign.norm(s)
-
-
 def test_trailer_link_only():
     text, src, who, conf = parse_trailer("Owes a favour. ([[Session 12]])")
     assert (text, who, conf) == ("Owes a favour.", None, None)

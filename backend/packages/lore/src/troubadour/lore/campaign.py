@@ -49,7 +49,7 @@ from pathlib import Path
 import yaml
 from troubadour.core.fsutil import write_atomic
 
-from .facts import Confidence, Fact, Source, Version, fact_id, parse_bullets, render_bullets
+from .facts import Confidence, Fact, Source, Version, fact_id, norm, parse_bullets, render_bullets
 
 TYPES = {
     "pc": "People",
@@ -152,12 +152,6 @@ def english() -> frozenset[str]:
         except OSError:
             _DICT = frozenset()
     return _DICT
-
-
-def norm(text: str) -> str:
-    """Comparison key: case-, punctuation- and leading-"the"-insensitive."""
-    key = re.sub(r"[^a-z0-9]+", " ", str(text).casefold()).strip()
-    return key[4:] if key.startswith("the ") else key
 
 
 def safe_name(name: str) -> str:

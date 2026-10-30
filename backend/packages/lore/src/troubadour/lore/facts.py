@@ -51,14 +51,14 @@ class Fact:
         return fact_id(self.about, self.text)
 
 
-def _norm(text: str) -> str:
-    # Same rule as campaign.norm (kept in step by a test); campaign will import facts, not the reverse.
+def norm(text: str) -> str:
+    """Comparison key: case-, punctuation- and leading-"the"-insensitive."""
     key = re.sub(r"[^a-z0-9]+", " ", str(text).casefold()).strip()
     return key[4:] if key.startswith("the ") else key
 
 
 def fact_id(about: str | None, text: str) -> str:
-    return hashlib.sha1(f"{about or ''}\n{_norm(text)}".encode()).hexdigest()[:10]
+    return hashlib.sha1(f"{about or ''}\n{norm(text)}".encode()).hexdigest()[:10]
 
 
 def hms(t: float) -> str:
