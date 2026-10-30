@@ -46,9 +46,10 @@ export function EndSessionDialog({ open, onOpenChange }: EndSessionDialogProps) 
   async function end() {
     setError(null)
     setStopping(true)
-    // Read before stopping: the notebook and clock reset once the session is over.
-    const nb = notebook.data
     try {
+      // Read before stopping: the notebook and clock reset once the session is over. An End clicked before
+      // the notebook has loaded fetches it now, or the saved session's id (and its write-up) would be lost.
+      const nb = notebook.data ?? (await notebook.refetch()).data
       const stopped = await stopSession()
       const id = nb?.session_id ?? null
       setSaved({ id, number, summary: endSummary(stopped.t, nb) })

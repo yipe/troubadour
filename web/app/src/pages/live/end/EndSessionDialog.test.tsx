@@ -45,8 +45,6 @@ describe("EndSessionDialog", () => {
   it("stops, then starts the write-up for the saved session", async () => {
     const m = setup()
     expect(await screen.findByText("End session 3?")).toBeInTheDocument()
-    await waitFor(() => expect(m.calls.some((c) => c.url === "/api/session/notebook")).toBe(true))
-    await new Promise((r) => setTimeout(r, 20))
     fireEvent.click(screen.getByRole("button", { name: "End" }))
     expect(await screen.findByText("Session 3 saved")).toBeInTheDocument()
     expect(screen.getByText("1:44 recorded, 3 facts kept, 1 pin.")).toBeInTheDocument()
@@ -64,9 +62,14 @@ describe("EndSessionDialog", () => {
   it("shows a write-up error and keeps the buttons", async () => {
     setup(httpError(503, "No language model is available."))
     await screen.findByText("End session 3?")
-    await new Promise((r) => setTimeout(r, 20))
     fireEvent.click(screen.getByRole("button", { name: "End" }))
     expect(await screen.findByRole("alert")).toHaveTextContent("No language model is available.")
     expect(screen.getByRole("button", { name: "Open the session" })).toBeInTheDocument()
+  })
+
+  it("an End clicked before the notebook has loaded still writes up the saved session", async () => {
+    const m = setup()
+    fireEvent.click(screen.getByRole("button", { name: "End" }))
+    await waitFor(() => expect(m.calls.map((c) => c.url)).toContain("/api/campaign/writeup/s14"))
   })
 })
