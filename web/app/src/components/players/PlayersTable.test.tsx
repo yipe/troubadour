@@ -35,6 +35,28 @@ describe("PlayersTable", () => {
     })
   })
 
+  it("the Role dropdown patches is_gm both ways and the row menu has no GM item", async () => {
+    const { writes } = mockFetch(() => NORA)
+    renderTable()
+    fireEvent.change(screen.getByLabelText("Role for Nora"), { target: { value: "gm" } })
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(writes()[0]).toMatchObject({ method: "PATCH", url: "/api/players/p1", body: { is_gm: true } })
+    fireEvent.change(screen.getByLabelText("Role for Nora"), { target: { value: "player" } })
+    await waitFor(() => expect(writes()).toHaveLength(2))
+    expect(writes()[1]).toMatchObject({ body: { is_gm: false } })
+    fireEvent.click(screen.getByRole("button", { name: "More for Nora" }))
+    await screen.findByRole("menuitem", { name: "Custom colour" })
+    expect(screen.queryByRole("menuitem", { name: /GM/ })).toBeNull()
+  })
+
+  it("rolls the Role dropdown back when the save fails", async () => {
+    mockFetch(() => new Response(JSON.stringify({ detail: "No." }), { status: 400 }))
+    renderTable()
+    const select = screen.getByLabelText("Role for Nora")
+    fireEvent.change(select, { target: { value: "gm" } })
+    await waitFor(() => expect(select).toHaveValue("player"))
+  })
+
   it("'Add a class…' posts the class, then patches the player with its id", async () => {
     const { writes } = mockFetch((c) => {
       if (c.url === "/api/classes" && c.method === "POST")

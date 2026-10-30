@@ -1,14 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import {
-  AudioWaveform,
-  CircleCheck,
-  CircleDashed,
-  Ellipsis,
-  Palette,
-  Crown,
-  UserMinus,
-  Trash2,
-} from "lucide-react"
+import { AudioWaveform, CircleCheck, CircleDashed, Ellipsis, Palette, UserMinus, Trash2 } from "lucide-react"
 import { classColorVar } from "@yipe/tokens/classes"
 import { useLive } from "@troubadour/api/live"
 import {
@@ -39,7 +30,7 @@ import { AddClassDialog } from "./AddClassDialog.tsx"
 import { fileToAvatar } from "./fileToAvatar.ts"
 import { TrainDialog } from "./TrainDialog.tsx"
 
-export const ROW_GRID = "grid grid-cols-[52px_1.1fr_1.3fr_1fr_80px_220px_32px] items-center gap-3 px-4"
+export const ROW_GRID = "grid grid-cols-[52px_1.1fr_1.3fr_1fr_100px_220px_32px] items-center gap-3 px-4"
 
 const ADD_CLASS = "__add__"
 const UNKNOWN_CLASS = "__unknown__"
@@ -75,6 +66,7 @@ export function PlayerRow({ player, focus }: { player: Player; focus: boolean })
   const [name, setName] = useDraft(player.name)
   const [character, setCharacter] = useDraft(player.character)
   const [dndClass, setDndClass] = useDraft(player.dnd_class)
+  const [isGm, setIsGm] = useDraft(player.is_gm)
   const [training, setTraining] = useState(false)
   const [addingClass, setAddingClass] = useState(false)
   const [picking, setPicking] = useState(false)
@@ -115,6 +107,12 @@ export function PlayerRow({ player, focus }: { player: Player; focus: boolean })
     const before = dndClass
     setDndClass(next)
     save({ dnd_class: next }, () => setDndClass(before))
+  }
+
+  const pickRole = (gm: boolean) => {
+    const before = isGm
+    setIsGm(gm)
+    save({ is_gm: gm }, () => setIsGm(before))
   }
 
   const classSelectedKnown = !dndClass || classes.some((c) => c.id === dndClass)
@@ -194,12 +192,16 @@ export function PlayerRow({ player, focus }: { player: Player; focus: boolean })
         <option value="">—</option>
         <option value={ADD_CLASS}>Add a class…</option>
       </NativeSelect>
-      <span
-        className="text-13 font-semibold text-ink-muted"
-        style={player.is_gm ? { color: classColorVar("paladin") } : undefined}
+      <NativeSelect
+        aria-label={`Role for ${player.name}`}
+        value={isGm ? "gm" : "player"}
+        onChange={(e) => pickRole(e.target.value === "gm")}
+        className={isGm ? "font-semibold" : undefined}
+        style={isGm ? { color: classColorVar("paladin") } : undefined}
       >
-        {player.is_gm ? "GM" : "Player"}
-      </span>
+        <option value="player">Player</option>
+        <option value="gm">GM</option>
+      </NativeSelect>
       <span className="flex items-center gap-2.5 text-13">
         <span
           className={`flex items-center gap-1.5 whitespace-nowrap ${trained ? "text-success" : "text-ink-subtle"}`}
@@ -222,9 +224,6 @@ export function PlayerRow({ player, focus }: { player: Player; focus: boolean })
         <DropdownMenuContent>
           <DropdownMenuItem icon={<Palette />} onClick={() => setPicking(true)}>
             Custom colour
-          </DropdownMenuItem>
-          <DropdownMenuItem icon={<Crown />} onClick={() => save({ is_gm: !player.is_gm })}>
-            {player.is_gm ? "Not GM" : "Make GM"}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
