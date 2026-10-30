@@ -10,13 +10,14 @@ import pytest
 from conftest import FakeSynth, ScriptedLLM, job, tone
 from fastapi.testclient import TestClient
 from test_engine import ALICE, named_voice
-
-from troubadour import config, server, tts
-from troubadour import engine as engine_module
-from troubadour.audio import wav_bytes
-from troubadour.cloning import Cloning
-from troubadour.config import SR
-from troubadour.talk import TEMPO_RANGE
+from troubadour.core import config
+from troubadour.core.config import SR
+from troubadour.engine import live as engine_module
+from troubadour.engine.cloning import Cloning
+from troubadour.lore.talk import TEMPO_RANGE
+from troubadour.server import app as server
+from troubadour.sound import tts
+from troubadour.sound.audio import wav_bytes
 
 RATE = 48000  # session recordings at the mic's own rate
 
@@ -479,7 +480,7 @@ def test_saved_in_character_labels_need_no_second_reading(engine, cloning):
 
 
 def test_api_estimates_in_character_time_for_a_saved_session(api, engine, monkeypatch):
-    from troubadour.transcript import build
+    from troubadour.core.transcript import build
 
     pid = alice(api, engine)
     sid = "2026-10-08_140000-abcd"

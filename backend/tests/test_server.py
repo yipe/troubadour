@@ -7,9 +7,9 @@ import pytest
 from conftest import tone, write_wav
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
-
-from troubadour import config, server
+from troubadour.core import config
 from troubadour.engine import MAIN_CAMPAIGN, Campaign
+from troubadour.server import app as server
 
 LOCAL = "http://127.0.0.1:8765"
 HOST = {"host": "127.0.0.1:8765"}  # TestClient's WebSocket otherwise sends "testserver", which the host check refuses

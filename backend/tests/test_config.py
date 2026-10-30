@@ -1,4 +1,4 @@
-from troubadour import config
+from troubadour.core import config
 
 
 def test_env_falls_back_to_the_pre_rename_name(monkeypatch):
@@ -15,3 +15,9 @@ def test_env_prefers_the_new_name_and_then_the_default(monkeypatch):
     monkeypatch.delenv("BARD_PORT")
     assert config.env("PORT", "8765") == "8765"
     assert config.env("PORT") is None
+
+
+def test_repo_paths_resolve_from_the_package_location():
+    assert config.BACKEND.name == "backend"
+    assert (config.BACKEND / "pyproject.toml").is_file()
+    assert config.BACKEND.parent / "web" / "dist" == config.WEB_DIST

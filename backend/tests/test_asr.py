@@ -2,8 +2,7 @@
 
 import numpy as np
 import pytest
-
-from troubadour import asr
+from troubadour.sound import asr
 
 PROMPT = "A D&D session. Elara, Auggie, Kessia, Magenta. Initiative, perception check, saving throw."
 

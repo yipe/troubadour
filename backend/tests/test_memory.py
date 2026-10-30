@@ -6,11 +6,10 @@ import time
 import httpx
 import pytest
 from conftest import RecordingBus
-
-from troubadour import memory as mem
-from troubadour import writeup
-from troubadour.campaign import Vault
-from troubadour.transcript import build
+from troubadour.core.transcript import build
+from troubadour.lore import memory as mem
+from troubadour.lore import writeup
+from troubadour.lore.campaign import Vault
 
 
 class FakeLLM:

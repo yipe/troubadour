@@ -17,11 +17,11 @@ import numpy as np
 import soxr
 import torch
 from pyannote.audio import Pipeline
-
-from troubadour import config, tts
-from troubadour.audio import read_wav
-from troubadour.memory import Job
-from troubadour.voices import embed_span, speech_spans
+from troubadour.core import config
+from troubadour.lore.memory import Job
+from troubadour.sound import tts
+from troubadour.sound.audio import read_wav
+from troubadour.sound.voices import embed_span, speech_spans
 
 TRAIN_TEXT = (
     "The bridge is out, so you will have to wade across the river. The water is cold and fast, and "

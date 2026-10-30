@@ -6,8 +6,8 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 from test_memory import FakeLLM
-
-from troubadour import config, server
+from troubadour.core import config
+from troubadour.server import app as server
 
 LOCAL = "http://127.0.0.1:8765"
 

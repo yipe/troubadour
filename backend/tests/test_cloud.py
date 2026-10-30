@@ -17,9 +17,10 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-
-from troubadour import cloud, config, server
-from troubadour.cloud import AutoBackup, Cloud, CloudError, NotConnected, fingerprint, path_problem, scan
+from troubadour.cloud import backup as cloud
+from troubadour.cloud.backup import AutoBackup, Cloud, CloudError, NotConnected, fingerprint, path_problem, scan
+from troubadour.core import config
+from troubadour.server import app as server
 
 SERVICE = "https://cloud.test"
 AUTH = "https://auth.test"

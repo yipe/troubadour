@@ -1,4 +1,4 @@
-from troubadour import config, settings
+from troubadour.core import config, settings
 
 
 def test_saved_models_override_the_environment(tmp_path, monkeypatch):

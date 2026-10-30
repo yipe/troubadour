@@ -2,8 +2,7 @@ import numpy as np
 import pytest
 import torch
 from silero_vad import VADIterator
-
-from troubadour.segment import SegmentConfig, Segmenter
+from troubadour.sound.segment import SegmentConfig, Segmenter
 
 SR, W = 16000, 512
 

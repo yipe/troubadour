@@ -1,8 +1,7 @@
 import numpy as np
 import pytest
 from conftest import SR, FakeEmbedder, tone
-
-from troubadour.voices import VoiceMatcher, centroid, embed_span, normalize
+from troubadour.sound.voices import VoiceMatcher, centroid, embed_span, normalize
 
 
 @pytest.fixture

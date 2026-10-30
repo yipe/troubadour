@@ -14,10 +14,10 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
-
-from troubadour import config, providers, server, settings
-from troubadour import memory as mem
-from troubadour.providers import Accounts, NotConnected, ProviderError
+from troubadour.core import config, providers, settings
+from troubadour.core.providers import Accounts, NotConnected, ProviderError
+from troubadour.lore import memory as mem
+from troubadour.server import app as server
 
 ISSUER = providers.OPENAI_ISSUER
 FULL_SCOPE = "chatgpt.tokens.use.direct email offline_access openid profile resource.invoke"

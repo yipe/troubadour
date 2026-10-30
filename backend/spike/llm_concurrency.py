@@ -17,8 +17,7 @@ import time
 from pathlib import Path
 
 from lab_llm import DEFAULT_MODEL, DEFAULT_URL, LabLLM
-
-from troubadour import memory as m
+from troubadour.lore import memory as m
 
 SCHEMA = m._obj({"beats": {"type": "array", "items": m._obj({"at": m.STR, "text": m.STR})}})
 SYSTEM = """You are the note-taker for a Dungeons & Dragons session. From this stretch of transcript, write beats:

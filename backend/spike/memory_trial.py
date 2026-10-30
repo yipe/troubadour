@@ -15,10 +15,10 @@ from pathlib import Path
 BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND / "src"))
 
-from troubadour import config  # noqa: E402
-from troubadour.campaign import Vault  # noqa: E402
+from troubadour.core import config  # noqa: E402
 from troubadour.engine import Bus, migrate_state, seated_players  # noqa: E402
-from troubadour.memory import Memory, MemoryLLM  # noqa: E402
+from troubadour.lore.campaign import Vault  # noqa: E402
+from troubadour.lore.memory import Memory, MemoryLLM  # noqa: E402
 
 
 def main() -> None:

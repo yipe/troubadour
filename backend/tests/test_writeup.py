@@ -1,6 +1,6 @@
 """The write-up's notes and page: what a model's reply may put on the page."""
 
-from troubadour import writeup
+from troubadour.lore import writeup
 
 
 def test_notes_keep_real_timestamps_and_drop_junk():

@@ -23,10 +23,9 @@ from pathlib import Path
 
 import writeup_score
 from lab_llm import LabLLM
-
-from troubadour import memory as m
-from troubadour import transcript
-from troubadour.campaign import Vault
+from troubadour.core import transcript
+from troubadour.lore import memory as m
+from troubadour.lore.campaign import Vault
 
 # ------------------------------------------------------------------ the notes -> page pipeline
 
@@ -543,7 +542,7 @@ def run_app(llm, sid: str, session_dir: Path, vault_dir: Path) -> tuple[str, dic
     """The app's writeup module (read, then write), rendered like the other variants."""
     import dataclasses
 
-    from troubadour import writeup
+    from troubadour.lore import writeup
 
     record = json.loads((session_dir / "transcript.json").read_text())
     vault = Vault(vault_dir)

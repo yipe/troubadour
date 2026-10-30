@@ -58,9 +58,8 @@ def prosody(chunk: np.ndarray) -> np.ndarray:
 
 def main(normal_path: str, character_path: str) -> None:
     from pyannote.audio import Pipeline
-
-    from troubadour import voices
-    from troubadour.audio import load_audio
+    from troubadour.sound import voices
+    from troubadour.sound.audio import load_audio
 
     clips = {"normal": load_audio(normal_path), "character": load_audio(character_path)}
     half = {k: len(x) / SR / 2 for k, x in clips.items()}

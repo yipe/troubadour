@@ -4,8 +4,9 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
-
-from troubadour import config, mics, server
+from troubadour.core import config
+from troubadour.server import app as server
+from troubadour.sound import mics
 
 
 def by_id(checks):

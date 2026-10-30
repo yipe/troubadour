@@ -7,11 +7,10 @@ import wave
 import numpy as np
 import pytest
 from conftest import tone, write_wav
-
-from troubadour import audio
-from troubadour.audio import FRAME, FileSource, MicSource, wav_bytes
-from troubadour.config import SR
+from troubadour.core.config import SR
 from troubadour.engine import OVERFLOW, STOP, AudioBuffer, Bus
+from troubadour.sound import audio
+from troubadour.sound.audio import FRAME, FileSource, MicSource, wav_bytes
 
 
 def test_wav_bytes_is_valid_16k_mono():
