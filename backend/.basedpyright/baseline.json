@@ -4170,16 +4170,6 @@
                 }
             }
         ],
-        "./packages/server/src/troubadour/server/routers/cloud.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 45,
-                    "endColumn": 59,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./packages/server/src/troubadour/server/routers/players.py": [
             {
                 "code": "reportCallIssue",

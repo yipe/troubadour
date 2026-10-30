@@ -1,6 +1,6 @@
 import type { CampaignJob } from "../campaign/types.ts"
 import { req } from "../http/index.ts"
-import type { CloudAccount, CloudStatus, CloudVault } from "./types.ts"
+import type { CloudAccount, CloudHistory, CloudStatus, CloudVault } from "./types.ts"
 
 export const cloud = () => req<CloudStatus>("GET", "/api/cloud")
 
@@ -21,5 +21,9 @@ export const cloudVaults = () => req<CloudVault[]>("GET", "/api/cloud/vaults")
 /** Who is signed in (name, email, avatar as a data: URL); the profile fields are null for an older sign-in. */
 export const cloudAccount = () => req<CloudAccount>("GET", "/api/cloud/account")
 
-/** Bring a backed-up campaign's newest notes back, adding the campaign if this Mac lacks it (job "restore"). */
-export const cloudRestore = (vault_id: string) => req<CampaignJob>("POST", "/api/cloud/restore", { vault_id })
+/** Bring a backed-up campaign's newest notes (or the restore point `snapshot`) back, adding the campaign if this Mac lacks it (job "restore"). */
+export const cloudRestore = (vault_id: string, snapshot?: string) =>
+  req<CampaignJob>("POST", "/api/cloud/restore", snapshot ? { vault_id, snapshot } : { vault_id })
+
+/** Every backup attempt for the open campaign in the last 90 days, newest first (failures too). */
+export const cloudHistory = () => req<CloudHistory>("GET", "/api/cloud/history")

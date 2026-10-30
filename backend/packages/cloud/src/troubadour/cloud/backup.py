@@ -14,12 +14,15 @@ file list as a snapshot. The API contract is `tests/cloud_contract.schema.json`,
 
 import base64
 import contextlib
+import functools
 import hashlib
 import json
 import logging
 import os
 import secrets
+import socket
 import stat
+import subprocess
 import threading
 import time
 import unicodedata
@@ -44,6 +47,23 @@ REFRESH_EARLY_S = 60
 ACCOUNT_TTL_S = 600  # who is signed in barely changes; the header asks whenever it opens
 AVATAR_MAX_BYTES = 200_000
 AVATAR_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif")  # DPRcalc avatars can be GIFs
+MESSAGE_MAX = 200  # the contract's maxMessageChars
+MAIN_CHECK_TTL_S = 60  # how long the vault list is reused when working out which Mac is main
+MAIN_CHECK_TIMEOUT_S = 3  # status() never waits on the network longer than this
+HISTORY_DAYS = 90
+SEP = " \u00b7 "  # "<device> · <summary>": the device is what comes before the first one
+UNKNOWN_DEVICE = "another Mac"
+
+
+@functools.cache
+def device_name() -> str:
+    """This Mac's name for the backup message: the name in System Settings, else the hostname."""
+    try:
+        out = subprocess.run(["scutil", "--get", "ComputerName"], capture_output=True, text=True, timeout=2, check=False)
+        name = out.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        name = ""
+    return (name or socket.gethostname() or "This Mac").replace(SEP, " ")[:60]
 
 
 class CloudError(Exception):
@@ -169,7 +189,10 @@ class Cloud:
         url: str | None = None,
         path: Callable[[], Path] | None = None,
         http: httpx.Client | None = None,
+        device: str | None = None,
     ):
+        self.device = device or device_name()
+        self.clock = time.monotonic  # a test moves it to get past the main-device cache
         self.url = (url or config.CLOUD_URL).rstrip("/")
         self.path = path or (lambda: config.DATA_DIR / "cloud.json")
         self.http = http or httpx.Client(timeout=httpx.Timeout(30.0, connect=10.0), follow_redirects=False)
@@ -178,6 +201,9 @@ class Cloud:
         self._refresh_lock = threading.Lock()  # one token refresh at a time (see _token)
         self._pending: dict[str, tuple[str, dict, float]] = {}  # state -> (verifier, client config, started)
         self._hashes: dict[Path, tuple[int, int, str]] = {}  # file -> (size, mtime_ns, sha256), for scan()
+        self._vault_list: tuple[float, list[dict]] | None = None  # (when fetched, GET /vaults) for the main check
+        self._head_device: dict[str, str] = {}  # snapshot id -> the device its message names (snapshots never change)
+        self._main: dict[str, str] = {}  # campaign -> the main device as last known
 
     # ---------------------------------------------------------------- stored state
 
@@ -219,13 +245,80 @@ class Cloud:
         self._set(campaign_id, **{k: v for k, v in options.items() if v is not None})
         return self.campaign_settings(campaign_id)
 
-    def status(self, campaign_id: str) -> dict:
+    def status(self, campaign_id: str, main: bool = True) -> dict:
+        """Settings and last backup, plus which Mac is main. Only `main` may reach the service (never
+        before connecting, and for at most MAIN_CHECK_TIMEOUT_S); callers that just need the settings pass False."""
         data = self._load()
+        connected = bool(data.get("refresh_token") or data.get("access_token"))
+        settings = self.campaign_settings(campaign_id)
+        main_device = self._main.get(campaign_id, self.device)
+        if main and connected and (settings["last_backup"] or {}).get("snapshot"):
+            main_device = self._check_main(campaign_id, settings["last_backup"]["snapshot"])
         return {
             "url": self.url,
-            "connected": bool(data.get("refresh_token") or data.get("access_token")),
-            **self.campaign_settings(campaign_id),
+            "connected": connected,
+            **settings,
+            "device": self.device,
+            "main_device": main_device,
+            "is_main": main_device == self.device,
         }
+
+    # ---------------------------------------------------------------- which Mac is main
+
+    def _check_main(self, campaign_id: str, last_snapshot: str) -> str:
+        """The device that made the campaign's newest backup (newest wins), or the last answer when the
+        service can't be reached in time. This Mac when its last backup is the newest or none is."""
+        try:
+            now = self.clock()
+            if self._vault_list is None or now - self._vault_list[0] >= MAIN_CHECK_TTL_S:
+                found = self._api("GET", "/vaults", timeout=MAIN_CHECK_TIMEOUT_S)
+                self._vault_list = (now, found if isinstance(found, list) else [])
+            vault = next((v for v in self._vault_list[1] if v.get("campaign_id") == campaign_id), None)
+            head = vault.get("head_snapshot") if vault else None
+            if not vault or not head or head == last_snapshot:
+                self._main[campaign_id] = self.device
+            else:
+                self._main[campaign_id] = self._device_of(vault["id"], head)
+        except CloudError:
+            pass
+        return self._main.get(campaign_id, self.device)
+
+    def _device_of(self, vault_id: str, snapshot: str) -> str:
+        if snapshot not in self._head_device:
+            listing = self._api("GET", f"/vaults/{vault_id}/snapshots/{snapshot}", timeout=MAIN_CHECK_TIMEOUT_S)
+            message = listing.get("snapshot", {}).get("message") if isinstance(listing, dict) else None
+            device = message.split(SEP, 1)[0].strip() if isinstance(message, str) and SEP in message else ""
+            self._head_device[snapshot] = device[:60] or UNKNOWN_DEVICE
+        return self._head_device[snapshot]
+
+    # ---------------------------------------------------------------- history
+
+    def _history_path(self) -> Path:
+        return self.path().with_name("cloud_history.json")
+
+    def _history_all(self) -> dict:
+        try:
+            data = json.loads(self._history_path().read_text())
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def history(self, campaign_id: str) -> list[dict]:
+        """Backup attempts for the campaign in the last HISTORY_DAYS, newest first."""
+        cutoff = time.time() - HISTORY_DAYS * 86400
+        attempts = self._history_all().get(campaign_id, [])
+        return sorted((a for a in attempts if isinstance(a, dict) and a.get("at", 0) >= cutoff), key=lambda a: -a["at"])
+
+    def _record(self, campaign_id: str, attempt: dict) -> None:
+        """Append one attempt (success or failure) and drop what is older than HISTORY_DAYS."""
+        with self._lock:
+            data = self._history_all()
+            data[campaign_id] = [*reversed(self.history(campaign_id)), attempt]
+            path = self._history_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_name(f".{path.name}.tmp")
+            tmp.write_text(json.dumps(data, indent=1))
+            tmp.replace(path)
 
     # ---------------------------------------------------------------- sign-in
 
@@ -339,12 +432,13 @@ class Cloud:
 
     # ---------------------------------------------------------------- API
 
-    def _api(self, method: str, path: str, body: dict | None = None) -> dict | list:
+    def _api(self, method: str, path: str, body: dict | None = None, timeout: float | None = None) -> dict | list:
         url = f"{self.url}/api/v1{path}"
+        extra = {} if timeout is None else {"timeout": timeout}
         token = self._token()
-        r = self._request(method, url, json=body, headers={"Authorization": f"Bearer {token}"})
+        r = self._request(method, url, json=body, headers={"Authorization": f"Bearer {token}"}, **extra)
         if r.status_code == 401:  # the access token may have just expired or been revoked: refresh once
-            r = self._request(method, url, json=body, headers={"Authorization": f"Bearer {self._token(rejected=token)}"})
+            r = self._request(method, url, json=body, headers={"Authorization": f"Bearer {self._token(rejected=token)}"}, **extra)
             if r.status_code == 401:
                 # Even a fresh token is refused: this sign-in is no good here any more (say, the service moved
                 # to another sign-in provider). Offer Connect again instead of failing every backup.
@@ -372,9 +466,28 @@ class Cloud:
                 log.info("cloud backup: retrying after %s", e.code)
                 last = self._push(campaign_id, name, root, progress)
         except Exception as e:
-            self._set(campaign_id, last_error={"at": time.time(), "message": str(e) or type(e).__name__})
+            reason = str(e) or type(e).__name__
+            self._set(campaign_id, last_error={"at": time.time(), "message": reason})
+            self._record(
+                campaign_id,
+                {"at": time.time(), "ok": False, "snapshot": None, "files": 0, "changed": 0, "message": None, "error": reason},
+            )
             raise
         self._set(campaign_id, last_backup=last, last_error=None)
+        self._record(
+            campaign_id,
+            {
+                "at": last["at"],
+                "ok": True,
+                "snapshot": last["snapshot"],
+                "files": last["files"],
+                "changed": last["uploaded"],
+                "message": last["message"],
+                "error": None,
+            },
+        )
+        # This Mac made the newest backup, so it is main now; the cached vault list still names the old head.
+        self._main[campaign_id], self._vault_list = self.device, None
         return last
 
     def _push(self, campaign_id: str, name: str, root: Path, progress: Callable[[int, int, str], None]) -> dict:
@@ -396,7 +509,8 @@ class Cloud:
             if not r.is_success:
                 raise CloudError("upload", f"An upload failed ({r.status_code}).")
         progress(len(uploads), len(uploads) + 1, "Saving the snapshot")
-        result = self._api("POST", f"/vaults/{vault['id']}/commit", {"base_snapshot": base, "files": files})
+        message = f"{self.device}{SEP}{self._summary(len(files), len(uploads))}"[:MESSAGE_MAX]
+        result = self._api("POST", f"/vaults/{vault['id']}/commit", {"base_snapshot": base, "files": files, "message": message})
         snapshot = result["snapshot"]
         return {
             "at": time.time(),
@@ -408,7 +522,14 @@ class Cloud:
             "skipped": skipped[:50],
             "quota": plan["quota"],
             "fingerprint": before,
+            "message": message,
         }
+
+    @staticmethod
+    def _summary(files: int, changed: int) -> str:
+        if not changed:
+            return f"{files} {'file' if files == 1 else 'files'}, nothing new"
+        return f"{changed} of {files} {'file' if files == 1 else 'files'} changed"
 
     # ---------------------------------------------------------------- account
 
@@ -460,15 +581,16 @@ class Cloud:
             raise CloudError("not_found", "That campaign isn't in Troubadour Cloud.")
         return vault
 
-    def restore(self, vault_id: str, root: Path, progress: Callable[[int, int, str], None]) -> dict:
-        """Bring a vault's newest snapshot back into `root`. Notes that differ are replaced and their current
+    def restore(self, vault_id: str, root: Path, progress: Callable[[int, int, str], None], snapshot: str | None = None) -> dict:
+        """Bring a vault's newest snapshot (or the given restore point) back into `root`. Notes that differ are replaced and their current
         versions moved to `.trash/`; notes the snapshot doesn't have are left alone (a restore never deletes).
         Every file is checked against its sha256 before it's written. Runs on a job thread."""
-        progress(0, 0, "Finding the newest backup")
+        progress(0, 0, "Finding the newest backup" if snapshot is None else "Finding that backup")
         vault = self.vault(vault_id)
-        if not vault.get("head_snapshot"):
+        wanted = snapshot or vault.get("head_snapshot")
+        if not wanted:
             raise CloudError("not_found", "That campaign hasn't been backed up yet.")
-        listing = self._api("GET", f"/vaults/{vault_id}/snapshots/{vault['head_snapshot']}")
+        listing = self._api("GET", f"/vaults/{vault_id}/snapshots/{wanted}")
         files = listing["files"]
         root.mkdir(parents=True, exist_ok=True)
         trash = root / ".trash" / f"Before restore {time.strftime('%Y-%m-%d %H%M%S')}"
@@ -535,7 +657,7 @@ EMPTY_FINGERPRINT = hashlib.sha256().hexdigest()
 
 class AutoBackup:
     """Backs up the open campaign on its own: once its notes have changed and then stayed still for
-    QUIET_S, at most every MIN_GAP_S, only while connected and the campaign has it on. `tick()` decides;
+    QUIET_S, at most every MIN_GAP_S, only while connected, the campaign has it on and no session is live. `tick()` decides;
     `run()` calls it every CHECK_S on a thread."""
 
     CHECK_S = 30
@@ -549,8 +671,10 @@ class AutoBackup:
         busy: Callable[[], bool],
         submit: Callable[[str, str, Path], None],
         clock: Callable[[], float] = time.monotonic,
+        is_live: Callable[[], bool] = lambda: False,
     ):
         self.cloud, self.current, self.busy, self.submit, self.clock = cloud, current, busy, submit, clock
+        self.is_live = is_live
         self._seen: dict[str, tuple[str, float]] = {}  # campaign -> (fingerprint, when first seen)
         self._attempted: dict[str, float] = {}  # campaign -> last automatic backup started
         self._stop = threading.Event()
@@ -558,7 +682,7 @@ class AutoBackup:
     def tick(self) -> bool:
         """Start a backup if one is due; True when it did."""
         cid, name, root = self.current()
-        status = self.cloud.status(cid)
+        status = self.cloud.status(cid, main=False)
         if not (status["connected"] and status["auto_backup"]):
             self._seen.pop(cid, None)
             return False
@@ -576,6 +700,8 @@ class AutoBackup:
             return False
         if cid in self._attempted and now - self._attempted[cid] < self.MIN_GAP_S:
             return False
+        if self.is_live():
+            return False  # never during a session; the change stays pending and goes up once it ends
         if self.busy():
             return False  # a write-up or import is running: it will change the notes anyway
         self._attempted[cid] = now

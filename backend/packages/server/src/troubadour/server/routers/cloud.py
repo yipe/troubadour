@@ -2,6 +2,7 @@
 
 import html
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
@@ -20,19 +21,93 @@ class CloudOptionsIn(BaseModel):
 
 class CloudRestoreIn(BaseModel):
     vault_id: str = Field(pattern=r"^[0-9a-f-]{36}$")
+    snapshot: str | None = Field(default=None, pattern=r"^[0-9a-f-]{36}$")  # a restore point; None = the newest
+
+
+class CloudQuota(BaseModel):
+    used_bytes: int
+    limit_bytes: int
+    after_bytes: int
+
+
+class CloudBackup(BaseModel):
+    at: float
+    snapshot: str
+    files: int
+    bytes: int
+    uploaded: int
+    unchanged: bool
+    skipped: list[str]
+    quota: CloudQuota
+    fingerprint: str
+    message: str | None = None  # "<device> · <summary>"; backups made before C12 have none
+
+
+class CloudLastError(BaseModel):
+    at: float
+    message: str
+
+
+class CloudStatus(BaseModel):
+    url: str
+    connected: bool
+    campaign: str
+    include_transcripts: bool
+    auto_backup: bool
+    last_backup: CloudBackup | None
+    last_error: CloudLastError | None
+    device: str
+    main_device: str
+    is_main: bool
+    paused_live: bool
+
+
+class BackupAttempt(BaseModel):
+    at: float
+    ok: bool
+    snapshot: str | None
+    files: int
+    changed: int
+    message: str | None
+    error: str | None
+
+
+class CloudHistory(BaseModel):
+    attempts: list[BackupAttempt]
+
+
+class CloudAuthorize(BaseModel):
+    authorize_url: str
+
+
+class CloudAccount(BaseModel):
+    email: str | None
+    name: str | None
+    avatar: str | None
+
+
+class CloudVault(BaseModel):
+    id: str
+    name: str
+    campaign_id: str
+    head_snapshot: str | None
+    created_at: str
 
 
 def _cloud_status() -> dict:
-    return deps.cloud.status(deps.engine.campaign) | {"campaign": deps.engine.campaign}
+    cid = deps.engine.campaign
+    status = deps.cloud.status(cid)
+    waiting = deps.session_live() and status["connected"] and status["auto_backup"]
+    return status | {"campaign": cid, "paused_live": waiting}
 
 
-@router.get("/api/cloud")
+@router.get("/api/cloud", response_model=CloudStatus)
 def cloud_status():
-    """Connected or not, and the open campaign's backup settings and last backup. Never calls the service."""
+    """Connected or not, and the open campaign's backup settings and last backup, and which Mac is main (asked of the service, at most every minute, 3 s at most)."""
     return _cloud_status()
 
 
-@router.post("/api/cloud/connect")
+@router.post("/api/cloud/connect", response_model=CloudAuthorize)
 def cloud_connect():
     """Start signing in: the first time Troubadour contacts the service. Returns the page to open."""
     try:
@@ -64,7 +139,7 @@ def _cloud_page(title: str, text: str) -> str:
     )
 
 
-@router.post("/api/cloud/disconnect")
+@router.post("/api/cloud/disconnect", response_model=CloudStatus)
 def cloud_disconnect():
     """Forget the sign-in on this Mac (backups already made stay in the cloud)."""
     deps.cloud.logout()
@@ -73,7 +148,7 @@ def cloud_disconnect():
     return status
 
 
-@router.put("/api/cloud/options")
+@router.put("/api/cloud/options", response_model=CloudStatus)
 def cloud_options(body: CloudOptionsIn):
     deps.cloud.set_options(deps.engine.campaign, include_transcripts=body.include_transcripts, auto_backup=body.auto_backup)
     return _cloud_status()
@@ -87,7 +162,7 @@ def _job_progress(job):
     return progress
 
 
-def _submit_backup(cid: str, name: str, root, automatic: bool = False):
+def _submit_backup(cid: str, name: str, root: Path, automatic: bool = False):
     """Queue a backup job (callers hold campaign_gate, so the campaign can't switch underneath)."""
 
     def work(job):
@@ -102,7 +177,7 @@ def _submit_backup(cid: str, name: str, root, automatic: bool = False):
             job.message = f"Automatic backup didn't run: {e}"
             return
         finally:
-            deps.bus.emit("cloud.updated", deps.cloud.status(cid) | {"campaign": cid})
+            deps.bus.emit("cloud.updated", _cloud_status())
         job.done = job.total
         if last["unchanged"]:
             job.message = f"Nothing changed since the last backup ({last['files']} files)"
@@ -114,7 +189,7 @@ def _submit_backup(cid: str, name: str, root, automatic: bool = False):
     return deps.memory.submit("backup", f"{name} (automatic)" if automatic else name, work)
 
 
-def _open_campaign() -> tuple[str, str, object]:
+def _open_campaign() -> tuple[str, str, Path]:
     with deps.engine.lock:
         return deps.engine.campaign, deps.engine.campaigns[deps.engine.campaign].name, deps.engine.vault_dir()
 
@@ -124,12 +199,14 @@ def cloud_backup():
     """Back up the open campaign's notes now (a background job: `campaign.job` with kind "backup")."""
     with deps.campaign_gate:
         cid, name, root = _open_campaign()
-        if not deps.cloud.status(cid)["connected"]:
+        if not deps.cloud.status(cid, main=False)["connected"]:
             raise HTTPException(400, "Connect Troubadour Cloud first.")
+        if deps.session_live():
+            raise HTTPException(409, "Backups wait until the session ends.")
         return _submit_backup(cid, name, root).to_json()
 
 
-@router.get("/api/cloud/vaults")
+@router.get("/api/cloud/vaults", response_model=list[CloudVault])
 def cloud_vaults():
     """This account's campaigns in Troubadour Cloud (from any Mac), to restore from."""
     try:
@@ -138,7 +215,7 @@ def cloud_vaults():
         raise HTTPException(401 if e.code == "unauthorized" else 502, str(e)) from None
 
 
-@router.get("/api/cloud/account")
+@router.get("/api/cloud/account", response_model=CloudAccount)
 def cloud_account():
     """Who is signed in to Troubadour Cloud (name, email, avatar) for the header menu; 401 when not connected."""
     try:
@@ -147,14 +224,20 @@ def cloud_account():
         raise HTTPException(401 if e.code == "unauthorized" else 502, str(e)) from None
 
 
+@router.get("/api/cloud/history", response_model=CloudHistory)
+def cloud_history():
+    """Backup attempts for the open campaign, newest first, kept 90 days (failures too). Never calls the service."""
+    return {"attempts": deps.cloud.history(deps.engine.campaign)}
+
+
 @router.post("/api/cloud/restore")
 def cloud_restore(body: CloudRestoreIn):
-    """Bring a backed-up campaign's newest snapshot back (a background job, kind "restore"). It goes into the
+    """Bring a backed-up campaign's newest snapshot (or the restore point in `snapshot`) back (a background job, kind "restore"). It goes into the
     campaign with the vault's id: one this Mac doesn't have yet is created (so it shows in the picker),
     one it has keeps its other notes. Notes that differ go to .trash first; nothing is deleted."""
     with deps.campaign_gate:
         cid, name, _ = _open_campaign()
-        if not deps.cloud.status(cid)["connected"]:
+        if not deps.cloud.status(cid, main=False)["connected"]:
             raise HTTPException(400, "Connect Troubadour Cloud first.")
 
         def work(job):
@@ -164,7 +247,7 @@ def cloud_restore(body: CloudRestoreIn):
                 raise CloudError("not_found", "That campaign has no id Troubadour can use.")
             job.title = str(remote.get("name") or "Restored campaign")[:60]
             deps.engine.adopt_campaign(target, job.title)
-            result = deps.cloud.restore(body.vault_id, deps.engine.vault_dir(target), _job_progress(job))
+            result = deps.cloud.restore(body.vault_id, deps.engine.vault_dir(target), _job_progress(job), body.snapshot)
             job.done = job.total
             job.message = (
                 f"Restored {result['restored']} files"
@@ -176,10 +259,16 @@ def cloud_restore(body: CloudRestoreIn):
         return deps.memory.submit("restore", name, work).to_json()
 
 
-def _auto_backup_tick_submit(cid: str, name: str, root) -> None:
+def _auto_backup_tick_submit(cid: str, name: str, root: Path) -> None:
     with deps.campaign_gate:
         if deps.engine.campaign == cid:  # still the open campaign
             _submit_backup(cid, name, root, automatic=True)
 
 
-auto_backup = AutoBackup(deps.cloud, current=_open_campaign, busy=deps.memory.busy, submit=_auto_backup_tick_submit)
+auto_backup = AutoBackup(
+    deps.cloud,
+    current=_open_campaign,
+    busy=deps.memory.busy,
+    submit=_auto_backup_tick_submit,
+    is_live=lambda: deps.session_live(),
+)

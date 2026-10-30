@@ -1,36 +1,17 @@
-/* ---- Troubadour Cloud (opt-in backup of the open campaign's vault) ---- */
-export interface CloudBackup {
-  at: number /* epoch s */
-  snapshot: string
-  files: number
-  bytes: number
-  uploaded: number /* files new or changed in that backup */
-  unchanged: boolean
-  skipped: string[] /* "path: why", at most 50 */
-  quota: { used_bytes: number; limit_bytes: number; after_bytes: number }
-  fingerprint: string
-}
-export interface CloudStatus {
-  url: string
-  connected: boolean
-  campaign: string /* the campaign the settings below belong to */
-  include_transcripts: boolean
-  auto_backup: boolean /* back up by itself a couple of minutes after notes change */
-  last_backup: CloudBackup | null
-  last_error: { at: number; message: string } | null /* the last backup failed; cleared by a good one */
-}
-/** Who is signed in to Troubadour Cloud (GET /api/cloud/account). `avatar` is a data: URL. */
-export interface CloudAccount {
-  email: string | null
-  name: string | null
-  avatar: string | null
-}
+import type { Schemas } from "../generated/index.ts"
 
+/* ---- Troubadour Cloud (opt-in backup of the open campaign's vault) ---- */
+/** One backup: when, which snapshot, and what it held. `message` is "<device> · <summary>". */
+export type CloudBackup = Schemas["CloudBackup"]
+/**
+ * Backup state for the open campaign. `main_device` is the Mac that made the newest backup and `is_main`
+ * says it is this one; `paused_live` is true while a session runs and automatic backups wait.
+ */
+export type CloudStatus = Schemas["CloudStatus"]
+/** One backup attempt, successful or not (GET /api/cloud/history, 90 days). */
+export type BackupAttempt = Schemas["BackupAttempt"]
+export type CloudHistory = Schemas["CloudHistory"]
+/** Who is signed in (GET /api/cloud/account). `avatar` is a data: URL. */
+export type CloudAccount = Schemas["CloudAccount"]
 /** A campaign in Troubadour Cloud (backed up from any Mac), to restore from. */
-export interface CloudVault {
-  id: string
-  name: string
-  campaign_id: string
-  head_snapshot: string | null
-  created_at: string
-}
+export type CloudVault = Schemas["CloudVault"]
