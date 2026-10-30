@@ -100,6 +100,7 @@ def test_heading_link_is_not_a_trailer():
 def test_middle_dot_and_links_in_text():
     text, src, who, conf = parse_trailer("Met [[Orsa]] · then left. ([[P#0:05|S1 0:00]] · Pip · GM stated)")
     assert text == "Met [[Orsa]] · then left."
+    assert src is not None
     assert (src.session_page, who, conf) == ("P", "Pip", "gm")
 
 
@@ -118,7 +119,9 @@ def test_canonical_roundtrip_spec_example():
     facts = parse_bullets(lines, "Orsa Vell", IDS)
     assert len(facts) == 3
     assert len(facts[1].history) == 1
+    assert facts[0].source is not None
     assert facts[0].source.session_id == "s12"
+    assert facts[1].history[0].source is not None
     assert facts[1].history[0].source.session_id == "s10"
     assert facts[1].history[0].said_by == "Pip"
     assert render_bullets(facts, NUMBERS, PAGES) == lines
@@ -178,6 +181,7 @@ def test_asterisk_bullets_and_continuation_lines():
 def test_unknown_session_id_is_none_and_link_kept_as_parsed():
     lines = ["- A. ([[Unknown Page#0:00:10|S3 0:00]] · Pip · GM stated)"]
     f = parse_bullets(lines, None, IDS)[0]
+    assert f.source is not None
     assert f.source.session_id is None
     assert render_bullets(f and [f], NUMBERS, PAGES) == lines
 
