@@ -16,6 +16,7 @@ Run from `backend/`: `uv run troubadour` (server), `uv run pytest -q`, `uv run r
 | `campaign.py` | Obsidian vault: `Vault`, entity notes (frontmatter + Facts sections), `Corrector`, `everyday()`. |
 | `obsidian.py` | Finds the campaign folder in Obsidian's vault registry, so links name the vault by id. |
 | `memory.py` | Campaign jobs (note import, session write-up), job runner (a job reports with `Job.update()` / `advance()`), spelling suggestions, `looks_like`. |
+| `writeup.py` | Session write-up: read the whole transcript into notes (thinking on), write the page from the notes (`writeup_example.md` sets the style), facts from the notes. Measured with `spike/writeup_lab.py` (see `spike/WRITEUP_BENCHMARK.md`). |
 | `ask.py` | Ask: questions answered from the campaign's transcripts and notes (LLM plan → BM25 search → LLM answer with citations). |
 | `cleanup.py` | Spelling cleanup: `Speller.find` (code), `ask` (constrained LLM), `apply` (edits + offsets), `clean_record`. |
 | `improve.py` | Post-session jobs: re-transcribe (`run`), `fix_spellings`, restore. |

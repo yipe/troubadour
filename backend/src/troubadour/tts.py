@@ -62,7 +62,11 @@ SAY_MAX_CHARS = 2000
 READ_MAX_CHARS = 30000  # about half an hour read aloud
 CLIP_TEXT_CHARS = 300
 # Session page sections that don't read well aloud: name lists, links, and copies of the scenes.
-SKIP_SECTIONS = {"mentioned", "transcript", "highlights", "table moments", "facts", "suggested facts"}
+# A session page read aloud is its wrap-up (Last time), spotlight and what's still open: the rest repeats it.
+SKIP_SECTIONS = {
+    *("mentioned", "transcript", "highlights", "table moments", "facts", "suggested facts"),
+    *("what happened", "people and creatures met", "places", "loot, money and deals"),
+}
 ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 # A player's voices: TABLE (how they talk as themselves; the Train recording's) and one per character
 # they voice (as/<key>/), keyed by persona_key(character name).

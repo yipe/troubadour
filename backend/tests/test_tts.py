@@ -145,6 +145,12 @@ She wanted [gold](https://example.com) and a song.
 ## Highlights
 - a copy of a scene
 
+## What happened
+- [0:05] The beat the wrap-up already tells.
+
+## People and creatures met
+- **Marla:** The ferrywoman.
+
 ## Still open
 - [ ] Who lit the lantern
 1. The *second* thing!

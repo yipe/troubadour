@@ -1,34 +1,43 @@
 # Benchmarking session write-ups
 
-How the write-up pipeline was measured, so a change can be checked against numbers instead of a read-through.
+How the write-up is measured, so a change can be checked against numbers instead of a read-through.
 Findings and the reasons behind the pipeline are in `PLAN.md`, "Session write-ups".
 
 ## Tools
 
-- `writeup_compare.py SID model[@reasoning] …`: the production write-up (`Memory._write_up`) on a scratch copy of
-  the vault. Saves each page and every prompt/reply (`*.calls.json`) to `/tmp/writeup_compare/`. Knobs:
-  `WU_CHUNK` (chars per part), `WU_TAG` (file suffix), `TROUBADOUR_LLM_URL` (another server).
-- `writeup_oneshot.py SID MODEL`: one call over the whole labelled transcript. Flags: `--openrouter` (sends the
-  transcript to OpenRouter; key in `~/.openrouter_key`), `--record` (another transcript, e.g. a re-transcribed
-  copy), `--temperature`, `--tag`, `--dump` (print the labelled transcript a grader checks claims against).
+- `writeup_lab.py LAB VARIANT [SID ...]`: runs a variant over the lab's sessions and scores it. `prod` is the
+  app's own write-up (`Memory._write_up`, on a scratch copy of the vault); `app` runs `troubadour.writeup`
+  directly; the rest are experiments configured in `VARIANTS`. `--rescore` scores existing pages again (after a
+  scorer change). Writes `LAB/runs/<variant>/<sid>/{page.md,score.json,calls.json,extra.json}` and a line in
+  `LAB/LEDGER.md`.
+- `writeup_score.py GOLD PAGE [--vault DIR] [--json OUT]`: scores one page against one gold page.
+- `lab_llm.py`: the experiments' JSON-schema client (any OpenAI-compatible server; thinking on or off per call).
 
-Both read the session and vault read-only. Load big local models with one slot so a 40k-token session fits:
-`lms load MODEL --context-length 65536 --parallel 1` (with `--parallel 4` each request gets a quarter).
+`LAB/lab.json` maps each session to its transcript folder, a scratch-able copy of its vault, its gold page and
+another campaign's gold page (a style example). Keep the lab under `backend/local/` (git-ignored): it holds
+campaign content.
+
+## Gold pages
+
+One per test session, written by a strong model from the whole transcript and corrected by the table:
+`## Last time`, `## Spotlight`, `## Highlights`, `## What happened` (timestamped beats), `## People and
+creatures met`, `## Places`, `## Loot, money and deals`, `## Still open`, `## Gold facts` (`- [weight 1-3]
+[H:MM:SS] fact`, 30-60 of them), `## Known traps`, `## Uncertain`.
 
 ## Scoring
 
-Atomic facts (FActScore-style), scored out of 40:
-- recall (28): weighted gold facts the page states (full or half credit);
-- precision (8): minus 1.5 per known error repeated, minus 0.5 per other unsupported claim;
-- readability (4): repetition across sections, stale "Still open" items.
+Out of 100: 50 x weighted gold-fact recall in the story (Last time + What happened), 20 x recall in Last time
+alone, 10 x recall anywhere on the page, plus 20 minus 1.5 per error.
 
-The gold set is the players' own corrections of a generated page, turned into ~50 weighted facts and ~20 known
-errors. It is campaign-private and lives in the data dir (`benchmarks/<session>/`: `gold_facts.json`,
-`known_errors.json`, `score_spec.md`, the scored pages), never in the repo. A strong model grades with the spec;
-expect about ±2 points of grader noise, and check its "unsupported" calls against the gold before trusting a
-small difference.
+- Facts: the judge (a local LLM) says yes / partly / no for each fact, separately for Last time, the story and
+  the whole page, and must quote the page; a quote that isn't on the page doesn't count.
+- Errors: each story sentence is checked against the gold page; "contradicted" needs a quote from the gold page
+  and then a second, one-pair look ("can both be true?"). The vault's other spellings (heard-as, aliases) join
+  the reference so the right name isn't an error. `errors_distinct` counts distinct reference quotes (one
+  wrong beat usually shows up twice).
+- `last_thirds`: Last-time recall in each third of the session (a wrap-up that stops early shows 0 late).
 
-Lessons about the method itself:
-- Holistic rubric grading swung ±4 between identical pages; atomic facts are steadier.
-- Keep a gold set honest: three rounds of player corrections turned some "known errors" into true facts.
-- Temperature 0 runs are reproducible only when nothing else shares the GPU.
+Calibration: a gold page against itself scores ~74 (the judge misses ~13% of facts that are there). LLM judges
+overlook errors (TofuEval, FABLES), so error counts are rough; recall is steadier. Generation at temperature 0
+on MTPLX is deterministic, but prompt changes move single sessions by several points: a change counts at +3
+mean and 3 of 4 sessions.

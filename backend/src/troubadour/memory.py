@@ -2,11 +2,9 @@
 
 - import_notes: pasted session notes → Notes/<title>.md (verbatim) + entities and facts.
   The notes are the user's own, so what they name is added as confirmed.
-- write_up: a saved session's transcript → Sessions/<date> <title>.md. Each chunk becomes a
-  plain log (what happened, an aside, a correction, a retraction, or still open). Asides and
-  retracted lines never reach the note. A second pass writes the paragraph and the scenes
-  from that log only, plus *suggested* facts, entities and heard-as spellings for review in
-  the Campaign tab. The transcript is copied to Sessions/Transcripts/.
+- write_up: a saved session's transcript → Sessions/<date> <title>.md (writeup.py: the whole session
+  read into notes, then the page written from the notes), plus *suggested* entities, facts and heard-as
+  spellings for review in the Campaign tab. The transcript is copied to Sessions/Transcripts/.
 - spelling_suggestions: no LLM; transcript words that look like misspellings of a glossary
   name ("Dilara" for Elara), and frequent unknown names worth adding.
 
@@ -16,7 +14,6 @@ names, types and lengths are validated before anything is written.
 """
 
 import collections
-import concurrent.futures
 import difflib
 import json
 import logging
@@ -31,35 +28,15 @@ from pathlib import Path
 
 import httpx
 
-from . import config, dnd_terms, providers, transcript
+from . import config, dnd_terms, providers, transcript, writeup
 from .campaign import TYPES, Entity, Vault, add_unique, everyday, norm, safe_name, write_atomic
 
 log = logging.getLogger("troubadour")
 
 CHUNK_CHARS = 6000  # notes per extraction call; small enough for a fast, careful answer
-# Per transcript part, whatever the model returns. The last part gets more room so the ending
-# and anything still unresolved can land as their own claims.
-PART_FACTS, PART_NAMES, PART_CLAIMS, FINAL_PART_CLAIMS = 5, 8, 20, 30
-NOTE_MAX = 16  # scenes on the session page; the claim list is notes for that pass, not the page
-ONE_SHOT_MAX_CHARS = 200_000  # ~55k tokens with the glossary: fits one slot of a 262k model loaded --parallel 4
-ONE_SHOT_MIN_BEATS, ONE_SHOT_MONEY_LINES = 6, 30
 RESOLVED_WORDS = 4  # an open item sharing this many content words with a scene is already told
-BEAT_WINDOW_S = 180.0  # a timestamped beat is checked against this much transcript either side
-PLAY_BEFORE_S, PLAY_AFTER_S, PLAY_CHARS, PLAY_NUMBERS = 120, 1200, 14000, 12  # a play's transcript window
-ENDING_LINES = (
-    2  # a note whose scenes leave this many log lines unreached gets a second call for the rest (the ending matters at any size)
-)
-STORY_SO_FAR = 15  # earlier log lines shown to each later part
-PART_MOMENTS, MAX_MOMENTS = 5, 12
 LLM_RETRIES, LLM_RETRY_WAIT_S = 2, 5.0  # a server error or dropped connection is tried again
 REASONING_HEADROOM = 12000  # extra max_tokens for a thinking model's reasoning
-NOTE_SEGMENT_PARTS = 16  # parts (~15 min each) per note call; at 4 (3 segments for 2.4 h) the note lost beats (24 vs 27 of 40)
-MOMENT_WORKERS = 2
-VERIFY_WORKERS = 4  # scene/moment checks at once (LM Studio --parallel 4)
-EVIDENCE_LINES, EVIDENCE_CHARS = (
-    40,
-    6000,
-)  # transcript window a scene is checked against  # pass B calls at once, beside pass A; LM Studio is loaded with --parallel 4  # dice/combat brag lines per part and per page
 BRIEF_DESCRIPTION_MAX = 80  # chars of each glossary entry's description in LLM prompts
 MAX_SUGGESTED_FACTS = 30  # per write-up: more than anyone will review
 # A passing state, not a fact ("Elara has one third-level spell slot remaining").
@@ -73,20 +50,8 @@ FLEETING = re.compile(
     r")\b",
     re.I,
 )
-TRANSCRIPT_CHUNK_CHARS = 12000  # ~15 min of table talk per write-up call
 MAX_ITEMS = 40
 NAME_MAX, TEXT_MAX = 80, 300
-CLAIM_TEXT_MAX = 600  # one settled scene; 300 cut a finale off mid-sentence
-CLAIM_STATUS = {"happened", "open", "joke", "retracted", "corrected"}
-_KIND = {
-    "did": "happened",
-    "aside": "joke",
-    "happened": "happened",
-    "joke": "joke",
-    "open": "open",
-    "retracted": "retracted",
-    "corrected": "corrected",
-}
 
 
 # ------------------------------------------------------------------ LLM
@@ -125,13 +90,15 @@ class MemoryLLM:
         except Exception:  # down, signed out, wrong service on the port, non-JSON reply: all mean "not usable"
             return False
 
-    def json(self, system: str, user: str, schema: dict, max_tokens: int = 4000) -> dict:
+    def json(self, system: str, user: str, schema: dict, max_tokens: int = 4000, think: bool = False) -> dict:
+        """One reply as a dict ({} when it isn't JSON). `think`: let a local model reason first (it is on anyway
+        when MEMORY_REASONING says so); hosted models decide for themselves."""
         if self.wire == "anthropic":
             content, cut = self._anthropic(system, user, schema, max_tokens)
         elif self.wire == "responses":
             content, cut = self._responses(system, user, schema)
         else:
-            content, cut = self._chat(system, user, schema, max_tokens)
+            content, cut = self._chat(system, user, schema, max_tokens, think)
         if cut:
             log.warning("model reply cut off at %s tokens; that part of the job is lost", max_tokens)
         match = re.search(r"\{.*\}", content, re.S)
@@ -142,19 +109,29 @@ class MemoryLLM:
             out = {}
         return out if isinstance(out, dict) else {}
 
-    def _chat(self, system: str, user: str, schema: dict, max_tokens: int) -> tuple[str, bool]:
-        thinking = config.MEMORY_REASONING not in ("", "none")
+    def _chat(self, system: str, user: str, schema: dict, max_tokens: int, think: bool = False) -> tuple[str, bool]:
+        effort = config.MEMORY_REASONING
+        if think and effort in ("", "none"):
+            effort = "medium"
+        thinking = effort not in ("", "none")
         payload = {
             "model": self.model,
             "temperature": 0,
             # Thinking tokens count against max_tokens; without room the JSON is cut off and parses to {}.
             "max_tokens": max_tokens + (REASONING_HEADROOM if thinking else 0),
-            "reasoning_effort": config.MEMORY_REASONING,
+            "reasoning_effort": effort,
+            # Qwen on MTPLX (and other chat-template servers) thinks unless told here; reasoning_effort alone
+            # doesn't stop it.
+            "chat_template_kwargs": {"enable_thinking": thinking},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "response_format": {"type": "json_schema", "json_schema": {"name": "out", "strict": True, "schema": schema}},
         }
         r = self._post("/chat/completions", payload)
-        # OpenRouter, DeepSeek and some local servers reject reasoning_effort or strict json_schema.
+        # A server that rejects chat_template_kwargs; then OpenRouter, DeepSeek and some local servers that
+        # reject reasoning_effort or strict json_schema.
+        if r.status_code == 400:
+            payload.pop("chat_template_kwargs")
+            r = self._post("/chat/completions", payload)
         if r.status_code == 400:
             payload.pop("reasoning_effort", None)
             payload.pop("response_format", None)
@@ -274,145 +251,6 @@ If a name matches one in the existing glossary, use the glossary's spelling.
 campaign_facts: up to 5 facts about the campaign as a whole (where the party is, the main quest).
 Answer with JSON only."""
 
-WRITEUP_SCHEMA = _obj(
-    {
-        "log": {
-            "type": "array",
-            "items": _obj({"text": STR, "kind": {"type": "string"}, "fixes": STR}),
-        },
-        "facts": {"type": "array", "items": _obj({"about": STR, "text": STR})},
-        "new_names": {"type": "array", "items": _obj({"name": STR, "type": KIND, "description": STR})},
-        "spellings": {"type": "array", "items": _obj({"heard": STR, "means": STR})},
-    }
-)
-
-VERIFY_SCHEMA = _obj(
-    {
-        "checks": {"type": "array", "items": _obj({"question": STR, "answer": STR, "agrees": {"type": "boolean"}})},
-        "verdict": STR,
-        "sentence": STR,
-    }
-)
-
-# Factored chain-of-verification (Dhuliawala et al. 2023): the claims become short questions answered
-# from the lines alone, before any verdict. A bare "is this sentence right?" mostly came back "unsupported".
-VERIFY_SYSTEM = """You check one sentence from a Dungeons & Dragons session note against the transcript lines it
-came from (speech-to-text, so names and words can be misheard; the glossary has the right spellings).
-checks: first turn each claim in the sentence into a short question: who did it, who it happened to, who
-acted first, how many, which place, what order (e.g. "Who used Mending on the autognome?"). Answer each
-from the transcript lines alone, without looking at the sentence again; agrees = whether that answer
-matches the sentence. Then verdict: "ok" if every check agrees; "fixed" if a check disagrees and the
-lines show the right answer, with sentence = the corrected sentence (same meaning otherwise, no longer,
-nothing added that the lines do not show); "unsupported" if the lines do not show it at all.
-Answer with JSON only."""
-
-RECAP_SCHEMA = _obj({"summary": STR})
-
-PLAY_SCHEMA = _obj({"sentence": STR})
-
-PLAY_SYSTEM = """You sum up a fight or a stretch of play in a Dungeons & Dragons session in one sentence of at
-most 60 words. You get the blow-by-blow log lines, the damage and hit points said at the table, and the
-transcript around it (speech-to-text; the GM speaks for every NPC and monster). Say who fought whom (or who
-tried what), who struck first, why if anyone said why, any standout damage with its number and who took it,
-and how it ended: who was knocked out or badly hurt, who fled, what changed. Only what the lines show.
-Answer with JSON only."""
-
-ONE_SHOT_SCHEMA = _obj(
-    {"title": STR, "hook": STR, "timeline": {"type": "array", "items": _obj({"at": STR, "text": STR})}, "open": STRS}
-)
-
-ONE_SHOT_SYSTEM = """You write the session page of a Dungeons & Dragons session from its whole speech-to-text
-transcript, for a player who missed it. The transcript mishears words; the glossary has the right names. Lines are
-labelled with who spoke; the GM narrates and speaks for every NPC and monster. Players joke, plan, speculate and talk
-about real life: only what happens in the game counts. A creature the party finds is not a player character, even
-if it is the same kind of creature. Be accurate before being complete: when you are not sure who did something or
-how many, leave that detail out rather than guess. Keep who did what to whom and who started it, motives that were
-said, debts, prices and deals (and who they burden), who was hurt and how badly, the names of NPCs, and where the
-session ended. The fights and plays you are given were summed up from the transcript: use them.
-hook: one or two sentences, at most 50 words: the session's main turns.
-timeline: 8 to 16 beats in order from the start to the end of the session, each one or two sentences, each with
-at = the timestamp at the start of the transcript line where it begins, copied exactly with its hours (e.g. 1:09:26).
-open: threads still unresolved at the end, up to 5; not plans, not guesses, not things already done.
-title: 2-5 words, no date.
-Answer with JSON only."""
-
-MERGE_SCHEMA = _obj({"scenes": STRS})
-
-MERGE_SYSTEM = f"""You get the scenes of a Dungeons & Dragons session, in order: too many for the page. Merge them
-into at most {NOTE_MAX} scenes, in order, each one sentence of at most 60 words. Join scenes that are one event (a fight and how it ended, finding
-something and what they did with it); never drop an event, a named person, a number or how the session
-ended. Change no facts and add none. Answer with JSON only."""
-
-TOP_SCHEMA = _obj({"title": STR, "summary": STR, "highlights": STRS})
-
-TOP_SYSTEM = """You get the scenes of a Dungeons & Dragons session, in order. Write:
-summary: one or two sentences, at most 50 words, past tense: the session's main turns, the way a player
-would answer "what happened last time?". Using only the scenes; the scenes are listed under it, so don't retell them.
-highlights: 3 to 6 sentences copied from the scenes, the ones the players will retell. Not the scenery.
-title: 2-5 words, no date.
-Answer with JSON only."""
-
-RECAP_SYSTEM = """You get the scenes of a Dungeons & Dragons session, in order. Write
-summary: one or two sentences, at most 50 words, past tense: the session's main turns, the way a player
-would answer "what happened last time?". Using only the scenes; the scenes are listed under it, so don't retell them.
-Answer with JSON only."""
-
-WRITEUP_SYSTEM = """You turn a piece of a Dungeons & Dragons session's speech-to-text transcript into a
-plain log. You also get the campaign glossary. The transcript mishears names; spell them as the glossary
-does. Do not decide what was important. Do not write a story. Write what a careful note-taker would, in
-order, one sentence per thing that happened.
-log: each line has text, kind, and fixes.
-kind is one of:
-- did: the table settled it. The GM narrated it, or a player did it and nobody took it back. A fight is
-  one line: who fought whom, who struck first, why if someone said why, and how it ended, including anyone knocked out or
-  nearly killed. Not the rolls. "The party rolled initiative" is not a log line. Neither is a single
-  attack, a hit or miss, damage, a saving throw, or a spell list.
-- open: still unresolved (a letter not delivered, a question left hanging). Not a plan and not a guess.
-- aside: a joke, real-life talk, rules chatter, a guess, or "someone could do X" when they did not.
-- retracted: the table took an earlier line back. fixes = a short quote from that line. Do not restate
-  the false version.
-- corrected: the settled truth that replaces an earlier line. fixes = a short quote from the line it
-  replaces. Say what was wrong when that matters ("Magenta was at about one hit point; she did not die.").
-Do not merge two different things because they share a word. A body, an arm, or a creature the party
-found is not a person who has been traveling with them. If you are not sure they are the same, write
-them as separate lines. "Can repair" or "offered to" is an aside, not a did, unless the transcript shows
-they did it.
-Lines are labelled with who spoke. "Pip (played by Theo)" is a player character speaking. A player
-character is never something the party finds: a dead or broken creature of the same kind as a player
-character is not that player character, even if the words sound alike. The GM speaks for every NPC
-and monster; a familiar belongs to the player whose character has it. Say who did a thing and who it
-happened to exactly as the transcript does; if you cannot tell, leave the person out. Keep the proper
-name of every NPC the table meets. Do not treat a word you cannot place (a place name that is not in the
-glossary and was said once) as a real place: write it as the GM said it or leave it out. Do not say
-why something happened unless someone in the transcript said why.
-Someone new who arrives is not a known NPC unless the transcript names them as that NPC. Numbers like
-"10-02" or "9.13" may be map hexes or the in-game time; say which only if the transcript makes it clear.
-fixes is "" except on retracted and corrected. Never invent anything that is not in the transcript.
-facts: up to 5 lasting things learned about someone or something, that will still be true next session,
-each a full sentence naming its subject ("Magenta is afraid of heights."); about = that name as the
-glossary spells it, or as the transcript does if it's new. Never passing states (hit points, where
-someone is standing, what they're doing right now), rules, or trivia ("is a player character").
-new_names: named NPCs, places, items, factions or creatures that matter in this part and are NOT in the
-glossary (and are not a misspelling of a glossary name), with a one-sentence description. Up to 10.
-spellings: when the transcript clearly misspells a glossary name, the misspelled word exactly as it appears
-(heard) and the glossary name it means (means). Only clear cases.
-Players joke, plan, speculate and talk about real life; only what actually happens in the game counts,
-usually what the GM narrates or confirms ("They assassinate her." as a joke is not an event).
-Never invent anything that isn't in the transcript. Answer with JSON only."""
-
-MOMENTS_SCHEMA = _obj({"moments": {"type": "array", "items": _obj({"at": STR, "text": STR})}})
-
-MOMENTS_SYSTEM = """You pick out the moments a Dungeons & Dragons table will retell from a piece of a session's
-speech-to-text transcript. Lines are labelled with who spoke; the GM speaks for every NPC and monster.
-moments: up to 5, in order, each one sentence naming who did it or who it happened to:
-- a natural 20 or natural 1, a critical hit, unusually big damage in one turn (give the number), someone
-  dropped to 0 hit points or killed, a clutch save;
-- what set the table off at a listed loud moment: a twist, a disaster, a joke that landed. Say what
-  caused it, not that people laughed.
-Not ordinary hits, misses or rolls. Only what the transcript shows; jokes about what could happen are
-not moments. Every listed loud moment gets one moment unless it was only crosstalk about something else.
-at = the timestamp of the line where it happened, exactly as written (e.g. 2:06:23).
-If nothing qualifies, return no moments. Answer with JSON only."""
 
 FACT_SCHEMA = _obj({"facts": STRS})
 
@@ -426,47 +264,6 @@ what they are doing in this scene, a roll, a joke, or a plan they have not carri
 "Elara has one third-level spell slot remaining" is not a fact. "Elara is a cleric" is.
 Skip anything already in the known facts. Never invent. If the passage says nothing lasting, return
 no facts. Answer with JSON only."""
-
-
-SESSION_END = (
-    "This part is the end of the session. The last did lines should say where they stopped and what they "
-    "came away with. Anything still unresolved is open, not a plan."
-)
-
-NOTE_SCHEMA = _obj(
-    {
-        "title": STR,
-        "summary": STR,
-        "scenes": STRS,
-        "open": STRS,
-        "highlights": STRS,
-    }
-)
-
-NOTE_SYSTEM = """You write the session note a Dungeons & Dragons player would tell a friend who missed the game.
-You get a log of what the table settled, already in order, and a short list of what is still open. You do
-not have the transcript. If the log does not say it, it did not happen.
-
-scenes: 6 to 14 sentences, in order, from the start of the log to its end. One scene or one fight is one sentence: what changed and how it
-ended. Keep two log lines separate when they are about different things, even if they share a name. A
-found body or a found object is not a person who was already with the party. Keep the proper name of
-every named NPC the log mentions. Join two events with "then", never "leading to" or "prompting", unless
-the log itself says one caused the other. Leave out travel that changed nothing, and leave out a detail
-that only explains how they reached the thing that mattered.
-open: copy only the unresolved items. Not a plan, not a guess, not something the log already says was done,
-and not someone's arrival that the log goes on to describe.
-highlights: 3 to 6 sentences copied from scenes, the ones the players will retell. Not the scenery.
-summary: one or two sentences, at most 50 words, past tense: the session's main turns, the way a player
-would answer "what happened last time?". Using only the scenes; the scenes are listed under it, so don't retell them.
-"(play) lines already sum up a fight or a stretch of play: keep each as its own scene, in its place, close
-to word for word. "(fight detail)" lines are blow-by-blow combat. Never copy them; turn each fight into one
-scene: who fought whom, why if the log says why, any standout damage (give the number), and how it ended.
-A debt, a price, a cut or a deal is part of a scene's point; keep it.
-The last scene says where the session ended: where they stopped, camped or rested.
-When you shorten a scene, keep its point: who is better off and who is saddled with a debt, a burden
-or a problem stays as the log says; never turn a debt or a burden into a benefit.
-title: 2-5 words, no date.
-Answer with JSON only."""
 
 
 # ------------------------------------------------------------------ validation
@@ -523,23 +320,6 @@ def _text(value, limit: int = TEXT_MAX) -> str:
     return re.sub(r"\s+", " ", value).strip()[:limit] if isinstance(value, str) else ""
 
 
-# Rules talk and single actions. A prompt asks the model to skip these; it often does not.
-_PLAY = re.compile(
-    r"\b("
-    r"initiatives?|saving throws?|bonus actions?|spell slots?|"
-    r"attacks?|attacked|dealing \d+|\d+ damage|"
-    r"casts?|cast|"
-    r"(?:fails?|succeeds?|succeeded|failed) (?:a |an |on |another )?(?:\w+ ){0,2}(?:saving throw|check|save)|"
-    r"rolls? (?:a |an )?(?:dexterity|strength|constitution|intelligence|wisdom|charisma)"
-    r")\b",
-    re.I,
-)
-# How a fight or scene ended. A line with one of these is the story, even if it mentions an attack.
-_OUTCOME = re.compile(
-    r"\b(downed|knocked (?:out|unconscious)|nearly (?:killed|died|dead)|badly (?:hurt|wounded|injured)|"
-    r"gravely|killed|died|defeated|fled|retreated|surrendered|escaped|wanted \w+ dead|because)\b",
-    re.I,
-)
 _NOT_OPEN = re.compile(r"\b(plans to|wants to|is going to|hopes to|might|maybe|possibly|could be)\b", re.I)
 _CONTENT = re.compile(r"[A-Za-z][A-Za-z'-]{3,}")
 _STOP = frozenset(
@@ -551,210 +331,8 @@ _STOP = frozenset(
 )
 
 
-def _play_by_play(text: str) -> bool:
-    if _OUTCOME.search(text):
-        return False
-    return bool(_PLAY.search(text)) or bool(re.search(r"\bis present\b", text, re.I))
-
-
 def _words(text: str) -> set[str]:
     return {w.casefold() for w in _CONTENT.findall(text) if w.casefold() not in _STOP}
-
-
-def _grounded(text: str, source: str) -> bool:
-    """A sentence earns its place when its content words actually occur in the claims it came from."""
-    words = _words(text)
-    if not words:
-        return False
-    have = _words(source)
-    return len(words & have) >= min(2, len(words))
-
-
-def _touches(fixes: str, text: str) -> bool:
-    needle = _text(fixes).casefold()
-    return bool(needle) and needle in text.casefold()
-
-
-def _settle(claims: list[dict], fights: list[tuple[int, str]] | None = None) -> tuple[list[str], list[str]]:
-    """What the table left standing, then what is still open.
-
-    A joke never lands. A retraction removes the earlier claim it quotes and does not itself become
-    a fact. A correction replaces the claim it quotes; if nothing matches, the correction is the fact.
-    A blow-by-blow combat line is not a scene; with a fights list, it is kept there as (where it falls in
-    happened, text), so the note can still say who fought, why and how it ended.
-    """
-    happened: list[str] = []
-    open_: list[str] = []
-    for claim in claims:
-        status = _KIND.get(claim.get("kind") or claim.get("status"))
-        text = _text(claim.get("text"), CLAIM_TEXT_MAX)
-        if status not in CLAIM_STATUS or not text:
-            continue
-        fixes = claim.get("fixes") if isinstance(claim.get("fixes"), str) else ""
-        if status == "joke":
-            continue
-        if _play_by_play(text):
-            if fights is not None and status == "happened":
-                fights.append((len(happened), text))
-            continue
-        if status == "open" and _NOT_OPEN.search(text):
-            continue
-        if status == "retracted":
-            for i in range(len(happened) - 1, -1, -1):
-                if _touches(fixes, happened[i]):
-                    del happened[i]
-                    break
-            continue
-        if status == "corrected":
-            for i in range(len(happened) - 1, -1, -1):
-                if _touches(fixes, happened[i]):
-                    happened[i] = text
-                    break
-            else:
-                happened.append(text)
-            continue
-        (open_ if status == "open" else happened).append(text)
-    return happened, open_
-
-
-def _reached(scenes: list[str], happened: list[str]) -> int:
-    """How far into the log the scenes get: the index of the last log line matched, or -1.
-
-    Scenes are in order, so they are matched walking forward: each to the earliest best line after the
-    previous match (at least 3 shared content words). Matching each to its latest look-alike made a scene
-    about "a creature on the dune" seem to reach the end, where every line mentions the creature.
-    """
-    cursor = -1
-    for scene in scenes:
-        words = _words(scene)
-        ahead = range(cursor + 1, len(happened))
-        best = max(ahead, key=lambda i: (len(words & _words(happened[i])), -i), default=-1)
-        if best >= 0 and len(words & _words(happened[best])) >= 3:
-            cursor = best
-    return cursor
-
-
-def _spread(items: list[str], n: int) -> list[str]:
-    """n of items, in order, evenly across the list and always ending with the last: the first n
-    would end the page partway through the session."""
-    if len(items) <= n:
-        return items
-    return [items[round(i * (len(items) - 1) / (n - 1))] for i in range(n)]
-
-
-def _lines(value, limit: int = NOTE_MAX) -> list[str]:
-    out = []
-    for item in value if isinstance(value, list) else []:
-        if isinstance(item, str) and (text := _text(item, CLAIM_TEXT_MAX)):
-            out.append(text)
-        if len(out) >= limit:
-            break
-    return out
-
-
-# Shouts, laughs and gasps in table talk ("No!", "oh my god", "ha ha").
-_REACTION = re.compile(
-    r"!|\b(oh my god|oh no|holy|ha(?: ?ha)+|let'?s go|amazing|wow|whoa|what the)\b",
-    re.I,
-)
-HOT_WINDOW_S, HOT_GAP_S, HOT_SPOTS = 30.0, 120.0, 10
-
-
-def hot_spots(messages: list[dict], n: int = HOT_SPOTS) -> list[float]:
-    """Start times of the n liveliest 30 s stretches, at least 2 min apart, in order.
-
-    Lively = reactions (shouts, laughs), several people talking, louder than the session's usual level,
-    many short lines. Weights tuned by eye on a real session, where the top spots were the big fight,
-    a trap going off and a tense roll.
-    """
-    levels = sorted(m["level_db"] for m in messages if m.get("level_db") is not None)
-    usual = levels[len(levels) // 2] if levels else 0.0
-    scored = []
-    j = 0
-    for i, m in enumerate(messages):
-        j = max(j, i)
-        while j < len(messages) and messages[j]["t_start"] < m["t_start"] + HOT_WINDOW_S:
-            j += 1
-        window = messages[i:j]
-        loud = [x["level_db"] - usual for x in window if x.get("level_db") is not None]
-        score = (
-            sum(bool(_REACTION.search(x["text"])) for x in window)
-            + 0.5 * len({x["speaker"] for x in window})
-            + 0.3 * (sum(loud) / len(loud) if loud else 0.0)
-            + 0.2 * len(window)
-        )
-        scored.append((score, m["t_start"]))
-    picked: list[float] = []
-    for _, t in sorted(scored, key=lambda st: -st[0]):
-        if all(abs(t - p) > HOT_GAP_S for p in picked):
-            picked.append(t)
-        if len(picked) == n:
-            break
-    return sorted(picked)
-
-
-# A brag-worthy moment names a roll, a number or a knockout; anything else is a scene, not a moment.
-_MOMENT = re.compile(
-    r"\b(nat(?:ural)? ?(?:20|1|one|twenty)|crit(?:ical)?s?|\d+ (?:points of )?damage|one[- ]shot\w*|"
-    r"dropped to 0|down(?:ed)?|unconscious|killed|died|death saves?|saving throw|save)\b",
-    re.I,
-)
-
-
-def _seconds(clock: str) -> float:
-    parts = [int(p) for p in clock.split(":")]
-    return float(sum(p * 60**i for i, p in enumerate(reversed(parts))))
-
-
-def _moments(value, part: str, loud: list[float], seen: set[str]) -> list[tuple[str, str]]:
-    """(at, text) pairs at a real line of this part. A moment is kept when it names a roll, a number or a
-    knockout, or when it falls in a stretch where the table was loud (whatever set them off counts).
-    A model's "moment" at a time that isn't in the transcript is made up."""
-    out = []
-    for m in value if isinstance(value, list) else []:
-        if not isinstance(m, dict):
-            continue
-        at, text = _text(m.get("at"), 10), _text(m.get("text"))
-        if not (re.fullmatch(r"\d{1,2}:\d{2}(?::\d{2})?", at) and re.search(rf"(?m)^{re.escape(at)} ", part)):
-            continue
-        hot = any(t <= _seconds(at) < t + HOT_WINDOW_S for t in loud)
-        if not text or not (hot or _MOMENT.search(text)) or norm(text) in seen:
-            continue
-        seen.add(norm(text))
-        out.append((at, text))
-    return out
-
-
-def _note(
-    value: dict, happened: list[str], open_: list[str], fight_details: list[str] = ()
-) -> tuple[list[str], list[str], list[str]]:
-    """Scenes, still-open, highlights for the page.
-
-    A scene that does not use the claims' own words is dropped. A highlight that is not one of the
-    scenes is dropped. If the model returns nothing usable, the page gets the claims themselves,
-    capped, never the unfiltered list.
-    """
-    source = "\n".join([*happened, *open_, *fight_details])
-    # All of them first, then spread to the cap: keeping the first NOTE_MAX dropped the fight and the ending.
-    scenes = [s for s in _lines(value.get("scenes") if isinstance(value, dict) else None, MAX_ITEMS) if _grounded(s, source)]
-    scenes = _spread(scenes, NOTE_MAX)
-    if not scenes:
-        scenes = _spread(happened, NOTE_MAX)
-    scene_blob = "\n".join(scenes)
-    highlights = [
-        h
-        for h in _lines(value.get("highlights") if isinstance(value, dict) else None, 6)
-        if _grounded(h, scene_blob) and not _play_by_play(h)
-    ]
-    open_source = "\n".join(open_)
-    still = [
-        s
-        for s in _lines(value.get("open") if isinstance(value, dict) else None, 8)
-        if open_source and _grounded(s, open_source) and not _NOT_OPEN.search(s)
-    ]
-    if isinstance(value, dict) and value.get("open") is None and not still:
-        still = open_[:8]
-    return scenes, still or (open_[:8] if not (isinstance(value, dict) and "open" in value) else still), highlights
 
 
 _SMALL = {"of", "the", "and", "de", "du", "da", "von", "van", "a", "an", "in", "on", "to"}
@@ -838,92 +416,6 @@ def apply_heard_as(lines: list[str], entities: list[Entity]) -> list[str]:
         return label + sep + rx.sub(lambda m: swaps.get(norm(m.group(0)), m.group(0)), text) if sep else line
 
     return [fix(line) for line in lines]
-
-
-def play_window(text: str, lines: list[str]) -> str:
-    """Transcript lines from PLAY_BEFORE_S before the stretch that best matches text to PLAY_AFTER_S after."""
-    found = evidence(text, lines)
-    if not found:
-        return ""
-    want = _words(text)
-    anchor = next((line for line in found.splitlines() if len(_words(line) & want) >= 2), found)
-    try:
-        t0 = _seconds(anchor.split(" ", 1)[0])
-    except ValueError:
-        return ""
-    near = []
-    for line in lines:
-        try:
-            t = _seconds(line.split(" ", 1)[0])
-        except ValueError:
-            continue
-        if t0 - PLAY_BEFORE_S <= t <= t0 + PLAY_AFTER_S:
-            near.append(line)
-    return "\n".join(near)[:PLAY_CHARS]
-
-
-# Money said at the table: who pays, who owes. A summary that drops the debt loses the scene's point.
-_MONEY = re.compile(r"\b(deficit|debt|owes?|owed|tab|fee|buy-in|cut|joint assets|\d+\s*(?:gold|gp|pieces))\b", re.I)
-
-_DAMAGE = re.compile(
-    r"\b\d{1,3}\s*(?:odd\s+|points?\s+of\s+)?damage\b|\b(?:one|zero|0|1)\s+hit\s+points?\b|"
-    r"\bunconscious\b|\bknocked\s+(?:out|down)\b|\bdeath\s+saves?\b|\bone[- ]shot\w*",
-    re.I,
-)
-
-
-def play_numbers(window: str) -> list[str]:
-    """ "2:17:13 Sathrin: 50 odd damage" lines: every damage number and knockout said in a window."""
-    out = []
-    for line in window.splitlines():
-        clock, _, rest = line.partition(" ")
-        who, _, said = rest.partition(": ")
-        for m in _DAMAGE.finditer(said):
-            out.append(f"{clock} {who}: {m.group(0)}")
-    return list(dict.fromkeys(out))[:PLAY_NUMBERS]
-
-
-def evidence(sentence: str, lines: list[str], width: int = EVIDENCE_LINES) -> str:
-    """The stretches of transcript lines that share the most of a sentence's content words, or "".
-
-    Distinctive words (names, "mallet", "alarms") pin a scene to where it was played; a window is wide
-    enough to hold who did what first. A scene often joins two moments (found the wagon, then buried
-    them), so a second window is added when it covers 2+ words the first lacks. Fewer than 3 shared
-    words: no evidence.
-    """
-    want = _words(sentence)
-    if not want or not lines:
-        return ""
-    has = [_words(line) & want for line in lines]
-    starts = range(0, max(1, len(lines) - width + 1), max(1, width // 4))
-    cover = {s: set().union(*has[s : s + width]) for s in starts}
-    first = max(starts, key=lambda s: len(cover[s]))
-    if len(cover[first]) < min(3, len(want)):
-        return ""
-    picked = [first]
-    rest = [s for s in starts if abs(s - first) >= width]
-    if rest:
-        second = max(rest, key=lambda s: len(cover[s] - cover[first]))
-        if len(cover[second] - cover[first]) >= 2:
-            picked.append(second)
-    return "\n...\n".join("\n".join(lines[s : s + width]) for s in sorted(picked))[:EVIDENCE_CHARS]
-
-
-def around(at: str, lines: list[str], seconds: float = 60.0) -> str:
-    """Transcript lines within a minute either side of a timestamp like 2:04:53."""
-    try:
-        t = _seconds(at)
-    except ValueError:
-        return ""
-    near = []
-    for line in lines:
-        clock = line.split(" ", 1)[0]
-        try:
-            if abs(_seconds(clock) - t) <= seconds:
-                near.append(line)
-        except ValueError:
-            continue
-    return "\n".join(near)[:EVIDENCE_CHARS]
 
 
 def glossary_brief(vault: Vault, limit: int = 300) -> str:
@@ -1173,115 +665,56 @@ class Memory:
         return self.submit("writeup", sid, lambda job: self._write_up(job, record))
 
     def _write_up(self, job: Job, record: dict) -> None:
+        """The session page (writeup.py: read the whole session into notes, then write from the notes), then
+        suggestions for the glossary: new names, lasting facts, misheard spellings."""
         self.seed_known()
         s = record["session"]
         lines, cast = transcript_lines(record)
         lines = apply_heard_as(lines, self.vault.entities())
         if not lines:
             raise ValueError("That session has no lines.")
-        body = "\n".join(lines)
-        heard_text = norm(body)
-        parts = chunks(body.replace("\n", "\n\n"), TRANSCRIPT_CHUNK_CHARS)
-        loud = hot_spots(record["messages"])
-        job.total = len(parts) + 1
-        self.emit(job)
-        claims: list[dict] = []
-        facts: list[tuple[str, str]] = []
-        new_names: dict[str, tuple[str, str]] = {}
-        spellings: list[tuple[str, str]] = []
-        hints = misspelling_hints(body, self.vault.entities())
-
-        def find_moments(part: str) -> tuple[str, list[float], dict]:
-            # Pass B: its own call, so the log's "what changed" reading doesn't crowd out "what made the
-            # table erupt" (one combined prompt dropped the session's big fight).
-            here = [t for t in loud if re.search(rf"(?m)^{re.escape(transcript.clock(t))} ", part)]
-            mprompt = f"Who is at the table:\n{cast}\n\n"
-            if here:
-                mprompt += (
-                    "Loud moments (shouting, laughing, crosstalk) start at: "
-                    + ", ".join(transcript.clock(t) for t in here)
-                    + "\n\n"
-                )
-            return part, here, self.llm.json(MOMENTS_SYSTEM, mprompt + f"Transcript:\n{part}", MOMENTS_SCHEMA, 800)
-
-        # Pass B needs no story so far, so it runs beside pass A (LM Studio serves several predictions at once).
-        pool = concurrent.futures.ThreadPoolExecutor(max_workers=MOMENT_WORKERS, thread_name_prefix="moments")
-        pass_b = [pool.submit(find_moments, part) for part in parts]
-        pool.shutdown(wait=False)  # queued calls still run; their results are read after pass A
-        by_part: list[list[dict]] = []  # each part's log, so a long session's note can be written in segments
-        for i, part in enumerate(parts):
-            prompt = f"Who is at the table:\n{cast}\n\nGlossary:\n{glossary_brief(self.vault)}\n\n"
-            # The previous parts' log, so a part that starts mid-scene knows who is who (the rider
-            # who shows up is not the NPC who stayed behind) and doesn't re-log what already happened.
-            so_far = [c["text"] for c in claims if c.get("kind") in ("did", "corrected")][-STORY_SO_FAR:]
-            if so_far:
-                prompt += "Story so far (already logged; do not repeat):\n" + "\n".join(f"- {t}" for t in so_far) + "\n\n"
-            if hints:
-                prompt += f"Likely misspellings of glossary names in this transcript:\n{hints}\n\n"
-            last = i == len(parts) - 1
-            if last:
-                prompt += f"{SESSION_END}\n\n"
-            out = self.llm.json(WRITEUP_SYSTEM, prompt + f"Transcript:\n{part}", WRITEUP_SCHEMA)
-            raw = out.get("log") or out.get("claims") or []
-            part_claims = [c for c in raw if isinstance(c, dict) and _text(c.get("text"), CLAIM_TEXT_MAX)]
-            by_part.append(part_claims[: FINAL_PART_CLAIMS if last else PART_CLAIMS])
-            claims += by_part[-1]
-            part_facts = [
-                (about, text)
-                for f in out.get("facts") or []
-                if isinstance(f, dict)
-                and (about := _name(f.get("about")))
-                and (text := _text(f.get("text")))
-                and not fleeting(text)
-            ]
-            facts += part_facts[:PART_FACTS]
-            part_names = [n for n in out.get("new_names") or [] if isinstance(n, dict) and _name(n.get("name"))]
-            for n in part_names[:PART_NAMES]:
-                name = _name(n.get("name"))
-                new_names.setdefault(norm(name), (name, _kind(n.get("type")), _text(n.get("description"))))
-            for sp in out.get("spellings") or []:
-                if isinstance(sp, dict) and (heard := _name(sp.get("heard"))) and (means := _name(sp.get("means"))):
-                    spellings.append((heard, means))
-            job.done += 1
-            job.message = f"Read part {job.done} of {len(parts)}"
-            self.emit(job)
-        moments: list[tuple[str, str]] = []
-        seen_moments: set[str] = set()
-        for f in pass_b:
-            part, here, found = f.result()
-            moments += _moments(found.get("moments"), part, here, seen_moments)[:PART_MOMENTS]
-
-        moments = moments[:MAX_MOMENTS]
-        whole = self._one_shot(by_part, lines, cast)
-        if whole:
-            summary, scenes, scene_at, open_ = whole
-            highlights: list[str] = []
-        else:  # too long for one call, or the call failed: the log-based note
-            summary, scenes, open_, highlights = self._write_note(by_part, lines)
-            scene_at = []
-        scenes, moments, fixed = self._verify(scenes, moments, lines, scene_at)
-        if fixed:  # the paragraph was written from the unchecked scenes
-            recap = self.llm.json(RECAP_SYSTEM, "\n".join(f"- {s}" for s in scenes), RECAP_SCHEMA, 600)
-            if _grounded(_text(recap.get("summary"), 2000), "\n".join(scenes)):
-                summary["summary"] = recap["summary"]
-        title = _text(summary.get("title"), 60) or "Session"
+        stamps = {line.split(" ", 1)[0] for line in lines}
+        job.update(total=3, message="Reading the whole session…")
+        notes = writeup.read(self.llm, lines, cast, glossary_brief(self.vault))
+        if not notes.beats:
+            raise ValueError("The language model's notes on this session came back empty; nothing was written.")
+        job.update(done=1, message=f"Noted {len(notes.beats)} beats; writing the page…")
+        page = writeup.write(self.llm, notes, stamps)
+        job.update(done=2, message="Suggesting names, facts and spellings…")
         date = time.strftime("%Y-%m-%d", time.localtime(s["started_at"]))
         sid = s["id"]
         existing = self._session_note(sid)
         # A re-run keeps the page's name: facts elsewhere link to it.
-        note_title = existing.stem if existing else safe_name(f"{date} {title}")
+        note_title = existing.stem if existing else safe_name(f"{date} {page.title or 'Session'}")
+        # Suggestions first, so the session page can link the new names.
+        heard_text = norm("\n".join(lines))
+        self._suggest_names(job, notes, heard_text)
+        self._suggest_facts(job, writeup.facts(self.llm, notes), note_title)
+        self._suggest_spellings(job, notes.spellings, heard_text)
 
-        # Suggestions first, so the session page can link the new names. A "new" name that sounds
-        # like a known one is a misspelling, not a new character ("Dallara" is Elara); among new
-        # names, later spellings of an earlier one fold into it ("Willy Olly Wally").
+        tdir = self.vault.root / "Sessions" / "Transcripts"
+        tdir.mkdir(parents=True, exist_ok=True)
+        (tdir / f"{sid}.md").write_text(transcript.markdown(record), encoding="utf-8")
+        body = self._session_markdown(record, note_title, notes, page, len(lines))
+        path = existing or self.vault.root / "Sessions" / f"{note_title}.md"
+        write_atomic(path, body)
+        job.note = str(path.relative_to(self.vault.root))
+        job.update(done=job.total, message=f"Wrote {path.stem}; {job.suggested} suggestions to review")
+
+    def _suggest_names(self, job: Job, notes: writeup.Notes, heard_text: str) -> None:
+        """People, creatures, groups and places the notes name that the glossary lacks become suggested entries.
+        A "new" name that sounds like a known one is that one misheard ("Dallara" is Elara): a spelling, not a
+        character. Among the new names, a later spelling of an earlier one folds into it ("Willy Olly Wally")."""
         kept: list[str] = []
-        for name, kind, description in new_names.values():
-            known = self.vault.find(name) or next(
-                (e for e in self.vault.entities() if any(looks_like(name, n) for n in e.names())), None
-            )
+        spellings: list[tuple[str, str]] = []
+        named = [(x, x.kind or "npc") for x in notes.people] + [(x, "place") for x in notes.places]
+        for item, kind in named:
+            name = _name(item.name)
+            if not name or self.vault.find(name):
+                continue
+            known = next((e for e in self.vault.entities() if any(looks_like(name, n) for n in e.names())), None)
             if known is not None:
-                if not self.vault.find(name):
-                    spellings.append((name, known.name))
+                spellings.append((name, known.name))
                 continue
             twin = next(
                 (k for k in kept if looks_like(name, k) or difflib.SequenceMatcher(None, norm(name), norm(k)).ratio() >= 0.85),
@@ -1291,26 +724,37 @@ class Memory:
                 spellings.append((name, twin))
                 continue
             try:
-                self.vault.create(name, kind, status="suggested", description=description)
+                self.vault.create(name, _kind(kind), status="suggested", description=_text(item.what))
             except ValueError:
                 continue
             kept.append(name)
             job.created.append(name)
             job.suggested += 1
-        for about, text in facts[:MAX_SUGGESTED_FACTS]:
+        self._suggest_spellings(job, spellings, heard_text)
+
+    def _suggest_facts(self, job: Job, found: list[tuple[str, str]], note_title: str) -> None:
+        added = 0
+        for about, text in found:
             e = self.vault.find(about)
-            if e is not None and not e.read_only:
-                before = len(e.suggested_facts) + len(e.facts)
-                e = self.vault.add_fact(e.name, f"{text} ([[{note_title}]])", suggested=True)
-                if len(e.suggested_facts) + len(e.facts) > before:
-                    job.suggested += 1
-                    if e.name not in job.created and e.name not in job.updated:
-                        job.updated.append(e.name)
+            if e is None or e.read_only or fleeting(text) or added >= MAX_SUGGESTED_FACTS:
+                continue
+            before = len(e.suggested_facts) + len(e.facts)
+            e = self.vault.add_fact(e.name, f"{text} ([[{note_title}]])", suggested=True)
+            if len(e.suggested_facts) + len(e.facts) > before:
+                added += 1
+                job.suggested += 1
+                if e.name not in job.created and e.name not in job.updated:
+                    job.updated.append(e.name)
+
+    def _suggest_spellings(self, job: Job, spellings: list[tuple[str, str]], heard_text: str) -> None:
+        """A heard-as suggestion for each misheard glossary name. Only words that really occur in the transcript
+        (`heard_text`, normalized), sound like the name they're said to mean ("Elkari" is El-Khari, not Elara), and
+        aren't already a name of their own."""
         for heard, means in spellings:
             e = self.vault.find(means)
-            # Only words that really occur in this transcript, sound like the name they're said to
-            # mean ("Elkari" is El-Khari, not Elara), and aren't already a known name.
-            if e is None or e.read_only or norm(heard) not in heard_text or self.vault.find(heard) is not None:
+            if e is None or e.read_only or self.vault.find(heard) is not None:
+                continue
+            if norm(heard) not in heard_text:
                 continue
             if not any(looks_like(heard, n) for n in e.names()):
                 continue
@@ -1319,227 +763,58 @@ class Memory:
             self.vault.update(e.name, heard_as_suggested=[*e.heard_as_suggested, heard])
             job.suggested += 1
 
-        linked = [link_names(t, self.vault) for t in scenes]
-        # A thread a scene already resolves (the rider arrived; they long rested) is not still open.
-        open_ = [o for o in open_ if not any(len(_words(o) & _words(sc)) >= RESOLVED_WORDS for sc in scenes)]
-        open_linked = [link_names(t, self.vault) for t in open_]
-        highlights = [link_names(h, self.vault) for h in highlights]
-        moments_linked = [f"{at} {link_names(t, self.vault)}" for at, t in moments]
-        mentioned = sorted(
-            {
-                e.name
-                for e in self.vault.entities()
-                if any(f"[[{e.name}]]" in x for x in [*linked, *open_linked, *highlights, *moments_linked])
-            }
-        )
-        tdir = self.vault.root / "Sessions" / "Transcripts"
-        tdir.mkdir(parents=True, exist_ok=True)
-        (tdir / f"{sid}.md").write_text(transcript.markdown(record), encoding="utf-8")
-        page = [
-            f"---\ntype: session\nsession_id: {sid}\ndate: {date}\nduration: {transcript.clock(s.get('duration_s', 0))}\ntags: [troubadour/session]\n---",
-            f"# {note_title}",
+    def _session_markdown(self, record: dict, title: str, notes: writeup.Notes, page: writeup.Page, lines: int) -> str:
+        s = record["session"]
+        entities = self.vault.entities()
+
+        def link(text: str) -> str:
+            return link_names(text, self.vault, entities)
+
+        def stamp(at: str) -> str:
+            return f"[{at}] " if at else ""
+
+        # A thread the story already resolves (the rider arrived; they long rested) is not still open.
+        told = " ".join(b.text for b in notes.beats)
+        still_open = [o for o in notes.open if not _NOT_OPEN.search(o) and len(_words(o) & _words(told)) < RESOLVED_WORDS]
+        linked = [
+            *(link(p) for p in page.last_time.split("\n\n")),
+            *(link(x.what) for x in page.spotlight),
+            *(link(h.text) for h in page.highlights),
+            *(link(b.text) for b in notes.beats),
+            *(link(o) for o in still_open),
+        ]
+        mentioned = sorted({e.name for e in entities if any(f"[[{e.name}]]" in x or f"[[{e.name}|" in x for x in linked)})
+        date = time.strftime("%Y-%m-%d", time.localtime(s["started_at"]))
+        out = [
+            f"---\ntype: session\nsession_id: {s['id']}\ndate: {date}\n"
+            f"duration: {transcript.clock(s.get('duration_s', 0))}\ntags: [troubadour/session]\n---",
+            f"# {title}",
             "",
-            link_names(_text(summary.get("summary"), 2000), self.vault),
+            "## Last time",
+            "\n\n".join(link(p) for p in page.last_time.split("\n\n")) or "(no wrap-up)",
             "",
-            # Highlights are copies of scenes; a session with table moments shows those instead of repeating itself.
-            *(
-                ["## Table moments", *(f"- {m}" for m in moments_linked), ""]
-                if moments_linked
-                else ["## Highlights", *(f"- {h}" for h in highlights), ""]
-            ),
-            "## Still open",
-            *(f"- {e}" for e in open_linked),
-            "",
-            "## What happened",
-            *(f"- {e}" for e in linked),
-            "",
+        ]
+        if page.spotlight:
+            out += ["## Spotlight", *(f"- **{x.name}:** {link(x.what)}" for x in page.spotlight), ""]
+        if page.highlights:
+            out += ["## Highlights", *(f"- {stamp(h.at)}{link(h.text)}" for h in page.highlights), ""]
+        out += ["## What happened", *(f"- {stamp(b.at)}{link(b.text)}" for b in notes.beats), ""]
+        if notes.people:
+            out += ["## People and creatures met", *(f"- **{x.name}:** {link(x.what)}" for x in notes.people), ""]
+        if notes.places:
+            out += ["## Places", *(f"- **{x.name}:** {link(x.what)}" for x in notes.places), ""]
+        if notes.loot:
+            out += ["## Loot, money and deals", *(f"- {link(x)}" for x in notes.loot), ""]
+        out += ["## Still open", *(f"- {link(o)}" for o in still_open), ""]
+        out += [
             "## Mentioned",
             ", ".join(f"[[{n}]]" for n in mentioned) or "(nobody from the glossary)",
             "",
             "## Transcript",
-            f"[[Transcripts/{sid}|Full transcript]] · {s.get('lines', len(lines))} lines",
+            f"[[Transcripts/{s['id']}|Full transcript]] · {s.get('lines', lines)} lines",
             "",
         ]
-        path = existing or self.vault.root / "Sessions" / f"{note_title}.md"
-        write_atomic(path, "\n".join(page))
-        job.note = str(path.relative_to(self.vault.root))
-        job.done = job.total
-        job.message = f"Wrote {path.stem}; {job.suggested} suggestions to review"
-
-    def _one_shot(
-        self, by_part: list[list[dict]], lines: list[str], cast: str
-    ) -> tuple[dict, list[str], list[str], list[str]] | None:
-        """(title and summary, scenes, their timestamps, still open) from one call over the whole transcript, or None.
-
-        One reading of the whole session beat the part-by-part log plus note on every measure (20.6 vs
-        17.7 of 40, in a fifth of the time): no part boundary splits a fight from its aftermath, nothing is
-        squeezed through one-line log entries. What a model reads badly in 40k tokens of table talk, code
-        hands it as facts: each fight summed up with the damage said at the table, and the money said.
-        Sessions past ONE_SHOT_MAX_CHARS, or a reply with too few beats, return None.
-        """
-        body = "\n".join(lines)
-        if len(body) > ONE_SHOT_MAX_CHARS:
-            return None
-        fights: list[tuple[int, str]] = []
-        _settle(sum(by_part, []), fights)
-        clusters: dict[int, list[str]] = {}
-        for at, text in fights:
-            clusters.setdefault(at, []).append(text)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=VERIFY_WORKERS, thread_name_prefix="play") as pool:
-            plays = [p for p in pool.map(lambda texts: self._play(texts, lines), clusters.values()) if p]
-        money = [line for line in lines if _MONEY.search(line.partition(": ")[2])][:ONE_SHOT_MONEY_LINES]
-        user = f"Who is at the table:\n{cast}\n\nGlossary:\n{glossary_brief(self.vault)}\n\n"
-        if plays:
-            user += (
-                "Fights and plays, summed up from the transcript (trust these):\n" + "\n".join(f"- {p}" for p in plays) + "\n\n"
-            )
-        if money:
-            user += "Money, debts and deals said at the table:\n" + "\n".join(money) + "\n\n"
-        out = self.llm.json(ONE_SHOT_SYSTEM, f"{user}Transcript:\n{body}", ONE_SHOT_SCHEMA, 4000)
-        beats = [b for b in out.get("timeline") or [] if isinstance(b, dict) and _text(b.get("text"), CLAIM_TEXT_MAX)]
-        if len(beats) < ONE_SHOT_MIN_BEATS:
-            return None
-        stamps = {line.split(" ", 1)[0] for line in lines}
-        scenes = [_text(b["text"], CLAIM_TEXT_MAX) for b in beats][:NOTE_MAX]
-        scene_at = [a if (a := _text(b.get("at"), 10)) in stamps else "" for b in beats][:NOTE_MAX]
-        open_ = [o for o in _lines(out.get("open"), 8) if not _NOT_OPEN.search(o)]
-        return {"title": out.get("title"), "summary": _text(out.get("hook"), 400)}, scenes, scene_at, open_
-
-    def _write_note(self, by_part: list[list[dict]], lines: list[str] = ()) -> tuple[dict, list[str], list[str], list[str]]:
-        """(note reply, scenes, still open, highlights) from each part's log.
-
-        One note call over a long session's whole log covers its first half and drops the rest (8k-char
-        parts, 18 of them: the page stopped at the bone field). So a long session is noted in segments of
-        NOTE_SEGMENT_PARTS parts, side by side, and one last call titles and sums up their scenes.
-        """
-        segments = [sum(by_part[i : i + NOTE_SEGMENT_PARTS], []) for i in range(0, len(by_part), NOTE_SEGMENT_PARTS)]
-        if len(segments) > 1 and len(by_part) % NOTE_SEGMENT_PARTS == 1:  # a lone last part joins the one before
-            segments[-2:] = [segments[-2] + segments[-1]]
-
-        def note(k: int) -> tuple[dict, list[str], list[str], list[str]]:
-            fights: list[tuple[int, str]] = []
-            happened, open_ = _settle(segments[k], fights)
-            rows = [f"- {e}" for e in happened]
-            clusters: dict[int, list[str]] = {}  # blow-by-blow lines that sit together are one play
-            for at, text in fights:
-                clusters.setdefault(at, []).append(text)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=VERIFY_WORKERS, thread_name_prefix="play") as pool:
-                summed = dict(zip(clusters, pool.map(lambda texts: self._play(texts, lines), clusters.values()), strict=True))
-            for at in sorted(clusters, reverse=True):  # in place: between what led to it and what followed
-                if summed[at]:
-                    rows.insert(at, f"- (play) {summed[at]}")
-                else:
-                    rows[at:at] = [f"- (fight detail) {t}" for t in clusters[at]]
-            settled = "\n".join(rows) or "- (nothing happened)"
-            if open_:
-                settled += "\n\nStill open:\n" + "\n".join(f"- {e}" for e in open_)
-            if len(segments) > 1:
-                ends = "It is the end of the session." if k == len(segments) - 1 else "The session goes on after it."
-                settled = f"This log is part {k + 1} of {len(segments)} of the session. {ends} Write 3 to 6 scenes.\n\n{settled}"
-            reply = self.llm.json(NOTE_SYSTEM, settled, NOTE_SCHEMA)
-            scenes = [s for s in _lines(reply.get("scenes"), MAX_ITEMS) if isinstance(s, str)]
-            reached = _reached(scenes, happened)
-            if reached >= 0 and len(happened) - reached - 1 >= ENDING_LINES:
-                # The note ran out of scenes partway (stopped at the creature on the dune, before the fight and
-                # the ending): write the rest from the log lines it never got to.
-                rest = "\n".join(f"- {e}" for e in happened[reached + 1 :])
-                more = self.llm.json(
-                    NOTE_SYSTEM,
-                    f"Scenes so far (do not repeat):\n{chr(10).join(scenes)}\n\nThe rest of the log:\n{rest}",
-                    NOTE_SCHEMA,
-                )
-                scenes += [s for s in _lines(more.get("scenes"), MAX_ITEMS) if isinstance(s, str)]
-                reply["scenes"] = scenes = list(dict.fromkeys(scenes))
-            if len(scenes) > NOTE_MAX:
-                # Spreading 42 scenes down to 16 dropped whole events (the mallet, the long rest); merging keeps them.
-                merged = self.llm.json(MERGE_SYSTEM, "\n".join(f"- {s}" for s in scenes), MERGE_SCHEMA, 3000)
-                raw = [s for s in merged.get("scenes") or [] if isinstance(s, str)]
-                fewer = [s for s in _lines(raw, MAX_ITEMS) if _grounded(s, "\n".join(scenes))]
-                # A merge that crams the rest of the session into one scene would be cut off at the length cap.
-                whole = all(len(s) <= CLAIM_TEXT_MAX for s in raw)
-                # A "merge" that returns the first scenes and drops the rest would lose the ending again.
-                keeps_end = _reached(fewer, happened) >= _reached(scenes, happened) - ENDING_LINES
-                if whole and keeps_end and NOTE_MAX // 2 <= len(fewer) <= NOTE_MAX:
-                    reply["scenes"] = fewer
-            details = [t for _, t in fights] + [p for p in summed.values() if p]
-            return (reply, *_note(reply, happened, open_, details))
-
-        if len(segments) == 1:
-            return note(0)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=VERIFY_WORKERS, thread_name_prefix="note") as pool:
-            notes = list(pool.map(note, range(len(segments))))
-        scenes = [s for _, sc, _, _ in notes for s in sc]
-        open_ = list(dict.fromkeys(o for _, _, op, _ in notes for o in op))
-        top = self.llm.json(TOP_SYSTEM, "\n".join(f"- {s}" for s in scenes), TOP_SCHEMA, 1500)
-        blob = "\n".join(scenes)
-        highlights = [h for h in _lines(top.get("highlights"), 6) if _grounded(h, blob) and not _play_by_play(h)]
-        summary = _text(top.get("summary"), 2000)
-        return {"title": top.get("title"), "summary": summary if _grounded(summary, blob) else ""}, scenes, open_[:8], highlights
-
-    def _play(self, texts: list[str], lines: list[str]) -> str:
-        """One sentence for a fight or a stretch of play from its blow-by-blow log lines, or "".
-
-        The log never says why a fight started or how badly someone was hurt when that was said minutes
-        later, in another part ("50 odd damage in six seconds", 15 minutes on). So the transcript window
-        runs from just before the play to PLAY_AFTER_S after it, and the damage and hit-point talk in it
-        is pulled out by pattern and handed over as numbers to use.
-        """
-        window = play_window(" ".join(texts), lines)
-        if not window:
-            return ""
-        said = play_numbers(window)
-        user = "Log lines (blow-by-blow):\n" + "\n".join(f"- {t}" for t in texts)
-        if said:
-            user += "\n\nDamage and hit points said at the table:\n" + "\n".join(f"- {n}" for n in said)
-        out = self.llm.json(PLAY_SYSTEM, f"{user}\n\nTranscript:\n{window}", PLAY_SCHEMA, 600)
-        sentence = _text(out.get("sentence"), CLAIM_TEXT_MAX)
-        if not sentence or len(out.get("sentence") or "") > CLAIM_TEXT_MAX:
-            return ""
-        return sentence if _grounded(sentence, "\n".join(texts) + "\n" + window) else ""
-
-    def _verify(
-        self, scenes: list[str], moments: list[tuple[str, str]], lines: list[str], scene_at: list[str] = ()
-    ) -> tuple[list[str], list[tuple[str, str]], bool]:
-        """Check each scene and moment against the transcript lines it came from; apply corrections.
-
-        The note is written from one-line log entries, never the transcript, so a wrong actor or count in
-        the log survives to the page. Each check is small and independent, so they run side by side. A
-        correction must still be grounded in its lines; "unsupported" keeps the sentence (the window
-        may simply be the wrong one), "fixed" replaces it.
-        """
-        glossary = glossary_brief(self.vault)
-        at = list(scene_at) + [""] * len(scenes)
-        # A scene with its own timestamp is checked against the minutes around it, not a word-matched guess.
-        jobs = [("scene", i, s, around(at[i], lines, BEAT_WINDOW_S) or evidence(s, lines)) for i, s in enumerate(scenes)]
-        jobs += [("moment", i, t, around(at, lines)) for i, (at, t) in enumerate(moments)]
-
-        def check(job):
-            _, _, sentence, excerpt = job
-            if not excerpt:
-                return job, {}
-            user = f"Glossary:\n{glossary}\n\nTranscript lines:\n{excerpt}\n\nSentence: {sentence}"
-            return job, self.llm.json(VERIFY_SYSTEM, user, VERIFY_SCHEMA, 1500)
-
-        scenes, moments = list(scenes), list(moments)
-        fixed = False
-        with concurrent.futures.ThreadPoolExecutor(max_workers=VERIFY_WORKERS, thread_name_prefix="verify") as pool:
-            for (kind, i, sentence, excerpt), out in pool.map(check, jobs):
-                if kind == "moment" and out.get("verdict") == "unsupported":
-                    # A moment is pinned to its own minute of transcript; if that minute doesn't show it, it's made up.
-                    moments[i] = None
-                    fixed = True
-                    continue
-                better = _text(out.get("sentence"), CLAIM_TEXT_MAX)
-                if out.get("verdict") != "fixed" or not better or better == sentence:
-                    continue
-                if not _grounded(better, f"{excerpt}\n{sentence}"):
-                    continue
-                fixed = True
-                if kind == "scene":
-                    scenes[i] = better
-                else:
-                    moments[i] = (moments[i][0], better)
-        return scenes, [m for m in moments if m is not None], fixed
+        return "\n".join(out)
 
     def _session_note(self, sid: str) -> Path | None:
         """A session's existing write-up (re-running one replaces it instead of adding another)."""
@@ -1671,23 +946,6 @@ def name_like(w: Word) -> bool:
         return False
     mid = w.cap_mid + w.low_mid
     return mid == 0 or w.cap_mid / mid >= 0.6
-
-
-def misspelling_hints(text: str, entities: list[Entity]) -> str:
-    """ "- Dallara, Dilara → Elara" lines: words in this text that look like a glossary name."""
-    words = [w for w in scan_words(text.splitlines()).values() if name_like(w)]
-    rows = []
-    for e in entities:
-        names = {norm(n) for n in e.names()}
-        heard = {norm(h) for h in e.heard_as}
-        seen = [
-            w
-            for w in sorted(words, key=lambda w: -w.count)
-            if norm(w.spelling) not in names and (norm(w.spelling) in heard or any(looks_like(w.spelling, n) for n in e.names()))
-        ]
-        if seen:
-            rows.append(f"- {', '.join(w.spelling for w in seen[:8])} → {e.name}")
-    return "\n".join(rows)
 
 
 def skeleton(word: str) -> str:

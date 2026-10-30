@@ -241,20 +241,18 @@ re-reads notes when their file changes (edits in Obsidian count).
   `heard_as_suggested` / `heard_as_rejected`, `status` (confirmed | suggested), `tags`.
   Body: description, `## Facts`, `## Suggested facts`. Other keys, tags and sections are
   kept verbatim; a note whose frontmatter doesn't parse is read-only, never rewritten.
-- `Sessions/<date> <title>.md` (summary, highlights, timestamped events with [[links]])
+- `Sessions/<date> <title>.md` (Last time, spotlight, highlights, timestamped beats, people, places,
+  loot, still open, with [[links]])
   + `Sessions/Transcripts/<id>.md`; `Notes/` (pasted notes, verbatim); `Facts.md`;
   `Glossary.md` (generated index); `README.md` (written once, explains the layout).
 - **Import notes** (`POST /api/campaign/import`): chunks of ~6 k chars → the memory LLM
   (JSON schema) → entities + facts merged in (by name, alias or heard-as). The user's
   notes confirm suggested entries and replace their AI descriptions.
-- **Write up** (`POST /api/campaign/writeup/{id}`): ~15 min transcript parts → events
-  (with the time of their line), lasting facts, new names, misspellings → session page +
-  *suggestions* to review. Guards, all added after reading real output: hints listing
-  transcript words that look like known names (so "Dallara" isn't a new NPC); a "new"
-  name that sounds like a known one becomes a spelling suggestion; duplicate new names
-  fold together; descriptions and lists aren't names; at most 5 facts and 8 names per
-  part and 30 facts per write-up; fleeting facts (hit points, "currently") dropped;
-  table jokes aren't events; a misspelling must occur in the transcript.
+- **Write up** (`POST /api/campaign/writeup/{id}`): see "Session write-ups" below; the page plus
+  *suggestions* to review (new names, lasting facts, misheard spellings). Guards: a "new" name that sounds
+  like a known one becomes a spelling suggestion; duplicate new names fold together; descriptions and lists
+  aren't names; at most 30 facts per write-up; fleeting facts (hit points, "currently") dropped; a
+  misspelling must occur in the transcript.
 - **Spelling suggestions** (no LLM): transcript words that look or sound like a name
   (sequence ratio, or a crude sound key: Cassia/Kessia, Dilara/Elara), and frequent
   unknown names. A word counts as name-like only if it's capitalised mid-sentence and
@@ -283,46 +281,56 @@ re-reads notes when their file changes (edits in Obsidian count).
 `Memory._write_up` turns a saved transcript into a session page. Read this before changing it: most
 of what is here fixed a measured failure, and several obvious-looking changes were tried and lost.
 
-**Pipeline** (`memory.py`), all calls JSON-schema, temperature 0:
+**Pipeline** (`writeup.py`, called by `Memory._write_up`), all calls JSON-schema, temperature 0:
 1. **Input**: `transcript_lines` labels every line from the session's roster: `GM <name>` (or
    `GM <name> voicing <NPC>`), `<Character> (played by <player>)`, `Unknown voice`; a short cast list
    goes in every prompt. The roster, not per-line tags: the app tags a few GM lines with an NPC, and a
    line-count guess made the GM a player. `apply_heard_as` replaces confirmed misheard spellings before
    any model reads them (a hint alone left the misheard word in the page). The glossary brief carries
    each entry's description, so "Delara" reads as an NPC, not a misspelling of Elara.
-2. **Pass A, the log** (one call per ~12k-char part, in order): `did / open / aside / retracted /
-   corrected` lines, facts, new names, spellings. Each part also gets the last 15 logged lines ("story
-   so far"), so a part that starts mid-scene knows who is who (incremental summarization).
-3. **Pass B, table moments** (one call per part, run beside pass A since it needs no story so far):
-   nat 20s/1s, crits, big damage, knockouts, and whatever set the table off at a *loud moment*.
-   `hot_spots` finds those by code: reactions ("No!", "oh my god", laughter), several speakers, louder
-   than the session's median `level_db`, many short lines, per 30 s. A moment must sit at a real
-   timestamp of its part, and name a roll/number/knockout or fall in a loud stretch.
-4. **Plays**: blow-by-blow combat lines (`_play_by_play`) never reach the page, but they are kept in
-   place. Each cluster gets `_play`: a deterministic transcript window from 2 min before to 20 min after
-   (`play_window`) plus every damage number and knockout said in it (`play_numbers`, regex), and one
-   call writes one sentence: who fought whom, who struck first, why, standout damage, how it ended.
-   Motive and damage were said minutes later in another part ("50 odd damage in six seconds"), so no
-   per-part call could see them.
-5. **Note**: one call turns the log (with `(play)` lines in place) into scenes, still-open items and a
-   one- or two-sentence summary. Code then checks coverage: `_reached` walks the scenes forward against
-   the log; if they stop before the last 20%, a second call writes the rest. Too many scenes go to a
-   merge call (refused if it crams scenes past the length cap), never a prefix cut. Notes are split
-   into segments only past 16 parts (~4 h).
-6. **Verify** (chain-of-verification): each scene is checked against its best transcript windows
-   (`evidence`, up to two 40-line windows by shared content words) and each moment against ±60 s
-   (`around`); a grounded "fixed" replaces it, an unsupported moment is dropped.
+2. **Read** (one call over the whole transcript, thinking on): notes = 20-35 timestamped beats from the first
+   scene to the last, what each player character did, people (with npc/creature/faction), places, loot and
+   deals, still open, the ending, and misheard spellings of glossary names. Rules learned from errors: rolls
+   and damage are not beats unless they decided something; who did what is copied from the transcript; no
+   "how" the transcript doesn't say; a player's joke name isn't a name until the GM uses it.
+3. **Write** (one call that sees only the notes, thinking off, plus the made-up example page
+   `writeup_example.md` for style and level of detail): title, "Last time" wrap-up (350-550 words, past
+   tense, every turn of the session in order, the ending, what they carry forward), a spotlight per player
+   character, 4-8 highlights.
+4. **Glossary suggestions**: people and places the glossary lacks become suggested entries (a sound-alike of a
+   known name, or of an earlier new one, becomes a heard-as suggestion instead); lasting facts come from one
+   more call over the notes (fleeting ones dropped, at most 30); spellings must occur in the transcript.
+5. **Page**: Last time, Spotlight, Highlights, What happened (the beats), People and creatures met, Places,
+   Loot, Still open (a thread the beats already tell, or a plan, is dropped), Mentioned, Transcript. Read
+   aloud reads Last time, Spotlight and Still open.
 
-**How it is measured.** `spike/writeup_compare.py SID model[@reasoning] …` writes each model's page and
-every prompt/reply to `/tmp/writeup_compare/` from a scratch copy of the vault (`WU_CHUNK`, `WU_TAG`
-knobs). Grading was first holistic (a strong model with a rubric: ±4 points of noise between identical
-pipelines), then atomic: ~40 weighted facts from the players' own notes and a list of known errors,
-scored as recall of the weighted facts plus precision (each repeated known error or unsupported claim
-costs points). The gold set is campaign-private and is not committed; build one per test session from
-the players' corrections of a generated page. Runs at temperature 0 are reproducible (two identical
-runs gave byte-identical pages) unless other requests share the GPU.
+**How it is measured** (`spike/writeup_lab.py`, `spike/writeup_score.py`, `spike/WRITEUP_BENCHMARK.md`):
+four gold pages written by a strong model from the full transcripts and checked by the table (two sessions
+of each campaign; private, in `backend/local/gold/`), each with 39-48 weighted facts and known traps. The
+judge is the local model, but every fact it credits needs a quote found on the page, every error a quote
+from the gold page and a second "can both be true?" look. Score /100 = 50 x weighted fact recall in the
+story (Last time + What happened) + 20 x recall in Last time alone + 10 x recall anywhere + (20 - 1.5 per
+error). A gold page scored against itself gets ~74 (the judge misses ~13% of facts that are there). MTPLX
+at temperature 0 is deterministic (a re-run matched to the decimal), but prompt changes move single
+sessions a lot: trust a change only at +3 mean and 3 of 4 sessions.
 
-**Findings on a real 2.4 h session** (holistic 40-point scale unless noted):
+**Findings on the four gold sessions** (Qwen3.8-27B on MTPLX, 2026-10-30):
+- The old pipeline (part-by-part log, moments, plays, note, verify) scored 34 in 27 min per session, with a
+  two-sentence summary. Read whole -> notes -> write page: 50 in ~5 min. Thinking while reading: 55-57
+  (thinking costs ~1.1k tokens a call). A thinking writer wrote 153-word wrap-ups; the writer stays fast.
+- Checking each beat against its own minutes of transcript (CoVe-style) made a page worse (50.5 -> 35.4):
+  the window loses who is who, strips names the transcript mishears ("Magenta" -> "an old lady") and even
+  moved a spell to the wrong caster. Same finding as the old verify pass.
+- Reading in 14 chunks with the notes so far: more beats and story recall (0.60), but twice the errors and a
+  weak wrap-up.
+- Errors (7-10 a page) start in the notes and appear twice (wrap-up and beats): who-did-what between a
+  player's character and the NPC the same player voices, a joke name taken as real, counts said before an
+  event, invented causes or endings ("they long rested"). Research agrees: LLM dialogue summaries add
+  plausible unstated inferences (Ramprasad et al., ACL 2024, arXiv:2406.03487); LLM judges overlook errors
+  (TofuEval, NAACL 2024; FABLES, arXiv:2404.01261).
+
+**Older findings** (one 2.4 h session, holistic 40-point scale unless noted; the pipeline they measured is
+gone, the lessons about models still hold):
 - Model: swift-qwen3.8-27b 27, gemma-4-31b 24, qwen3.8-27b 22, qwen3.6-35b-a3b 20, gemma-4-26b-a4b 18,
   gpt-oss-120b 11, laguna-xs 7, gpt-oss-20b 7 (empty), nemotron-3-super timed out. Swift takes ~10 min
   per session alone vs gemma's ~2.
@@ -377,17 +385,15 @@ runs gave byte-identical pages) unless other requests share the GPU.
   match the transcript); candidate "try harder" mode, together with a second pass offset by half a
   part so no scene straddles a part boundary.
 
-**Next steps** (best first; benchmark each with `spike/writeup_oneshot.py` and the gold set, see
-`spike/WRITEUP_BENCHMARK.md`):
-1. Make the plain whole-session call the write-up's page step (drop the moments pass, plays and verify from
-   the page; keep pass A for glossary facts, names and spellings). It beat the hybrid 20.9 vs 15.6.
-2. Default model: try `qwen/qwen3.8-27b` (base) over Swift on a second session before switching; offer
-   Flash-Next as the "best local" choice for machines with 96 GB+ free.
-3. Opt-in hosted write-ups: done, see **Hosted language models** below (Sonnet via OpenRouter measured
-   +4–8 points, ~40 s, but the transcript leaves the Mac, so it is the user's explicit choice).
-4. Learn from edits: diff a session page the user corrects against what was generated; turn changed names
+**Next steps** (best first; see `backend/local/writeup_lab/FABLE_PLAN.md` for the evidence):
+1. Last time written per third of the session (three short calls), so a wrap-up can't stop early; the
+   last paragraph ends at the notes' ending.
+2. A no-inference rule in reading and writing; numbers only when stated after the event.
+3. Importance-tagged beats: every key beat must reach the wrap-up.
+4. A per-player "also voices" note in the cast (the Elara/Delara errors).
+5. A small dedicated fact checker (MiniCheck, EMNLP 2024, arXiv:2404.10774) as an offline judge first.
+6. Learn from edits: diff a session page the user corrects against what was generated; turn changed names
    into heard-as spellings and changed claims into facts the next write-up is given.
-5. A second gold session before trusting any change smaller than ~3 points.
 
 
 ## Voice clones (say things, read write-ups aloud)

@@ -8,42 +8,36 @@ import pytest
 from conftest import RecordingBus
 
 from troubadour import memory as mem
+from troubadour import writeup
 from troubadour.campaign import Vault
 from troubadour.transcript import build
 
 
 class FakeLLM:
-    """Answers by prompt type, in order; records every call."""
+    """Answers by prompt, in order; records every call and whether it asked the model to think."""
 
-    def __init__(self, notes=(), writeups=(), summary=None, facts=(), moments=()):
-        self.notes, self.writeups, self.facts, self.moments = list(notes), list(writeups), list(facts), list(moments)
-        self.summary = summary or {
-            "title": "The Desert Road",
-            "summary": "Elara led the way.",
-            "highlights": ["Elara found the cave."],
-        }
+    def __init__(self, notes=(), facts=(), read=None, page=None, found=None):
+        self.notes, self.facts = list(notes), list(facts)
+        self.read = read if read is not None else {"beats": [{"at": "00:05", "text": "The party found a cave near Dallon."}]}
+        self.page = page or {"title": "The Desert Road", "last_time": "Elara led the way.", "spotlight": [], "highlights": []}
+        self.found = found or {"facts": []}  # lasting facts the write-up suggests
         self.calls: list[str] = []
-        self.moment_calls: list[str] = []  # pass B, kept apart so calls[-1] is still the note
-        self.one_shot_calls: list[str] = []
-        self.one_shot: dict = {}
+        self.thought: dict[str, bool] = {}
 
-    def json(self, system, user, schema, max_tokens=4000):
-        if system is mem.MOMENTS_SYSTEM:
-            self.moment_calls.append(user)
-            return self.moments.pop(0) if self.moments else {"moments": []}
-        if system is mem.ONE_SHOT_SYSTEM:  # no timeline: these tests exercise the log-based note
-            self.one_shot_calls.append(user)
-            return self.one_shot
-        if system in (mem.PLAY_SYSTEM, mem.VERIFY_SYSTEM):
-            return {}
+    def json(self, system, user, schema, max_tokens=4000, think=False):
         self.calls.append(user)
+        self.thought[system[:40]] = think
         if system is mem.NOTES_SYSTEM:
             return self.notes.pop(0) if self.notes else {}
         if system is mem.FACT_SYSTEM:
             return self.facts.pop(0) if self.facts else {"facts": []}
-        if system is mem.WRITEUP_SYSTEM:
-            return self.writeups.pop(0) if self.writeups else {}
-        return self.summary
+        if system is writeup.READ_SYSTEM:
+            return self.read
+        if system is writeup.WRITE_SYSTEM:
+            return self.page
+        if system is writeup.FACTS_SYSTEM:
+            return self.found
+        raise AssertionError(f"unexpected prompt: {system[:60]}")
 
 
 KNOWN = [("Elara", "pc", "Played by Theo."), ("DM", "pc", "Played by Nora.")]  # "DM" is never an entry
@@ -187,126 +181,166 @@ def _session(sessions, sid="2026-10-08_193401-eebf", lines=None):
     return sid
 
 
-def test_write_up_makes_a_session_page_and_suggestions(setup):
+def _page(vault) -> str:
+    (path,) = (vault.root / "Sessions").glob("*.md")
+    return path.read_text()
+
+
+def _section(vault, heading: str) -> list[str]:
+    return _page(vault).split(f"## {heading}\n", 1)[1].split("\n\n", 1)[0].splitlines()
+
+
+def test_write_up_reads_the_session_then_writes_the_page_from_the_notes(setup):
     vault, sessions, make = setup
     vault.create("Magenta", "npc")
     sid = _session(sessions)
     llm = FakeLLM(
-        writeups=[
-            {
-                "claims": [
-                    {"at": "00:00", "text": "Elara rolled initiative.", "status": "happened", "fixes": ""},
-                    {"at": "99:99", "text": "The party found a cave near Dallon.", "status": "happened", "fixes": ""},
-                    {"at": "00:05", "text": "They assassinate her.", "status": "joke", "fixes": ""},
-                ],
-                "facts": [{"about": "Magenta", "text": "Waved at the party from the road."}, {"about": "Nobody", "text": "x"}],
-                "new_names": [
-                    {"name": "Dallon", "type": "place", "description": "A town."},
-                    {"name": "Magenta", "type": "npc", "description": "dup"},
-                ],
-                "spellings": [
-                    {"heard": "Dilara", "means": "Elara"},
-                    {"heard": "Magento", "means": "Magenta"},
-                    {"heard": "Ellarina", "means": "Elara"},  # not in the transcript: refused
-                    {"heard": "Dallon", "means": "Magenta"},  # in the transcript, but nothing like Magenta: refused
-                ],
-            }
-        ]
+        read={
+            "beats": [
+                {"at": "00:05", "text": "The party found a cave near Dallon."},
+                {"at": "99:99", "text": "Magenta waved them on."},  # a timestamp the transcript doesn't have
+                {"at": "00:10", "text": "  "},
+                "not a beat",
+            ],
+            "characters": [{"name": "Elara", "what": "Led the way."}],
+            "people": [{"name": "Magenta", "kind": "npc", "what": "A guide."}, {"name": "the party", "kind": "npc", "what": "x"}],
+            "places": [{"name": "Dallon", "what": "A desert town with a cave."}],
+            "loot": ["A cracked lantern, carried by Elara."],
+            "open": ["The cave is unexplored.", "Elara plans to go back tomorrow."],
+            "ending": "They camped outside the cave.",
+            "spellings": [],
+        },
+        page={
+            "title": "The Desert Road",
+            "last_time": "Elara led the way to Dallon.\n\nMagenta waved them on.",
+            "spotlight": [{"name": "Elara", "what": "Led the way."}],
+            "highlights": [{"at": "00:05", "text": "Finding the cave."}, {"at": "7:77", "text": "Magenta waving."}],
+        },
     )
     job = make(llm).write_up(sid)
     wait(job)
-    page = (vault.root / "Sessions" / "2026-10-08 The Desert Road.md").read_text()
+    page = _page(vault)
     assert f"session_id: {sid}" in page
-    assert "[[Elara]] led the way." in page
-    assert "rolled initiative" not in page  # a check is not the session
-    assert "- The party found a cave near [[Dallon]]." in page
-    assert "assassinate" not in page  # a joke is not the session
+    assert "## Last time\n[[Elara]] led the way to [[Dallon]].\n\n[[Magenta]] waved them on.\n" in page
+    assert _section(vault, "Spotlight") == ["- **Elara:** Led the way."]
+    assert _section(vault, "Highlights") == ["- [00:05] Finding the cave.", "- [[Magenta]] waving."]
+    assert _section(vault, "What happened") == [
+        "- [00:05] The party found a cave near [[Dallon]].",
+        "- [[Magenta]] waved them on.",
+    ]
+    assert _section(vault, "Places") == ["- **Dallon:** A desert town with a cave."]
+    assert _section(vault, "Loot, money and deals") == ["- A cracked lantern, carried by [[Elara]]."]
+    assert _section(vault, "Still open") == ["- The cave is unexplored."]  # a plan is not an open thread
+    assert _section(vault, "Mentioned") == ["[[Dallon]], [[Elara]], [[Magenta]]"]
     assert f"[[Transcripts/{sid}|Full transcript]]" in page
     assert (vault.root / "Sessions" / "Transcripts" / f"{sid}.md").exists()
-    dallon = vault.get("Dallon")
-    assert dallon.status == "suggested"
-    assert vault.get("Magenta").suggested_facts == ["Waved at the party from the road. ([[2026-10-08 The Desert Road]])"]
-    assert vault.get("Elara").heard_as_suggested == ["Dilara"]
-    assert vault.get("Magenta").heard_as_suggested == ["Magento"]
     assert job.note == "Sessions/2026-10-08 The Desert Road.md"
+    assert vault.get("Dallon").status == "suggested"
+    assert vault.get("Dallon").type == "place"
+    assert vault.find("the party") is None
+    assert job.created == ["Dallon"]
+    read, write, _ = llm.calls
+    assert "Transcript:\n00:00 Elara (played by Theo): Dilara, three." in read
+    assert "Transcript" not in write  # the page comes from the notes, never the transcript
+    assert "Mudge" in write  # the style example
+    assert "- [00:05] The party found a cave near Dallon." in write
+    assert llm.thought[writeup.READ_SYSTEM[:40]] is True
+    assert llm.thought[writeup.WRITE_SYSTEM[:40]] is False
 
 
-def test_what_happened_caps_beats_per_part_with_room_for_the_ending(setup, monkeypatch):
+def test_empty_notes_fail_the_job_and_write_nothing(setup):
     vault, sessions, make = setup
-    monkeypatch.setattr(mem, "TRANSCRIPT_CHUNK_CHARS", 60)  # one line per part
     sid = _session(sessions)
-    beats = [{"at": "00:00", "text": "  ", "status": "happened"}] + [
-        {"at": "00:05", "text": f"Beat {i}.", "status": "happened"} for i in range(1, 20)
-    ]
-    llm = FakeLLM(writeups=[{"claims": beats}] * 20)
-    wait(make(llm).write_up(sid))
-    parts = sum("Transcript:\n" in c for c in llm.calls)
-    assert parts > 1
-    happened = _what_happened(vault)  # the page is a short note, not every claim
-    assert len(happened) == mem.NOTE_MAX
-    note = llm.calls[-1]
-    returned = 19  # blank claim dropped; Beat 1..19
-    assert sum(line.startswith("- ") for line in note.splitlines()) == (
-        min(returned, mem.PART_CLAIMS) * (parts - 1) + min(returned, mem.FINAL_PART_CLAIMS)
-    )
-    assert "rolled initiative" in mem.WRITEUP_SYSTEM  # the prompt shows what not to write
+    job = make(FakeLLM(read={})).write_up(sid)
+    deadline = time.monotonic() + 5
+    while job.state in ("queued", "running") and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert job.state == "error"
+    assert "came back empty" in job.message
+    assert not (vault.root / "Sessions").exists() or not list((vault.root / "Sessions").glob("*.md"))
 
 
-def _section(vault, heading: str) -> list[str]:
-    page = (vault.root / "Sessions" / "2026-10-08 The Desert Road.md").read_text()
-    return page.split(f"## {heading}\n", 1)[1].split("\n\n", 1)[0].splitlines()
-
-
-def _what_happened(vault) -> list[str]:
-    return _section(vault, "What happened")
-
-
-def _still_open(vault) -> list[str]:
-    return _section(vault, "Still open")
-
-
-def test_a_joke_and_a_retraction_never_become_the_session(setup):
+def test_write_up_suggests_spellings_found_in_the_transcript(setup):
     vault, sessions, make = setup
     vault.create("Magenta", "npc")
     sid = _session(sessions)
-    claims = [
-        {"text": "Magenta died.", "status": "happened", "fixes": ""},
-        {"text": "They assassinate her.", "status": "joke", "fixes": ""},
-        {"text": "Magenta died.", "status": "retracted", "fixes": "Magenta died"},
-        {"text": "Magenta slumped to about one hit point; she did not die.", "status": "corrected", "fixes": "Magenta died"},
-        {"text": "Lumberg's letter is still undelivered.", "status": "open", "fixes": ""},
-    ]
-    llm = FakeLLM(writeups=[{"claims": claims}])
-    wait(make(llm).write_up(sid))
-    summary_call = llm.calls[-1]
-    assert "They assassinate her." not in summary_call
-    assert "Magenta died." not in summary_call
-    assert "she did not die" in summary_call
-    assert "Still open:" in summary_call
-    page = (vault.root / "Sessions" / "2026-10-08 The Desert Road.md").read_text()
-    assert "assassinate" not in page
-    assert "Magenta died." not in page
-    assert "- [[Magenta]] slumped to about one hit point; she did not die." in _what_happened(vault)
-    assert _still_open(vault) == ["- Lumberg's letter is still undelivered."]
-
-
-def test_write_up_again_replaces_the_page_and_respects_rejections(setup):
-    vault, sessions, make = setup
-    sid = _session(sessions)
-    spelling = {
-        "claims": [{"at": "00:05", "text": "x", "status": "happened"}],
-        "facts": [],
-        "new_names": [],
-        "spellings": [{"heard": "Dilara", "means": "Elara"}],
+    read = {
+        "beats": [{"at": "00:05", "text": "x"}],
+        "spellings": [
+            {"heard": "Dilara", "means": "Elara"},
+            {"heard": "Magento", "means": "Magenta"},
+            {"heard": "Ellarina", "means": "Elara"},  # not in the transcript: refused
+            {"heard": "Dallon", "means": "Magenta"},  # in the transcript, but nothing like Magenta: refused
+        ],
     }
-    m = make(FakeLLM(writeups=[dict(spelling), dict(spelling)]))
+    m = make(FakeLLM(read=read))
     wait(m.write_up(sid))
-    vault.update("Elara", heard_as_rejected=["Dilara"])
-    assert vault.get("Elara").heard_as_suggested == []
+    assert vault.get("Elara").heard_as_suggested == ["Dilara"]
+    assert vault.get("Magenta").heard_as_suggested == ["Magento"]
+    vault.update("Elara", heard_as_rejected=["Dilara"], heard_as_suggested=[])
     wait(m.write_up(sid))
     assert vault.get("Elara").heard_as_suggested == []  # rejected stays rejected
-    assert len(list((vault.root / "Sessions").glob("*.md"))) == 1
+    assert len(list((vault.root / "Sessions").glob("*.md"))) == 1  # a re-run replaces the page
     assert m.written_up() == {sid: "Sessions/2026-10-08 The Desert Road.md"}
+
+
+def test_write_up_turns_sound_alike_new_names_into_spellings(setup):
+    vault, sessions, make = setup
+    sid = _session(
+        sessions, lines=["Dallara attacks.", "Willie Olly Wally waves.", "Willy Olly Wally again.", "Willie Ollie Wally."]
+    )
+    people = [
+        {"name": "Dallara", "kind": "npc", "what": "An NPC."},  # really Elara
+        {"name": "Willie Olly Wally", "kind": "creature", "what": "Three-headed guide."},
+        {"name": "Willy Olly Wally", "kind": "npc", "what": "dup"},
+    ]
+    wait(make(FakeLLM(read={"beats": [{"at": "00:05", "text": "x"}], "people": people})).write_up(sid))
+    assert {e.name for e in vault.entities()} == {"Elara", "Willie Olly Wally"}
+    assert vault.get("Willie Olly Wally").type == "creature"
+    assert vault.get("Elara").heard_as_suggested == ["Dallara"]
+    assert vault.get("Willie Olly Wally").heard_as_suggested == ["Willy Olly Wally"]
+
+
+def test_write_up_suggests_lasting_facts_only(setup, monkeypatch):
+    vault, sessions, make = setup
+    monkeypatch.setattr(mem, "MAX_SUGGESTED_FACTS", 3)
+    sid = _session(sessions)
+    facts = [{"about": "Elara", "text": "Elara has one hit point."}, {"about": "Nobody", "text": "Nobody is here."}]
+    facts += [
+        {"about": "Elara", "text": f"Elara {x}."}
+        for x in ("owns a grey owl", "fears deep water", "reads Elvish", "keeps a journal")
+    ]
+    llm = FakeLLM(found={"facts": facts})
+    wait(make(llm).write_up(sid))
+    assert vault.get("Elara").suggested_facts == [
+        "Elara owns a grey owl. ([[2026-10-08 The Desert Road]])",
+        "Elara fears deep water. ([[2026-10-08 The Desert Road]])",
+        "Elara reads Elvish. ([[2026-10-08 The Desert Road]])",
+    ]
+    assert "Beats:\n- [00:05] The party found a cave near Dallon." in llm.calls[2]  # facts come from the notes
+
+
+def test_a_rewrite_keeps_the_page_name(setup):
+    vault, sessions, make = setup
+    sid = _session(sessions)
+    m = make(FakeLLM())
+    wait(m.write_up(sid))
+    m.llm.page = {"title": "A New Title", "last_time": "x", "spotlight": [], "highlights": []}
+    wait(m.write_up(sid))
+    (page,) = (vault.root / "Sessions").glob("*.md")
+    assert page.stem == "2026-10-08 The Desert Road"
+    assert page.read_text().count("# 2026-10-08 The Desert Road") == 1
+
+
+def test_an_open_thread_the_story_already_tells_is_dropped(setup):
+    vault, sessions, make = setup
+    sid = _session(sessions)
+    read = {
+        "beats": [{"at": "00:05", "text": "A rider on a pink horse tossed Sathrin two hundred gold pieces and rode away."}],
+        "open": ["The rider on the pink horse tossed gold and rode away.", "Smiley still wants the treasure hunters dead."],
+    }
+    wait(make(FakeLLM(read=read)).write_up(sid))
+    assert _section(vault, "Still open") == ["- Smiley still wants the treasure hunters dead."]
 
 
 def test_write_up_unknown_session(setup):
@@ -316,40 +350,6 @@ def test_write_up_unknown_session(setup):
 
 
 # ------------------------------------------------------------- helpers
-
-
-def test_the_page_is_the_recap_not_the_claim_list(setup):
-    vault, sessions, make = setup
-    sid = _session(sessions)
-    claims = [
-        {"text": "The party rolled initiative.", "status": "happened"},
-        {"text": "Sathrin attacked the worm, dealing 8 damage.", "status": "happened"},
-        {"text": "Elara found a dead autognome beside the wagon.", "status": "happened"},
-        {"text": "Sathrin plans to travel north tomorrow.", "status": "open"},
-        {"text": "The letter to Lumberg is still undelivered.", "status": "open"},
-    ]
-    note = {
-        "title": "The Desert Road",
-        "summary": "Elara found a dead autognome beside the wagon.",
-        "scenes": [
-            "Elara found a dead autognome beside the wagon.",
-            "A mephit animated a dune of bone cactus.",  # not in the claims
-        ],
-        "open": ["Sathrin plans to travel north tomorrow.", "The letter to Lumberg is still undelivered."],
-        "highlights": [
-            "Elara found a dead autognome beside the wagon.",
-            "Sathrin attacked the worm, dealing 8 damage.",
-        ],
-    }
-    wait(make(FakeLLM(writeups=[{"claims": claims}], summary=note)).write_up(sid))
-    assert _what_happened(vault) == ["- [[Elara]] found a dead autognome beside the wagon."]
-    assert _still_open(vault) == ["- The letter to Lumberg is still undelivered."]
-    page = (vault.root / "Sessions" / "2026-10-08 The Desert Road.md").read_text()
-    assert "initiative" not in page
-    assert "8 damage" not in page
-    assert "bone cactus" not in page
-    assert "plans to travel" not in page
-    assert page.split("## Highlights\n", 1)[1].split("\n\n", 1)[0] == ("- [[Elara]] found a dead autognome beside the wagon.")
 
 
 def test_an_everyday_alias_does_not_eat_the_word(tmp_path):
@@ -416,65 +416,6 @@ def test_name_filter(raw, ok):
     assert bool(mem._name(raw)) is ok
 
 
-def test_misspelling_hints():
-    from troubadour.campaign import Entity
-
-    hints = mem.misspelling_hints(
-        "Dallara, three. Dilara four. Dallara again. Water is Augie for.", [Entity("Elara"), Entity("Auggie")]
-    )
-    assert hints == "- Dallara, Dilara → Elara\n- Augie → Auggie"
-
-
-def test_write_up_turns_sound_alike_new_names_into_spellings(setup):
-    vault, sessions, make = setup
-    sid = _session(
-        sessions, lines=["Dallara attacks.", "Willie Olly Wally waves.", "Willy Olly Wally again.", "Willie Ollie Wally."]
-    )
-    llm = FakeLLM(
-        writeups=[
-            {
-                "events": [],
-                "facts": [],
-                "new_names": [
-                    {"name": "Dallara", "type": "npc", "description": "An NPC."},  # really Elara
-                    {"name": "Willie Olly Wally", "type": "npc", "description": "Three-headed guide."},
-                    {"name": "Willy Olly Wally", "type": "npc", "description": "dup"},
-                ],
-                "spellings": [],
-            }
-        ]
-    )
-    wait(make(llm).write_up(sid))
-    names = {e.name for e in vault.entities()}
-    assert names == {"Elara", "Willie Olly Wally"}
-    assert vault.get("Elara").heard_as_suggested == ["Dallara"]
-    assert vault.get("Willie Olly Wally").heard_as_suggested == ["Willy Olly Wally"]
-    assert "Likely misspellings" in llm.calls[0]
-
-
-def test_write_up_caps_and_drops_fleeting_facts(setup):
-    vault, sessions, make = setup
-    sid = _session(sessions)
-    lasting = [
-        "owns a grey owl",
-        "fears deep water",
-        "was born in Dallon",
-        "sings off key",
-        "hates goblins",
-        "owes Cletus money",
-        "reads Elvish",
-        "lost a brother",
-        "keeps a journal",
-    ]
-    facts = [{"about": "Elara", "text": f"Elara {x}."} for x in lasting]
-    facts.insert(0, {"about": "Elara", "text": "Elara has one hit point."})
-    llm = FakeLLM(writeups=[{"events": [], "facts": facts, "new_names": [], "spellings": []}])
-    wait(make(llm).write_up(sid))
-    got = vault.get("Elara").suggested_facts
-    assert len(got) == mem.PART_FACTS
-    assert not any("hit point" in f for f in got)
-
-
 def test_word_scan_ignores_everyday_words_and_sentence_starts():
     words = mem.scan_words(
         ["Okay. We'll check the slots.", "Slots are full, said Olly.", "We met Olly and olly-ish folk.", "Zorbo!"]
@@ -519,18 +460,6 @@ def test_ignored_words_are_never_suggested(tmp_path):
     out = mem.spelling_suggestions(vault, sessions.iterdir())
     assert [u["heard"] for u in out["unknown"]] == ["Olly"]
     assert out["misheard"] == []
-
-
-def test_a_rewrite_keeps_the_page_name(setup):
-    vault, sessions, make = setup
-    sid = _session(sessions)
-    m = make(FakeLLM(writeups=[{"events": [], "facts": [], "new_names": [], "spellings": []}] * 2))
-    wait(m.write_up(sid))
-    m.llm.summary = {"title": "A New Title", "summary": "x", "highlights": []}
-    wait(m.write_up(sid))
-    (page,) = (vault.root / "Sessions").glob("*.md")
-    assert page.stem == "2026-10-08 The Desert Road"
-    assert page.read_text().count("# 2026-10-08 The Desert Road") == 1
 
 
 def test_unknown_names_skip_vocabulary_acronyms_and_fillers(tmp_path):
@@ -593,17 +522,6 @@ def test_an_lm_studio_error_says_why(monkeypatch):
         llm.json("s", "u", {})
 
 
-def test_only_the_last_part_is_told_it_ends_the_session(setup, monkeypatch):
-    vault, sessions, make = setup
-    monkeypatch.setattr(mem, "TRANSCRIPT_CHUNK_CHARS", 60)  # one line per part
-    sid = _session(sessions)
-    llm = FakeLLM()
-    wait(make(llm).write_up(sid))
-    parts = [c for c in llm.calls if "Transcript:\n" in c]
-    assert len(parts) > 1
-    assert [mem.SESSION_END in c for c in parts] == [False] * (len(parts) - 1) + [True]
-
-
 def test_a_spell_slot_is_not_a_fact():
     assert mem.fleeting("Elara has one third level spell slot remaining.")
     assert mem.fleeting("Magenta has one hit point.")
@@ -635,22 +553,6 @@ def test_look_for_facts_reads_transcripts_and_notes_and_skips_a_moment(setup, tm
     assert job.suggested == 2
 
 
-def test_settle_keeps_the_correction_and_drops_the_joke():
-    happened, open_ = mem._settle(
-        [
-            {"text": "Magenta died.", "status": "happened"},
-            {"text": "They assassinate her.", "status": "joke"},
-            {"text": "", "status": "happened"},
-            {"text": "taken back", "status": "retracted", "fixes": "died"},
-            {"text": "Magenta was at about one hit point.", "status": "corrected", "fixes": "died"},
-            {"text": "The eggs have about seven days.", "status": "open"},
-            {"text": "nope", "status": "imagined"},
-        ]
-    )
-    assert happened == ["Magenta was at about one hit point."]
-    assert open_ == ["The eggs have about seven days."]
-
-
 def test_transcript_lines_label_gm_characters_and_unknown_voices():
     players = [
         {"id": "g", "name": "Mika", "character": "DM", "is_gm": True},
@@ -677,140 +579,6 @@ def test_transcript_lines_label_gm_characters_and_unknown_voices():
     assert "Magenta is a player character" not in cast
 
 
-def test_later_parts_see_the_story_so_far(setup, monkeypatch):
-    vault, sessions, make = setup
-    monkeypatch.setattr(mem, "TRANSCRIPT_CHUNK_CHARS", 200)
-    sid = _session(sessions, lines=[f"line {i} " * 8 for i in range(6)])
-    prompts = []
-
-    class LLM:
-        def json(self, system, user, schema, max_tokens=4000):
-            if system is not mem.WRITEUP_SYSTEM:
-                return {}
-            prompts.append(user)
-            return {"log": [{"text": f"Beat {len(prompts)} happened.", "kind": "did", "fixes": ""}]}
-
-    m = make(LLM())
-    job = m.write_up(sid)
-    while job.state in ("queued", "running"):
-        time.sleep(0.01)
-    assert job.state == "done", job.message
-    assert "Story so far" not in prompts[0]
-    assert "- Beat 1 happened." in prompts[1]
-
-
-def test_fallback_scenes_span_the_whole_session():
-    happened = [f"Beat {i}." for i in range(40)]
-    scenes, _, _ = mem._note({}, happened, [])
-    assert len(scenes) == mem.NOTE_MAX
-    assert scenes[0] == "Beat 0."
-    assert scenes[-1] == "Beat 39."
-
-
-def test_a_fight_with_an_outcome_is_kept_but_a_lone_attack_is_not():
-    assert not mem._play_by_play(
-        "Sathrin and Auggie attacked the tomb tapper, which wanted Sathrin dead; Sathrin was badly hurt."
-    )
-    assert mem._play_by_play("Auggie attacks the goblin with his club.")
-
-
-def test_moments_need_a_real_timestamp_and_a_roll_or_a_loud_table():
-    part = "12:00 GM Mika: The tomb tapper swings.\n\n12:20 Sathrin (played by Jules): No! No!"
-    seen: set[str] = set()
-    got = mem._moments(
-        [
-            {"at": "12:00", "text": "Sathrin took 52 damage in one turn."},  # a number: kept
-            {"at": "12:20", "text": "Sathrin begged the tomb tapper for mercy."},  # loud stretch: kept
-            {"at": "12:00", "text": "Sathrin looked worried."},  # neither: dropped
-            {"at": "59:59", "text": "Elara rolled a natural 20."},  # not a line in this part: made up
-        ],
-        part,
-        [12 * 60 + 15.0],
-        seen,
-    )
-    assert got == [("12:00", "Sathrin took 52 damage in one turn."), ("12:20", "Sathrin begged the tomb tapper for mercy.")]
-
-
-def test_hot_spots_find_the_shouting():
-    calm = [{"t_start": float(t), "speaker": "A", "text": "We walk on.", "level_db": -35.0} for t in range(0, 600, 20)]
-    loud = [{"t_start": 300.0 + i, "speaker": s, "text": "No! Oh my god!", "level_db": -22.0} for i, s in enumerate("ABCD")]
-    msgs = sorted(calm + loud, key=lambda m: m["t_start"])
-    assert 290 <= mem.hot_spots(msgs, 1)[0] <= 303
-
-
-def test_write_up_page_lists_table_moments(setup):
-    vault, sessions, make = setup
-    sid = _session(sessions, lines=["The dragon bites.", "Elara drops to zero! No!", "We run."])
-    llm = FakeLLM(
-        writeups=[{"log": [{"text": "The party fled from the dragon.", "kind": "did", "fixes": ""}]}],
-        moments=[{"moments": [{"at": "00:05", "text": "Elara was knocked unconscious by the dragon."}]}],
-    )
-    m = make(llm)
-    job = m.write_up(sid)
-    while job.state in ("queued", "running"):
-        time.sleep(0.01)
-    assert job.state == "done", job.message
-    page = next((vault.root / "Sessions").glob("*.md")).read_text()
-    assert "## Table moments\n- 00:05 [[Elara]] was knocked unconscious by the dragon." in page
-    assert "## Highlights" not in page  # the moments take its place; highlights only repeat the scenes
-
-
-def test_fight_blows_reach_the_note_in_place_but_not_the_page():
-    fights: list[tuple[int, str]] = []
-    claims = [
-        {"text": "A tomb tapper rose from the dune.", "kind": "did", "fixes": ""},
-        {"text": "Sathrin attacked the tomb tapper with his hammer.", "kind": "did", "fixes": ""},
-        {"text": "The tomb tapper gave Elara a sending stone.", "kind": "did", "fixes": ""},
-    ]
-    happened, _ = mem._settle(claims, fights)
-    assert happened == ["A tomb tapper rose from the dune.", "The tomb tapper gave Elara a sending stone."]
-    assert fights == [(1, "Sathrin attacked the tomb tapper with his hammer.")]
-    scene = "Sathrin attacked the tomb tapper with his hammer and was badly hurt."
-    scenes, _, _ = mem._note({"scenes": [scene]}, happened, [], [t for _, t in fights])
-    assert scenes == [scene]  # grounded in the fight details
-
-
-def test_evidence_finds_where_a_scene_was_played():
-    lines = [f"0:{i:02d} GM Mika: The road goes on." for i in range(60)]
-    lines[45] = "0:45 GM Mika: The tomb tapper wants its mallet."
-    lines[47] = "0:47 Elara (played by Theo): I help it lift the mallet. Smiley pats me."
-    window = mem.evidence("Elara helped Smiley lift the tomb tapper's mallet.", lines, width=8)
-    assert "0:45" in window
-    assert "0:47" in window
-    assert mem.evidence("Kessia sang to the dragon.", lines, width=8) == ""
-
-
-def test_around_takes_a_minute_either_side():
-    lines = ["1:00 GM: a", "2:30 GM: b", "3:00 GM: c", "5:00 GM: d"]
-    assert mem.around("2:40", lines) == "2:30 GM: b\n3:00 GM: c"
-
-
-def test_verify_applies_a_grounded_fix_and_ignores_an_invented_one(setup):
-    vault, sessions, make = setup
-    lines = [
-        "1:57:30 GM Mika: Sathrin swings his hammer at the tomb tapper first.",
-        "1:57:40 GM Mika: The tomb tapper hits back.",
-    ]
-
-    class LLM:
-        def json(self, system, user, schema, max_tokens=4000):
-            if "attacked the party" in user:
-                return {"verdict": "fixed", "sentence": "Sathrin attacked the tomb tapper first, and the tomb tapper hit back."}
-            return {"verdict": "fixed", "sentence": "A purple dragon ate everyone at the wedding."}  # nothing like the lines
-
-    m = make(LLM())
-    scenes, _, fixed = m._verify(
-        ["The tomb tapper attacked the party, then Sathrin swung his hammer.", "Sathrin swung his hammer at the tomb tapper."],
-        [],
-        lines,
-    )
-    assert fixed
-    assert scenes == [
-        "Sathrin attacked the tomb tapper first, and the tomb tapper hit back.",
-        "Sathrin swung his hammer at the tomb tapper.",
-    ]
-
-
 def test_a_thinking_model_gets_room_for_its_reasoning(monkeypatch):
     sent = []
 
@@ -826,63 +594,6 @@ def test_a_thinking_model_gets_room_for_its_reasoning(monkeypatch):
     assert sent == [500, 500 + mem.REASONING_HEADROOM]
 
 
-def test_a_long_session_is_noted_in_segments_that_all_reach_the_page(setup, monkeypatch):
-    vault, sessions, make = setup
-    monkeypatch.setattr(mem, "TRANSCRIPT_CHUNK_CHARS", 60)  # one line per part
-    monkeypatch.setattr(mem, "NOTE_SEGMENT_PARTS", 2)
-    sid = _session(sessions, lines=[f"Line {i} of the night." for i in range(5)])  # 5 parts: segments of 2 and 3
-    notes = []
-
-    class LLM:
-        def json(self, system, user, schema, max_tokens=4000):
-            if system is mem.WRITEUP_SYSTEM:
-                n = user.count("Line ")  # which part this is, from its one transcript line
-                beat = user.split("Transcript:\n", 1)[1].split(": ", 1)[1].split(" of")[0]
-                return (
-                    {"log": [{"text": f"The party reached the {beat.lower()} marker stone.", "kind": "did", "fixes": ""}]}
-                    if n
-                    else {}
-                )
-            if system is mem.NOTE_SYSTEM:
-                notes.append(user)
-                marks = [line[2:] for line in user.splitlines() if line.startswith("- ")]
-                return {"title": "x", "summary": "x", "scenes": marks}
-            if system is mem.TOP_SYSTEM:
-                return {"title": "The Long Road", "summary": "The party reached the line 0 marker stone.", "highlights": []}
-            return {}
-
-    m = make(LLM())
-    job = m.write_up(sid)
-    while job.state in ("queued", "running"):
-        time.sleep(0.01)
-    assert job.state == "done", job.message
-    assert len(notes) == 2
-    assert any("part 1 of 2" in n and "goes on after it" in n for n in notes)
-    assert any("part 2 of 2" in n and "end of the session" in n for n in notes)
-    page = next((vault.root / "Sessions").glob("*.md")).read_text()
-    assert "line 0 marker" in page
-    assert "line 4 marker" in page  # the last segment's scenes reach the page too
-
-
-def test_verify_drops_a_moment_its_minute_does_not_show(setup):
-    vault, sessions, make = setup
-
-    class LLM:
-        def json(self, system, user, schema, max_tokens=4000):
-            return {"verdict": "unsupported", "sentence": ""}
-
-    m = make(LLM())
-    _, moments, _ = m._verify([], [("2:04:53", "The Shadow Lord grabbed Sathrin.")], ["2:04:53 GM Mika: It grabs Sathrin."])
-    assert moments == []
-
-
-def test_a_long_note_keeps_its_ending():
-    happened = [f"The party reached marker stone {i}." for i in range(30)]
-    scenes, _, _ = mem._note({"scenes": list(happened)}, happened, [])
-    assert len(scenes) == mem.NOTE_MAX
-    assert scenes[-1] == "The party reached marker stone 29."
-
-
 def test_confirmed_heard_as_spellings_are_fixed_before_the_model_reads(tmp_path):
     vault = Vault(tmp_path)
     vault.create("Phaerimm", "creature", heard_as=["Thayrin"])
@@ -893,15 +604,36 @@ def test_confirmed_heard_as_spellings_are_fixed_before_the_model_reads(tmp_path)
     assert out[1] == lines[1]  # speaker labels are left alone
 
 
-def test_evidence_joins_two_places_a_scene_spans():
-    lines = [f"0:{i:02d} GM: The road goes on." for i in range(100)]
-    lines[5] = "0:05 GM: You find a wagon with a smashed autognome."
-    lines[90] = "0:90 GM: You dig a grave and bury everyone near the cactus."
-    window = mem.evidence(
-        "They found a smashed autognome in a wagon, then dug a grave and buried them by the cactus.", lines, width=10
-    )
-    assert "smashed autognome" in window
-    assert "bury everyone" in window
+def test_think_turns_a_local_models_thinking_on_and_off(monkeypatch):
+    monkeypatch.setattr(mem.config, "MEMORY_REASONING", "none")
+    sent = []
+
+    def reply(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"a": 1}'}, "finish_reason": "stop"}]})
+
+    llm = _llm_with(reply)
+    llm.json("s", "u", {}, 500)
+    llm.json("s", "u", {}, 500, think=True)
+    off, on = sent
+    assert (off["chat_template_kwargs"], off["reasoning_effort"], off["max_tokens"]) == ({"enable_thinking": False}, "none", 500)
+    assert (on["chat_template_kwargs"], on["reasoning_effort"]) == ({"enable_thinking": True}, "medium")
+    assert on["max_tokens"] == 500 + mem.REASONING_HEADROOM
+
+
+def test_a_server_that_refuses_chat_template_kwargs_keeps_the_schema(monkeypatch):
+    sent = []
+
+    def reply(request):
+        body = json.loads(request.content)
+        sent.append(body)
+        if "chat_template_kwargs" in body:
+            return httpx.Response(400, json={"error": "unknown field chat_template_kwargs"})
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"a": 1}'}, "finish_reason": "stop"}]})
+
+    assert _llm_with(reply).json("s", "u", {}) == {"a": 1}
+    assert "response_format" in sent[-1]
+    assert "chat_template_kwargs" not in sent[-1]
 
 
 def test_a_server_hiccup_is_tried_again(monkeypatch):
@@ -912,240 +644,3 @@ def test_a_server_hiccup_is_tried_again(monkeypatch):
     ]
     llm = _llm_with(lambda request: replies.pop(0))
     assert llm.json("s", "u", {}) == {"ok": 1}
-
-
-def test_an_overlong_note_is_merged_not_cut(setup):
-    vault, sessions, make = setup
-    names = [f"Waystone{a}{b}" for a in "ABC" for b in "ABCDEFGHIJ"]
-    many = [f"The party camped beside {n} and traded near {n} market." for n in names]
-    merged = [
-        f"The party camped beside {a} and {b}, trading near {a} and {b} markets."
-        for a, b in zip(names[::2], names[1::2], strict=True)
-    ]
-
-    class LLM:
-        def json(self, system, user, schema, max_tokens=4000):
-            if system is mem.WRITEUP_SYSTEM:
-                return {"log": [{"text": t, "kind": "did", "fixes": ""} for t in many]}
-            if system is mem.NOTE_SYSTEM:
-                return {"title": "x", "summary": "x", "scenes": many}
-            if system is mem.MERGE_SYSTEM:
-                return {"scenes": merged}
-            return {}
-
-    m = make(LLM())
-    _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in many]])
-    assert scenes == merged  # every waystone survives, 15 lines instead of 30
-
-
-def test_a_merge_that_crams_scenes_is_refused(setup):
-    vault, sessions, make = setup
-    many = [f"The party reached marker stone {i}." for i in range(30)]
-    crammed = ["The party reached marker stone 0.", " ".join(many)]  # 2 scenes, the last far past the cap
-
-    class LLM:
-        def json(self, system, user, schema, max_tokens=4000):
-            if system is mem.NOTE_SYSTEM:
-                return {"title": "x", "summary": "x", "scenes": many}
-            if system is mem.MERGE_SYSTEM:
-                return {"scenes": [*crammed, *many[:8]]}
-            return {}
-
-    m = make(LLM())
-    _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in many]])
-    assert scenes[-1] == "The party reached marker stone 29."  # fell back to the spread; the ending survives
-
-
-def test_a_note_that_stops_early_is_finished_from_the_rest_of_the_log(setup):
-    vault, sessions, make = setup
-    places = ["Barnest", "Cyclemeet", "Dialward", "Crested", "Pankora", "Garif", "Smiley", "Delara", "Dusty", "Magenta"]
-    log = [f"The party met {p} and traded with {p} beside {p}'s tent." for p in places]
-    asked = []
-
-    class LLM:
-        def json(self, system, user, schema, max_tokens=4000):
-            if system is mem.NOTE_SYSTEM:
-                asked.append(user)
-                if len(asked) == 1:
-                    return {"title": "x", "summary": "x", "scenes": log[:4]}  # stops at stone 3
-                return {"scenes": log[4:]}
-            return {}
-
-    m = make(LLM())
-    _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in log]])
-    assert "Pankora" in asked[1].split("The rest of the log:")[1]
-    assert "Crested" not in asked[1].split("The rest of the log:")[1]
-    assert scenes[-1] == log[-1]
-
-
-def test_play_numbers_pull_damage_and_knockouts_from_table_talk():
-    window = (
-        "1:58:00 GM Mika: It hits Sathrin for 27 damage.\n"
-        "2:05:05 Sathrin (played by Jules): No! No! I'm at one hit point.\n"
-        "2:17:13 Sathrin (played by Jules): taking 50 odd damage in six seconds."
-    )
-    assert mem.play_numbers(window) == [
-        "1:58:00 GM Mika: 27 damage",
-        "2:05:05 Sathrin (played by Jules): one hit point",
-        "2:17:13 Sathrin (played by Jules): 50 odd damage",
-    ]
-
-
-def test_a_play_window_reaches_the_talk_after_the_fight():
-    lines = [f"1:{m:02d}:00 GM Mika: The wind blows over the sand." for m in range(40, 60)]
-    lines += [f"2:{m:02d}:00 GM Mika: The wind blows over the sand." for m in range(0, 30)]
-    lines[17] = "1:57:00 GM Mika: Sathrin swings his hammer at the tomb tapper and Auggie casts witch bolt."
-    lines[37] = "2:17:00 Sathrin (played by Jules): taking 50 odd damage in six seconds."
-    window = mem.play_window("Sathrin attacked the tomb tapper with his hammer; Auggie cast witch bolt.", lines)
-    assert window.splitlines()[0].startswith("1:5")  # starts a little before the fight
-    assert "50 odd damage" in window  # and runs past it
-
-
-def test_fight_details_reach_the_note_as_one_play(setup):
-    vault, sessions, make = setup
-    lines = [
-        "1:57:00 GM Mika: Sathrin swings his hammer at the tomb tapper.",
-        "2:17:00 Sathrin (played by Jules): 50 odd damage.",
-    ]
-    log = [
-        {"text": "A tomb tapper rose from the dune.", "kind": "did", "fixes": ""},
-        {"text": "Sathrin attacked the tomb tapper with his hammer.", "kind": "did", "fixes": ""},
-        {"text": "The tomb tapper attacked Sathrin.", "kind": "did", "fixes": ""},
-        {"text": "The tomb tapper dug into the ground and left.", "kind": "did", "fixes": ""},
-    ]
-    notes = []
-
-    class LLM:
-        def json(self, system, user, schema, max_tokens=4000):
-            if system is mem.PLAY_SYSTEM:
-                assert "50 odd damage" in user
-                return {"sentence": "Sathrin attacked the tomb tapper with his hammer and took 50 damage."}
-            if system is mem.NOTE_SYSTEM:
-                notes.append(user)
-                return {"title": "x", "summary": "x", "scenes": []}
-            return {}
-
-    m = make(LLM())
-    m._write_note([log], lines)
-    rows = notes[0].splitlines()
-    assert rows == [
-        "- A tomb tapper rose from the dune.",
-        "- (play) Sathrin attacked the tomb tapper with his hammer and took 50 damage.",
-        "- The tomb tapper dug into the ground and left.",
-    ]
-
-
-def test_coverage_is_not_fooled_by_a_name_every_later_line_repeats():
-    happened = [
-        "The party crossed the bone field slowly.",
-        "The party spotted a huge creature atop the dune.",
-        "The creature tripped and slid down the dune.",
-        "Elara helped the huge creature atop the dune lift its mallet.",
-        "Sathrin attacked the huge creature atop the dune with his hammer.",
-        "The huge creature atop the dune burrowed away and left.",
-    ]
-    scenes = ["The party crossed the bone field slowly.", "A huge creature stood atop the dune."]
-    assert mem._reached(scenes, happened) == 1
-
-
-def test_a_note_missing_only_its_last_lines_is_still_finished(setup):
-    vault, sessions, make = setup
-    places = [f"Waystone{c}" for c in "ABCDEFGHIJKLMNOPQRST"]
-    log = [f"The party camped beside {p} and traded near {p} market." for p in places]
-    asked = []
-
-    class LLM:
-        def json(self, system, user, schema, max_tokens=4000):
-            if system is mem.NOTE_SYSTEM:
-                asked.append(user)
-                return {"title": "x", "summary": "x", "scenes": log[:17]} if len(asked) == 1 else {"scenes": log[17:]}
-            return {}
-
-    m = make(LLM())
-    _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in log]])
-    assert len(asked) == 2  # 3 of 20 lines (15%) were missing: still finished
-    assert "WaystoneT" in scenes[-1]
-
-
-def test_a_merge_that_drops_the_ending_is_refused(setup):
-    vault, sessions, make = setup
-    places = [f"Waystone{c}" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"]
-    log = [f"The party camped beside {p} and traded near {p} market." for p in places]
-
-    class LLM:
-        def json(self, system, user, schema, max_tokens=4000):
-            if system is mem.NOTE_SYSTEM:
-                return {"title": "x", "summary": "x", "scenes": log}
-            if system is mem.MERGE_SYSTEM:
-                return {"scenes": log[:16]}  # "merged" by stopping at WaystoneP
-            return {}
-
-    m = make(LLM())
-    _, scenes, _, _ = m._write_note([[{"text": t, "kind": "did", "fixes": ""} for t in log]])
-    assert "WaystoneZ" in scenes[-1]
-
-
-def _beats(n):
-    return [
-        {"at": f"00:{5 * (i % 3):02d}", "text": f"The party reached waystone {chr(65 + i)} and traded there."} for i in range(n)
-    ]
-
-
-def test_the_page_comes_from_one_reading_of_the_whole_session(setup):
-    vault, sessions, make = setup
-    sid = _session(sessions)
-    llm = FakeLLM(writeups=[{"log": [{"text": "The party found a cave near Dallon.", "kind": "did", "fixes": ""}]}])
-    llm.one_shot = {"title": "The Long Road", "hook": "The party walked far.", "timeline": _beats(8), "open": []}
-    m = make(llm)
-    wait(m.write_up(sid))
-    (page,) = (vault.root / "Sessions").glob("*.md")
-    text = page.read_text()
-    assert "waystone H" in text
-    assert "The party walked far." in text
-    assert "Transcript:\n" in llm.one_shot_calls[0]  # the whole transcript, not the log
-
-
-def test_a_thin_one_shot_falls_back_to_the_log_note(setup):
-    vault, sessions, make = setup
-    sid = _session(sessions)
-    llm = FakeLLM(writeups=[{"log": [{"text": "The party found a cave near Dallon.", "kind": "did", "fixes": ""}]}])
-    llm.one_shot = {"title": "x", "hook": "x", "timeline": _beats(3), "open": []}  # fewer than ONE_SHOT_MIN_BEATS
-    m = make(llm)
-    wait(m.write_up(sid))
-    assert any(c.startswith("- The party found a cave near Dallon.") for c in llm.calls)  # the log went to the note
-
-
-def test_one_shot_keeps_only_real_timestamps(setup):
-    vault, sessions, make = setup
-    m = make(FakeLLM())
-    beats = _beats(6) + [{"at": "9:99:99", "text": "The party slept beside waystone Z."}]
-    m.llm.one_shot = {"title": "x", "hook": "x", "timeline": beats, "open": []}
-    lines = ["00:00 GM: a", "00:05 GM: b", "00:10 GM: c"]
-    _, scenes, scene_at, _ = m._one_shot([[]], lines, "")
-    assert scene_at[:3] == ["00:00", "00:05", "00:10"]
-    assert scene_at[-1] == ""  # not a line in the transcript
-
-
-def test_money_lines_reach_the_one_shot(setup):
-    vault, sessions, make = setup
-    m = make(FakeLLM())
-    m.llm.one_shot = {"title": "x", "hook": "x", "timeline": _beats(6), "open": []}
-    m._one_shot([[]], ["0:09 GM Mika: His deficit goes on your tab.", "0:10 GM Mika: The wind blows."], "")
-    assert "His deficit goes on your tab." in m.llm.one_shot_calls[0].split("Transcript:")[0]
-
-
-def test_an_open_thread_a_scene_already_tells_is_dropped(setup):
-    vault, sessions, make = setup
-    sid = _session(sessions)
-    llm = FakeLLM(writeups=[{"log": [{"text": "The party found a cave near Dallon.", "kind": "did", "fixes": ""}]}])
-    llm.one_shot = {
-        "title": "x",
-        "hook": "x",
-        "timeline": _beats(7) + [{"at": "00:05", "text": "A rider on a pink horse tossed Sathrin two hundred gold pieces."}],
-        "open": ["The rider on the pink horse tossed gold and rode away.", "Smiley still wants the treasure hunters dead."],
-    }
-    wait(make(llm).write_up(sid))
-    page = next((vault.root / "Sessions").glob("*.md")).read_text()
-    still = page.split("## Still open\n", 1)[1].split("\n\n", 1)[0]
-    assert "pink horse" not in still
-    assert "treasure hunters" in still
