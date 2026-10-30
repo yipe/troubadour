@@ -6,7 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { useCampaign } from "@/lib/campaignStore"
 import { useClones } from "@/lib/cloneStore"
 import { applyEvent, useStore } from "@/lib/store"
-import type { Campaign, Clones } from "@/lib/types"
+import type { Campaign, Clones, JobLive } from "@/lib/types"
 import { campaign, campaignJob, player, savedSession, sessionRecord } from "@/test/fixtures"
 import { bodyOf, mockFetch } from "@/test/mockFetch"
 
@@ -82,6 +82,50 @@ describe("History viewer: write up for campaign", () => {
       }),
     )
     expect(screen.getByRole("button", { name: /Write up for campaign/ })).toBeEnabled()
+  })
+
+  it("shows each step of the write-up and the model's live progress", async () => {
+    server(campaign())
+    await renderViewer()
+    const steps = (live: JobLive | null, running: number) =>
+      act(() =>
+        applyEvent({
+          type: "campaign.job",
+          data: campaignJob({
+            id: "w1",
+            kind: "writeup",
+            title: ID,
+            state: "running",
+            done: running,
+            total: 3,
+            message: "Reading 1637 lines…",
+            steps: ["Read the whole session", "Write the page", "Save the page"].map((label, i) => ({
+              label,
+              state: i < running ? "done" : i === running ? "running" : "pending",
+            })),
+            live,
+          }),
+        }),
+      )
+    steps({ phase: "reading", tokens: 0, tok_s: 0, started: Date.now() / 1000 - 42 }, 0)
+    const list = screen.getByRole("list", { name: "Write-up progress" })
+    expect([...list.querySelectorAll("li")].map((li) => li.dataset.state)).toEqual([
+      "running",
+      "pending",
+      "pending",
+    ])
+    expect(list).toHaveTextContent(/Reading the transcript… 4\d s/)
+
+    steps({ phase: "writing", tokens: 1234, tok_s: 27.5, started: 0 }, 1)
+    expect([...list.querySelectorAll("li")].map((li) => li.dataset.state)).toEqual([
+      "done",
+      "running",
+      "pending",
+    ])
+    expect(list).toHaveTextContent("Writing… ~1,234 tokens · 27.5 tok/s")
+
+    steps(null, 1)
+    expect(list).toHaveTextContent("Reading 1637 lines…") // between calls: the job's message
   })
 
   it("offers 'Write up again' and a session-page link once written up", async () => {

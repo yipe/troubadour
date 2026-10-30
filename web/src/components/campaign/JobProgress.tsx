@@ -1,8 +1,9 @@
-import { AlertCircle, Loader2, X } from "lucide-react"
+import { useEffect, useState } from "react"
+import { AlertCircle, Check, Circle, Loader2, X } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { jobActive, jobCount } from "@/lib/campaign"
 import { campaignActions } from "@/lib/campaignStore"
-import type { CampaignJob } from "@/lib/types"
+import type { CampaignJob, JobLive } from "@/lib/types"
 
 /** Compact header chip for a queued/running job, or a failed one (dismissible). */
 export function JobChip({ job: j }: { job: CampaignJob }) {
@@ -61,6 +62,7 @@ export function JobChip({ job: j }: { job: CampaignJob }) {
         {label}
         {j.state === "queued" ? " · queued" : ""} {jobCount(j)}
         {j.message ? ` · ${j.message}` : ""}
+        {j.live && j.live.phase !== "reading" ? ` · ${j.live.tok_s} tok/s` : ""}
       </span>
     </span>
   )
@@ -112,4 +114,49 @@ export function JobStatus({
       </p>
     )
   return null
+}
+
+/** What a streaming model call is doing, e.g. "Writing… ~1,234 tokens · 27 tok/s". */
+export function liveText(live: JobLive, now: number): string {
+  if (live.phase === "reading")
+    return `Reading the transcript… ${Math.max(0, Math.round(now - live.started))} s`
+  const what = live.phase === "thinking" ? "Thinking" : "Writing"
+  return `${what}… ~${live.tokens.toLocaleString("en-US")} tokens · ${live.tok_s} tok/s`
+}
+
+/** A staged job's checklist while it runs: done, running (with the model's live progress), still to come. */
+export function JobSteps({ job: j }: { job: CampaignJob | undefined }) {
+  const [now, setNow] = useState(() => Date.now() / 1000)
+  const reading = j?.live?.phase === "reading"
+  useEffect(() => {
+    if (!reading) return
+    const id = setInterval(() => setNow(Date.now() / 1000), 1000)
+    return () => clearInterval(id)
+  }, [reading])
+  if (!j || !jobActive(j) || !j.steps?.length) return null
+  return (
+    <ol aria-label="Write-up progress" className="space-y-1 text-sm">
+      {j.steps.map((s, i) => (
+        <li key={i} data-state={s.state} className="flex flex-col">
+          <span
+            className={`flex items-center gap-2 ${s.state === "pending" ? "text-muted-foreground/60" : s.state === "done" ? "text-muted-foreground" : ""}`}
+          >
+            {s.state === "done" ? (
+              <Check className="size-3.5 shrink-0" />
+            ) : s.state === "running" ? (
+              <Loader2 className="size-3.5 shrink-0 animate-spin" />
+            ) : (
+              <Circle className="size-3.5 shrink-0" />
+            )}
+            {s.label}
+          </span>
+          {s.state === "running" && (j.live || j.message) && (
+            <span className="pl-5.5 text-xs text-muted-foreground tabular-nums">
+              {j.live ? liveText(j.live, Math.max(now, Date.now() / 1000)) : j.message}
+            </span>
+          )}
+        </li>
+      ))}
+    </ol>
+  )
 }

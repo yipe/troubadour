@@ -34,7 +34,9 @@ class LabLLM:
         except httpx.HTTPError:
             return False
 
-    def json(self, system: str, user: str, schema: dict, max_tokens: int = 4000, think: bool | None = None) -> dict:
+    def json(
+        self, system: str, user: str, schema: dict, max_tokens: int = 4000, think: bool | None = None, progress=None
+    ) -> dict:
         thinking = self.thinking if think is None else think
         payload = {
             "model": self.model,

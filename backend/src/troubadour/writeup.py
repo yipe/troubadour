@@ -227,16 +227,17 @@ def parse_page(raw: dict, stamps: set[str]) -> Page:
     )
 
 
-def read(llm, lines: list[str], cast: str, glossary: str) -> Notes:
-    """The whole session in one call, thinking on (more of the session's facts, measured)."""
+def read(llm, lines: list[str], cast: str, glossary: str, progress=None) -> Notes:
+    """The whole session in one call, thinking on (more of the session's facts, measured). `progress` hears a
+    streaming call's progress (Job.model_progress)."""
     user = f"Who is at the table:\n{cast}\n\nGlossary:\n{glossary}\n\nTranscript:\n" + "\n".join(lines)
-    raw = llm.json(READ_SYSTEM, user, NOTES_SCHEMA, READ_TOKENS, think=True)
+    raw = llm.json(READ_SYSTEM, user, NOTES_SCHEMA, READ_TOKENS, think=True, progress=progress)
     return parse_notes(raw, {line.split(" ", 1)[0] for line in lines})
 
 
-def write(llm, notes: Notes, stamps: set[str]) -> Page:
+def write(llm, notes: Notes, stamps: set[str], progress=None) -> Page:
     user = f"{EXAMPLE_INTRO}{EXAMPLE}\n\n---\n\nThe note-taker's notes for this session:\n{notes.text()}"
-    return parse_page(llm.json(WRITE_SYSTEM, user, PAGE_SCHEMA, WRITE_TOKENS), stamps)
+    return parse_page(llm.json(WRITE_SYSTEM, user, PAGE_SCHEMA, WRITE_TOKENS, progress=progress), stamps)
 
 
 FACTS_SCHEMA = _obj({"facts": {"type": "array", "items": _obj({"about": STR, "text": STR})}})
@@ -248,9 +249,9 @@ about = that name as the notes write it. Never passing states (hit points, where
 are doing right now), rules, or trivia ("is a player character"). Answer with JSON only."""
 
 
-def facts(llm, notes: Notes) -> list[tuple[str, str]]:
+def facts(llm, notes: Notes, progress=None) -> list[tuple[str, str]]:
     """(about, sentence) pairs from the notes alone: cheap, and nothing the reading didn't already find."""
-    raw = llm.json(FACTS_SYSTEM, notes.text(), FACTS_SCHEMA, 2000)
+    raw = llm.json(FACTS_SYSTEM, notes.text(), FACTS_SCHEMA, 2000, progress=progress)
     return [
         (about, text)
         for f in raw.get("facts") or []

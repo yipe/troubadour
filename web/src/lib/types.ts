@@ -262,6 +262,19 @@ export interface CampaignJob {
   suggested: number
   note: string | null /* vault-relative path it wrote */
   player_id: string | null /* clone / say / read / profile: whose voice */
+  steps?: JobStep[] /* a job with stages (a write-up): in order */
+  live?: JobLive | null /* the model call in flight, when it streams */
+}
+export interface JobStep {
+  label: string
+  state: "pending" | "running" | "done"
+}
+/** A streaming model call: reading the prompt (no tokens yet), then thinking or writing. */
+export interface JobLive {
+  phase: "reading" | "thinking" | "writing"
+  tokens: number /* estimated from the streamed text */
+  tok_s: number
+  started: number /* epoch seconds */
 }
 /** A player's built voice clone (GET /api/clones): their table voice, with `characters` beside it. */
 export interface CloneVoice {

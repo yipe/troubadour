@@ -53,7 +53,7 @@ def test_the_wrap_up_keeps_its_paragraphs():
 
 def test_the_writer_gets_the_notes_and_the_example_and_reads_nothing_else():
     class LLM:
-        def json(self, system, user, schema, max_tokens=4000, think=False):
+        def json(self, system, user, schema, max_tokens=4000, think=False, progress=None):
             self.user, self.think = user, think
             return {"title": "T", "last_time": "S", "spotlight": [], "highlights": []}
 
@@ -69,7 +69,7 @@ def test_the_writer_gets_the_notes_and_the_example_and_reads_nothing_else():
 
 def test_facts_come_back_as_pairs():
     class LLM:
-        def json(self, system, user, schema, max_tokens=4000, think=False):
+        def json(self, system, user, schema, max_tokens=4000, think=False, progress=None):
             return {"facts": [{"about": "Mudge", "text": "Mudge guards the bridge."}, {"about": "", "text": "x"}, "junk"]}
 
     assert writeup.facts(LLM(), writeup.Notes()) == [("Mudge", "Mudge guards the bridge.")]

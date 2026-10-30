@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import { jobActive, jobCount, latestJob } from "@/lib/campaign"
 import { campaignActions, useCampaign } from "@/lib/campaignStore"
-import { JobStatus } from "./JobProgress"
+import { JobStatus, JobSteps } from "./JobProgress"
 import { ObsidianLink } from "./ObsidianLink"
 
 /** History viewer: summarize this saved session into a campaign session page plus suggestions. */
@@ -32,6 +32,7 @@ export function WriteUpButton({ sessionId }: { sessionId: string }) {
         {page ? "Write up again" : "Write up for campaign"}
         {running && <span className="text-muted-foreground tabular-nums">{jobCount(job)}</span>}
       </Button>
+      <JobSteps job={job} />
       <JobStatus job={job} working="Writing up…" failed="Write-up failed" progress={false} />
       {page && <ObsidianLink relPath={page}>Session page</ObsidianLink>}
       {page && <ReadAloud sessionId={sessionId} page={page} />}

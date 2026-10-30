@@ -23,10 +23,12 @@ class FakeLLM:
         self.found = found or {"facts": []}  # lasting facts the write-up suggests
         self.calls: list[str] = []
         self.thought: dict[str, bool] = {}
+        self.progress: list = []
 
-    def json(self, system, user, schema, max_tokens=4000, think=False):
+    def json(self, system, user, schema, max_tokens=4000, think=False, progress=None):
         self.calls.append(user)
         self.thought[system[:40]] = think
+        self.progress.append(progress)
         if system is mem.NOTES_SYSTEM:
             return self.notes.pop(0) if self.notes else {}
         if system is mem.FACT_SYSTEM:
@@ -246,6 +248,10 @@ def test_write_up_reads_the_session_then_writes_the_page_from_the_notes(setup):
     assert "- [00:05] The party found a cave near Dallon." in write
     assert llm.thought[writeup.READ_SYSTEM[:40]] is True
     assert llm.thought[writeup.WRITE_SYSTEM[:40]] is False
+    assert all(llm.progress)  # every call streams its progress to the job
+    assert [s["state"] for s in job.steps] == ["done"] * 4
+    assert job.done == job.total == 4
+    assert job.live is None
 
 
 def test_empty_notes_fail_the_job_and_write_nothing(setup):
@@ -634,6 +640,70 @@ def test_a_server_that_refuses_chat_template_kwargs_keeps_the_schema(monkeypatch
     assert _llm_with(reply).json("s", "u", {}) == {"a": 1}
     assert "response_format" in sent[-1]
     assert "chat_template_kwargs" not in sent[-1]
+
+
+def _sse(*chunks) -> bytes:
+    return "".join(f"data: {json.dumps(c)}\n\n" for c in chunks).encode() + b"data: [DONE]\n\n"
+
+
+def test_a_streamed_reply_reports_reading_thinking_and_writing():
+    def delta(**d):
+        return {"choices": [{"index": 0, "delta": d, "finish_reason": None}]}
+
+    body = _sse(
+        delta(role="assistant"),
+        delta(reasoning_content="Let me think about this carefully."),
+        delta(content='{"a": '),
+        delta(content="1}"),
+        {"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}], "usage": {"completion_tokens": 12}},
+    )
+    sent = []
+
+    def reply(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    heard = []
+    assert _llm_with(reply).json("s", "u", {}, progress=heard.append) == {"a": 1}
+    assert sent[0]["stream"] is True
+    assert [h["phase"] for h in heard] == ["reading", "thinking", "writing", "writing", "writing"]
+    assert heard[-1]["tokens"] == round(len('Let me think about this carefully.{"a": 1}') / mem.CHARS_PER_TOKEN)
+    assert heard[-1]["tok_s"] > 0
+
+
+def test_a_server_that_wont_stream_is_asked_again_plainly():
+    def reply(request):
+        if json.loads(request.content).get("stream"):
+            return httpx.Response(400, json={"error": "no streaming"})
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"a": 1}'}, "finish_reason": "stop"}]})
+
+    heard = []
+    assert _llm_with(reply).json("s", "u", {}, progress=heard.append) == {"a": 1}
+    assert [h["phase"] for h in heard] == ["reading"]
+
+
+def test_job_steps_and_throttled_model_progress(monkeypatch):
+    sent = []
+    job = mem.Job(id="j", kind="writeup", title="s")
+    job.on_change = lambda: sent.append((job.done, [s["state"] for s in job.steps], (job.live or {}).get("phase")))
+    job.plan("Read", "Write")
+    job.step(0)
+    clock = iter([100.0, 100.1, 100.2, 101.0])
+    monkeypatch.setattr(mem.time, "monotonic", lambda: next(clock))
+    job.model_progress({"phase": "reading"})
+    job.model_progress({"phase": "reading"})  # too soon after the last: not sent
+    job.model_progress({"phase": "writing"})  # a new phase is always sent
+    job.model_progress({"phase": "writing"})  # 0.8 s later: sent
+    job.step(2)
+    assert sent == [
+        (0, ["pending", "pending"], None),
+        (0, ["running", "pending"], None),
+        (0, ["running", "pending"], "reading"),
+        (0, ["running", "pending"], "writing"),
+        (0, ["running", "pending"], "writing"),
+        (2, ["done", "done"], None),
+    ]
+    assert "_live_sent" not in job.to_json()
 
 
 def test_a_server_hiccup_is_tried_again(monkeypatch):

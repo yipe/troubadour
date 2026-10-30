@@ -36,6 +36,8 @@ log = logging.getLogger("troubadour")
 CHUNK_CHARS = 6000  # notes per extraction call; small enough for a fast, careful answer
 RESOLVED_WORDS = 4  # an open item sharing this many content words with a scene is already told
 LLM_RETRIES, LLM_RETRY_WAIT_S = 2, 5.0  # a server error or dropped connection is tried again
+LIVE_EVERY_S = 0.5  # a streaming call's progress reaches the UI at most this often
+CHARS_PER_TOKEN = 4  # streamed text -> estimated tokens (servers send several tokens per chunk)
 REASONING_HEADROOM = 12000  # extra max_tokens for a thinking model's reasoning
 BRIEF_DESCRIPTION_MAX = 80  # chars of each glossary entry's description in LLM prompts
 MAX_SUGGESTED_FACTS = 30  # per write-up: more than anyone will review
@@ -90,15 +92,24 @@ class MemoryLLM:
         except Exception:  # down, signed out, wrong service on the port, non-JSON reply: all mean "not usable"
             return False
 
-    def json(self, system: str, user: str, schema: dict, max_tokens: int = 4000, think: bool = False) -> dict:
+    def json(
+        self,
+        system: str,
+        user: str,
+        schema: dict,
+        max_tokens: int = 4000,
+        think: bool = False,
+        progress: Callable[[dict], None] | None = None,
+    ) -> dict:
         """One reply as a dict ({} when it isn't JSON). `think`: let a local model reason first (it is on anyway
-        when MEMORY_REASONING says so); hosted models decide for themselves."""
+        when MEMORY_REASONING says so); hosted models decide for themselves. `progress`: the reply is streamed
+        and this hears how far it is (Job.model_progress); chat servers only."""
         if self.wire == "anthropic":
             content, cut = self._anthropic(system, user, schema, max_tokens)
         elif self.wire == "responses":
             content, cut = self._responses(system, user, schema)
         else:
-            content, cut = self._chat(system, user, schema, max_tokens, think)
+            content, cut = self._chat(system, user, schema, max_tokens, think, progress)
         if cut:
             log.warning("model reply cut off at %s tokens; that part of the job is lost", max_tokens)
         match = re.search(r"\{.*\}", content, re.S)
@@ -109,7 +120,9 @@ class MemoryLLM:
             out = {}
         return out if isinstance(out, dict) else {}
 
-    def _chat(self, system: str, user: str, schema: dict, max_tokens: int, think: bool = False) -> tuple[str, bool]:
+    def _chat(
+        self, system: str, user: str, schema: dict, max_tokens: int, think: bool = False, progress=None
+    ) -> tuple[str, bool]:
         effort = config.MEMORY_REASONING
         if think and effort in ("", "none"):
             effort = "medium"
@@ -126,6 +139,8 @@ class MemoryLLM:
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "response_format": {"type": "json_schema", "json_schema": {"name": "out", "strict": True, "schema": schema}},
         }
+        if progress is not None and (streamed := self._chat_stream(payload, progress)) is not None:
+            return streamed
         r = self._post("/chat/completions", payload)
         # A server that rejects chat_template_kwargs; then OpenRouter, DeepSeek and some local servers that
         # reject reasoning_effort or strict json_schema.
@@ -139,6 +154,47 @@ class MemoryLLM:
         _raise_for(r)
         choice = r.json()["choices"][0]
         return choice["message"]["content"] or "", choice.get("finish_reason") == "length"
+
+    def _chat_stream(self, payload: dict, progress: Callable[[dict], None]) -> tuple[str, bool] | None:
+        """The same request streamed, telling `progress` how far it is: "reading" until the first token (the
+        prompt is being read: a whole session takes minutes), then "thinking" or "writing" with an estimate of
+        the tokens so far and their rate. None if the server won't stream it (the caller asks again plainly)."""
+        started, first = time.time(), None
+        thought = written = 0
+        text: list[str] = []
+        finish = None
+        progress({"phase": "reading", "tokens": 0, "tok_s": 0, "started": started})
+        body = {**payload, "stream": True, "stream_options": {"include_usage": True}}
+        try:
+            with self.client.stream("POST", f"{self.url}/chat/completions", headers=self._headers(), json=body) as r:
+                if r.status_code != 200:
+                    return None
+                for line in r.iter_lines():
+                    data = line[5:].strip() if line.startswith("data:") else ""
+                    if not data or data == "[DONE]":
+                        continue
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    for choice in chunk.get("choices") or []:
+                        delta = choice.get("delta") or {}
+                        reasoning = delta.get("reasoning_content") or delta.get("reasoning") or ""
+                        said = delta.get("content") or ""
+                        if (reasoning or said) and first is None:
+                            first = time.time()
+                        thought += len(reasoning)
+                        written += len(said)
+                        text.append(said)
+                        finish = choice.get("finish_reason") or finish
+                    if first is not None:
+                        tokens = round((thought + written) / CHARS_PER_TOKEN)
+                        rate = tokens / max(time.time() - first, 1e-3)
+                        phase = "writing" if written else "thinking"
+                        progress({"phase": phase, "tokens": tokens, "tok_s": round(rate, 1), "started": started})
+        except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError):
+            return None
+        return "".join(text), finish == "length"
 
     def _anthropic(self, system: str, user: str, schema: dict, max_tokens: int) -> tuple[str, bool]:
         # Current Claude models think by default, and thinking counts against max_tokens.
@@ -445,11 +501,37 @@ class Job:
     suggested: int = 0
     note: str | None = None  # vault-relative path of the note it wrote (a read-aloud job: the note it reads)
     player_id: str | None = None  # voice-clone jobs: whose voice
+    # A job with stages: [{"label", "state": "pending" | "running" | "done"}] (plan(), step()).
+    steps: list[dict] = field(default_factory=list)
+    # The model call in flight (model_progress): {"phase": "reading" | "thinking" | "writing", "tokens" (estimated),
+    # "tok_s", "started" (epoch seconds)}; None between calls.
+    live: dict | None = None
     # Called after every update(): Memory.submit points it at the campaign.job event. Not sent.
     on_change: Callable[[], None] = field(default=lambda: None, repr=False, compare=False)
+    _live_sent: float = field(default=0.0, repr=False, compare=False)
 
     def to_json(self) -> dict:
-        return {k: v for k, v in self.__dict__.items() if k != "on_change"}
+        return {k: v for k, v in self.__dict__.items() if k not in ("on_change", "_live_sent")}
+
+    def plan(self, *labels: str) -> None:
+        """The job's stages, all pending; done/total count them."""
+        self.update(steps=[{"label": label, "state": "pending"} for label in labels], done=0, total=len(labels))
+
+    def step(self, index: int, message: str = "") -> None:
+        """Stage `index` is running (earlier ones done); past the last one, all are done."""
+        for i, s in enumerate(self.steps):
+            s["state"] = "done" if i < index else "running" if i == index else "pending"
+        label = self.steps[index]["label"] if index < len(self.steps) else ""
+        self.update(done=index, live=None, message=message or label)
+
+    def model_progress(self, info: dict) -> None:
+        """A streaming model call's progress; sent at most twice a second (and at each change of phase)."""
+        now = time.monotonic()
+        phase_changed = (self.live or {}).get("phase") != info.get("phase")
+        self.live = info
+        if phase_changed or now - self._live_sent >= LIVE_EVERY_S:
+            self._live_sent = now
+            self.on_change()
 
     def update(self, **fields) -> None:
         """Set any of done, total, message (...) and tell the UI."""
@@ -674,13 +756,14 @@ class Memory:
         if not lines:
             raise ValueError("That session has no lines.")
         stamps = {line.split(" ", 1)[0] for line in lines}
-        job.update(total=3, message="Reading the whole session…")
-        notes = writeup.read(self.llm, lines, cast, glossary_brief(self.vault))
+        job.plan("Read the whole session", "Write the page", "Suggest names, facts and spellings", "Save the page")
+        job.step(0, f"Reading {len(lines)} lines…")
+        notes = writeup.read(self.llm, lines, cast, glossary_brief(self.vault), job.model_progress)
         if not notes.beats:
             raise ValueError("The language model's notes on this session came back empty; nothing was written.")
-        job.update(done=1, message=f"Noted {len(notes.beats)} beats; writing the page…")
-        page = writeup.write(self.llm, notes, stamps)
-        job.update(done=2, message="Suggesting names, facts and spellings…")
+        job.step(1, f"Noted {len(notes.beats)} beats; writing the page…")
+        page = writeup.write(self.llm, notes, stamps, job.model_progress)
+        job.step(2)
         date = time.strftime("%Y-%m-%d", time.localtime(s["started_at"]))
         sid = s["id"]
         existing = self._session_note(sid)
@@ -689,7 +772,8 @@ class Memory:
         # Suggestions first, so the session page can link the new names.
         heard_text = norm("\n".join(lines))
         self._suggest_names(job, notes, heard_text)
-        self._suggest_facts(job, writeup.facts(self.llm, notes), note_title)
+        self._suggest_facts(job, writeup.facts(self.llm, notes, job.model_progress), note_title)
+        job.step(3)
         self._suggest_spellings(job, notes.spellings, heard_text)
 
         tdir = self.vault.root / "Sessions" / "Transcripts"
@@ -699,7 +783,7 @@ class Memory:
         path = existing or self.vault.root / "Sessions" / f"{note_title}.md"
         write_atomic(path, body)
         job.note = str(path.relative_to(self.vault.root))
-        job.update(done=job.total, message=f"Wrote {path.stem}; {job.suggested} suggestions to review")
+        job.step(len(job.steps), f"Wrote {path.stem}; {job.suggested} suggestions to review")
 
     def _suggest_names(self, job: Job, notes: writeup.Notes, heard_text: str) -> None:
         """People, creatures, groups and places the notes name that the glossary lacks become suggested entries.
