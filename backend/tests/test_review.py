@@ -302,3 +302,11 @@ def test_a_session_that_is_not_written_up_has_only_notebook_items(api, dirs):
 def test_an_empty_session_has_no_items(api, dirs):
     save_session(SID, LINES, 2)
     assert get(api)["items"] == []
+
+
+def test_rejecting_an_entry_confirmed_since_the_list_froze_never_trashes_it(api, world):
+    entry = find(get(api), "entry", lambda i: True)
+    deps.vault.update("Mudge", status="confirmed")  # confirmed in the Codex meanwhile
+    assert act(api, entry, action="reject").status_code in (400, 409)
+    assert deps.vault.get("Mudge").status == "confirmed"
+    assert not (deps.vault.root / ".trash" / "Mudge.md").exists()
