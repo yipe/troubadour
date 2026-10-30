@@ -12,7 +12,15 @@ const DOT: Record<StepState, string> = {
 }
 
 /** The five steps. Finished ones link back; the rest wait their turn. */
-export function StepRail({ current, campaignName }: { current: WelcomeStep; campaignName?: string }) {
+export function StepRail({
+  current,
+  campaignName,
+  tableName,
+}: {
+  current: WelcomeStep
+  campaignName?: string
+  tableName: string
+}) {
   return (
     <nav aria-label="Setup steps" className="flex h-full flex-col gap-1 px-5 py-7">
       {WELCOME_STEPS.map((id) => {
@@ -38,11 +46,11 @@ export function StepRail({ current, campaignName }: { current: WelcomeStep; camp
         }
         return state === "done" ? (
           <NavItem key={id} {...common} render={<Link to={paths.welcome(id)} />}>
-            {info.title}
+            {id === "table" ? tableName : info.title}
           </NavItem>
         ) : (
           <NavItem key={id} {...common} disabled={state === "upcoming"}>
-            {info.title}
+            {id === "table" ? tableName : info.title}
           </NavItem>
         )
       })}

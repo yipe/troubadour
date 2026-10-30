@@ -346,7 +346,8 @@ class SessionsMixin:
             }
 
         self.campaigns = {
-            c["id"]: Campaign(c["id"], c["name"], seats(c["roster"]), seats(c.get("left", []))) for c in data["campaigns"]
+            c["id"]: Campaign(c["id"], c["name"], seats(c["roster"]), seats(c.get("left", [])), c.get("table_name", ""))
+            for c in data["campaigns"]
         }
         if not self.campaigns:  # a hand-edited file: keep everyone, in a fresh main campaign
             self.campaigns = {MAIN_CAMPAIGN: Campaign(MAIN_CAMPAIGN, "My campaign")}
@@ -422,6 +423,7 @@ class SessionsMixin:
                 {
                     "id": c.id,
                     "name": c.name,
+                    "table_name": c.table_name,
                     "roster": [
                         {"player_id": pid, **seat} for pid, seat in (seated if c.id == self.campaign else c.roster).items()
                     ],

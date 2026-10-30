@@ -37,7 +37,7 @@ def test_state_shape(client):
     s = client.get("/api/state").json()
     assert set(s) == {"session", "campaign", "campaigns", "players", "library", "voices", "messages"}
     assert s["campaign"] == "main"
-    assert s["campaigns"] == [{"id": "main", "name": "My campaign"}]
+    assert s["campaigns"] == [{"id": "main", "name": "My campaign", "table_name": ""}]
     assert {"status", "source", "t", "llm", "asr", "training", "error", "audio_monitor"} <= set(s["session"])
 
 

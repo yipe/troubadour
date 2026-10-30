@@ -148,10 +148,14 @@ class LibraryMixin:
         self.bus.emit("campaigns.updated", self.campaigns_json())
         return c.to_json()
 
-    def rename_campaign(self, cid: str, name: str) -> dict:
+    def rename_campaign(self, cid: str, name: str | None = None, table_name: str | None = None) -> dict:
+        """Change a campaign's name and/or its table name; None leaves a field as it is."""
         with self.lock:
             c = self.campaigns[cid]
-            c.name = name
+            if name is not None:
+                c.name = name
+            if table_name is not None:
+                c.table_name = table_name
         self._save_state()
         self.bus.emit("campaigns.updated", self.campaigns_json())
         return c.to_json()

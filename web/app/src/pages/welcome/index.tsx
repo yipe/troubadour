@@ -10,6 +10,7 @@ import { ModelsSettings } from "../../components/models/ModelsSettings.tsx"
 import { PlayersTable } from "../../components/players/PlayersTable.tsx"
 import { WELCOME_STEPS, paths, type WelcomeStep } from "../../paths.ts"
 import { CAMPAIGN_FORM, CampaignStep } from "./CampaignStep.tsx"
+import { useTableName } from "../../lib/table.ts"
 import { StepRail } from "./StepRail.tsx"
 import { STEPS, isWelcomeStep, stepIndex } from "./steps.ts"
 
@@ -43,6 +44,7 @@ export function Component() {
   const navigate = useNavigate()
   const [saving, setSaving] = useState(false)
   const campaigns = useCampaigns().data
+  const tableName = useTableName()
   if (!isWelcomeStep(step)) return <Navigate to={paths.welcome("campaign")} replace />
 
   const index = stepIndex(step)
@@ -66,7 +68,7 @@ export function Component() {
       </header>
       <div className="flex min-h-0 flex-1">
         <aside className="w-[300px] shrink-0 overflow-auto border-r border-line">
-          <StepRail current={step} campaignName={campaignName} />
+          <StepRail current={step} campaignName={campaignName} tableName={tableName} />
         </aside>
         <main className="flex min-w-0 flex-1 flex-col gap-[22px] overflow-auto px-14 py-9">
           <div>

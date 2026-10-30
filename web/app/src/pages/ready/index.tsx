@@ -15,6 +15,7 @@ import { paths } from "../../paths.ts"
 import { ModelTiles } from "./ModelTiles.tsx"
 import { useIdleSourcesPoll } from "./polling.ts"
 import { PreviouslyOn } from "./PreviouslyOn.tsx"
+import { useTableName } from "../../lib/table.ts"
 import { readSavedMic, saveMic } from "./savedMic.ts"
 import { StartCard, type StartChoices } from "./StartCard.tsx"
 import { useModelTiles } from "./useModelTiles.ts"
@@ -37,6 +38,7 @@ export function Component() {
   const tiles = useModelTiles()
   const start = useStartSession()
 
+  const table = useTableName()
   const [savedMic] = useState(readSavedMic)
   const [picked, setPicked] = useState<Source | null>(null)
   const [absent, setAbsent] = useState<ReadonlySet<string>>(new Set())
@@ -119,7 +121,7 @@ export function Component() {
   if (!idle) {
     return (
       <div className="flex flex-col items-start gap-3 p-10">
-        <PageHeading title="Session in progress" subtitle="The table is being transcribed right now." />
+        <PageHeading title="Session in progress" subtitle={`${table} is being transcribed right now.`} />
         <Button variant="primary" nativeButton={false} render={<Link to={paths.live()} />}>
           Go to session
         </Button>

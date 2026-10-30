@@ -228,7 +228,7 @@ describe("bridgeSocket", () => {
     expect(onCampaignSwitch).not.toHaveBeenCalled()
     emit({
       type: "snapshot",
-      data: snapshot({ campaign: "other", campaigns: [{ id: "other", name: "Other" }] }),
+      data: snapshot({ campaign: "other", campaigns: [{ id: "other", name: "Other", table_name: "" }] }),
     })
     expect(client.getQueryState(keys.sessions())!.isInvalidated).toBe(true)
     expect(client.getQueryState(keys.mics())!.isInvalidated).toBe(false)
@@ -239,7 +239,7 @@ describe("bridgeSocket", () => {
   it("sets cloud, llm and campaigns from their events", () => {
     const { socket, emit } = fakeSocket()
     bridgeSocket(socket, client)
-    const campaigns = { campaign: "a", campaigns: [{ id: "a", name: "A" }] }
+    const campaigns = { campaign: "a", campaigns: [{ id: "a", name: "A", table_name: "" }] }
     emit({ type: "campaigns.updated", data: campaigns })
     emit({ type: "llm.updated", data: { provider: "local", providers: [] } })
     expect(client.getQueryData(keys.campaigns())).toEqual(campaigns)
