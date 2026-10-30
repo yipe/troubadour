@@ -7,11 +7,31 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
+from troubadour.cloud import overview
 from troubadour.cloud.backup import AutoBackup, CloudError
+from troubadour.lore import pages, timeline
 from troubadour.server import deps
 
 log = logging.getLogger("troubadour")
 router = APIRouter()
+
+
+def write_overview(root: Path) -> None:
+    """Rebuild `_Overview/` in the open campaign's vault just before a backup scans it (Cloud.before_scan)."""
+    vault = deps.vault
+    if root.resolve() != vault.root.resolve():
+        return  # another campaign's vault: its sessions aren't the open ones
+    rows = deps.engine.list_sessions()
+    numbers = pages.session_numbers(rows)
+    written = {sid: rel for sid, rel in deps.memory.written_up().items() if sid in numbers}
+    sessions = [{"id": sid, "page": Path(rel).stem, **pages.session_page(vault.root, rel)} for sid, rel in written.items()]
+    titles = {s["id"]: s["title"] for s in sessions}
+    ids_for = {s["page"]: s["id"] for s in sessions}
+    rows_timeline = timeline.timeline(vault, deps.engine.sessions_dir(), rows, numbers, titles, ids_for)
+    overview.write(vault.root, overview.generate(vault, sessions, rows_timeline, numbers))
+
+
+deps.cloud.before_scan = write_overview
 
 
 class CloudOptionsIn(BaseModel):
