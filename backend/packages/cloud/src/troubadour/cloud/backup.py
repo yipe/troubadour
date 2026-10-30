@@ -204,6 +204,9 @@ class Cloud:
         self._vault_list: tuple[float, list[dict]] | None = None  # (when fetched, GET /vaults) for the main check
         self._head_device: dict[str, str] = {}  # snapshot id -> the device its message names (snapshots never change)
         self._main: dict[str, str] = {}  # campaign -> the main device as last known
+        # Runs right before each backup reads the vault (the server sets it to rebuild `_Overview/`).
+        # Whatever it raises is logged: a failure there never stops a backup.
+        self.before_scan: Callable[[Path], None] | None = None
 
     # ---------------------------------------------------------------- stored state
 
@@ -492,6 +495,11 @@ class Cloud:
 
     def _push(self, campaign_id: str, name: str, root: Path, progress: Callable[[int, int, str], None]) -> dict:
         progress(0, 0, "Reading the notes")
+        if self.before_scan is not None:
+            try:
+                self.before_scan(root)
+            except Exception:
+                log.exception("cloud backup: could not build the _Overview pages")
         include = self.campaign_settings(campaign_id)["include_transcripts"]
         # Taken before reading: an edit made during the backup changes it, so a later backup picks the edit up.
         before = fingerprint(root, include)
