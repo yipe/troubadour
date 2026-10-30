@@ -4,6 +4,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { sessionAudioUrl, transcriptUrl } from "@/lib/api"
 import { dateTime, hms } from "@/lib/format"
 import { sourceLabel } from "@/lib/source"
+import { useCampaign } from "@/lib/campaignStore"
 import { actions } from "@/lib/store"
 import { cn } from "@/lib/utils"
 import type { SavedSession } from "@/lib/types"
@@ -38,6 +39,7 @@ export function SavedSessionRow({
   selected?: boolean
   onSelect?: (id: string, on: boolean) => void
 }) {
+  const title = useCampaign((c) => writeUpTitle(c.campaign?.written_up[s.id]))
   return (
     <li data-session-id={s.id} className="py-1.5 first:pt-0 last:pb-0">
       <div className="flex items-start gap-2">
@@ -57,7 +59,7 @@ export function SavedSessionRow({
             className="-mx-2 block w-[calc(100%+1rem)] rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted/60"
           >
             <div className="flex items-baseline justify-between gap-2 text-sm">
-              <span className="font-medium">{dateTime(s.started_at)}</span>
+              <span className="truncate font-medium">{title ?? dateTime(s.started_at)}</span>
               <span className="flex items-center gap-2 font-mono text-xs text-muted-foreground tabular-nums">
                 {s.quality && (
                   <span
@@ -73,6 +75,7 @@ export function SavedSessionRow({
               </span>
             </div>
             <p className="truncate text-xs text-muted-foreground">
+              {title && `${dateTime(s.started_at)} · `}
               {sourceLabel(s.source)} · {s.lines} lines
             </p>
           </button>
@@ -83,4 +86,11 @@ export function SavedSessionRow({
       </div>
     </li>
   )
+}
+
+/** A written-up session's page title: "Sessions/2026-10-29 Turtle Trouble.md" → "Turtle Trouble". */
+function writeUpTitle(page: string | undefined): string | null {
+  if (!page) return null
+  const stem = page.split("/").pop()?.replace(/\.md$/, "") ?? ""
+  return stem.replace(/^\d{4}-\d{2}-\d{2}\s+/, "") || null
 }

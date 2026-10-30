@@ -1,10 +1,11 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Plus } from "lucide-react"
 import { SessionView } from "@/components/session/SessionView"
 import { SetupView } from "@/components/setup/SetupView"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
+import { campaignActions, useCampaign } from "@/lib/campaignStore"
 import { dateTime } from "@/lib/format"
 import { actions, useStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
@@ -27,6 +28,10 @@ export function HistoryView() {
   const viewing = useStore((s) => s.viewing)
   const status = useStore((s) => s.session?.status ?? "idle")
   const live = status === "running" || status === "paused"
+  // Written-up sessions are listed by their page's title.
+  useEffect(() => {
+    if (!useCampaign.getState().campaign) void campaignActions.refresh()
+  }, [])
 
   return (
     <div className="flex min-h-0 flex-1">

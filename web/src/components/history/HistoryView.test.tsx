@@ -3,10 +3,12 @@ import { VirtuosoMockContext } from "react-virtuoso"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { dateTime } from "@/lib/format"
+import { useCampaign } from "@/lib/campaignStore"
 import { PLAYER_PALETTE } from "@/lib/record"
 import { applyEvent, useStore } from "@/lib/store"
 import type { SavedSession, SessionRecord } from "@/lib/types"
 import {
+  campaign,
   message,
   player,
   recordMessage,
@@ -51,16 +53,22 @@ const record: SessionRecord = sessionRecord({
 })
 
 const initial = useStore.getState()
+const initialCampaign = useCampaign.getState()
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
 }
 
 /** Route the API: the saved-session list and one transcript. */
-function mockApi(list: SavedSession[], transcript: () => Response = () => json(record)) {
+function mockApi(
+  list: SavedSession[],
+  transcript: () => Response = () => json(record),
+  writtenUp: Record<string, string> = {},
+) {
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input)
     if (url === "/api/sessions") return json(list)
+    if (url === "/api/campaign") return json(campaign({ written_up: writtenUp }))
     if (url === RECORD_URL) return transcript()
     return json({ detail: `unexpected ${url}` }, 500)
   })
@@ -90,7 +98,10 @@ async function openViewer(summary: SavedSession) {
 const line = (container: HTMLElement, id: string) =>
   container.querySelector<HTMLElement>(`[data-message-id="${id}"]`)
 
-beforeEach(() => useStore.setState({ ...initial, view: "history" }, true))
+beforeEach(() => {
+  useStore.setState({ ...initial, view: "history" }, true)
+  useCampaign.setState(initialCampaign, true)
+})
 afterEach(() => vi.restoreAllMocks())
 
 describe("History", () => {
@@ -119,6 +130,18 @@ describe("History", () => {
     renderHistory()
     await flush()
     expect(screen.getByText(/No saved sessions yet/)).toBeInTheDocument()
+  })
+
+  it("lists a written-up session by its page's title", async () => {
+    mockApi([savedSession({ id: "new", started_at: 1_760_000_100, lines: 7 })], undefined, {
+      new: "Sessions/2026-10-29 Turtle Trouble and Prophecy.md",
+    })
+    const { container } = renderHistory()
+    await flush()
+    await flush()
+    const row = within(container.querySelector("[data-session-id='new']") as HTMLElement)
+    expect(row.getByText("Turtle Trouble and Prophecy")).toBeInTheDocument()
+    expect(row.getByText(new RegExp(`${dateTime(1_760_000_100)} · .* · 7 lines`))).toBeInTheDocument()
   })
 
   it("opens a session: fetches exactly its transcript.json and shows lines with speakers", async () => {
