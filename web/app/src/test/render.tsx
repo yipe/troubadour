@@ -5,6 +5,7 @@ import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router"
 import { resetLive, useLiveStore, type LiveState } from "@troubadour/api/live"
 import { makeQueryClient } from "@troubadour/api/query"
 import { TooltipProvider } from "@troubadour/ui/tooltip"
+import { SessionAudioProvider } from "../components/audio/SessionAudioProvider.tsx"
 import { createRoutes } from "../routes.tsx"
 import "./setup.ts"
 
@@ -31,7 +32,9 @@ export function renderWithProviders(ui: ReactElement, options: RenderOptions = {
   const result = render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <MemoryRouter initialEntries={[options.route ?? "/"]}>{ui}</MemoryRouter>
+        <SessionAudioProvider>
+          <MemoryRouter initialEntries={[options.route ?? "/"]}>{ui}</MemoryRouter>
+        </SessionAudioProvider>
       </TooltipProvider>
     </QueryClientProvider>,
   )
@@ -45,7 +48,9 @@ export function renderApp(options: RenderOptions = {}) {
   const result = render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <RouterProvider router={router} />
+        <SessionAudioProvider>
+          <RouterProvider router={router} />
+        </SessionAudioProvider>
       </TooltipProvider>
     </QueryClientProvider>,
   )

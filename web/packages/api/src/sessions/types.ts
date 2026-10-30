@@ -44,7 +44,10 @@ export interface RecordPlayer {
   name: string
   character: string
   is_gm: boolean
-  color?: string /* absent in records saved before colors were stored */
+  /** null: the class colour. Absent in records saved before colours were stored. */
+  color?: string | null
+  /** A class id (possibly one since deleted). Absent in records saved before classes. */
+  dnd_class?: string | null
 }
 export interface RecordMessage {
   id: string

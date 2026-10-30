@@ -6,6 +6,7 @@
   "exports": {
     "./theme.css": "./src/theme.css",
     "./gallery": "./src/gallery/index.tsx",
+    "./cn": "./src/lib/cn.ts",
     "./*": "./src/components/*.tsx"
   },
   "scripts": {
