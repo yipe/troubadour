@@ -77,7 +77,10 @@ def test_unknown_item_and_bad_status(client):
 def test_saved_notebook_of_an_unknown_session_is_empty_and_ids_are_checked(client):
     out = client.get("/api/sessions/2026-01-01_000000-abcd/notebook").json()
     assert (out["items"], out["pins"]) == ([], [])
-    assert client.get("/api/sessions/..%2f..%2fetc/notebook").status_code == 404
+    assert client.get("/api/sessions/..etc/notebook").status_code == 404  # not a session id
+    # A slash never reaches the handler: 404, or the built UI's index.html, never a notebook.
+    r = client.get("/api/sessions/..%2f..%2fetc/notebook")
+    assert r.status_code == 404 or not r.headers["content-type"].startswith("application/json")
 
 
 def test_abandoned_session_emits_and_saves_nothing(client, engine):
