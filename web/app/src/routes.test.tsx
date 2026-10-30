@@ -96,7 +96,7 @@ describe("startup", () => {
 
   it("shows the Live page while a session runs", async () => {
     renderApp({ ...returning, live: { ...returning.live, session: session() }, route: "/sessions/live" })
-    expect(await screen.findByRole("heading", { name: "Live" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: /End session/ })).toBeInTheDocument()
   })
 })
 
