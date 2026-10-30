@@ -514,12 +514,28 @@ class Asker:
         with self._lock:
             return [a.to_json() for a in sorted(self.answers.values(), key=lambda x: x.created) if a.campaign == current]
 
+    def delete(self, answer_id: str) -> None:
+        """Forget an answer of the open campaign (KeyError if there is none). A running one stops
+        reporting: its later updates are dropped, so it can't come back."""
+        with self._lock:
+            a = self.answers.get(answer_id)
+            if a is None or a.campaign != self.campaign():
+                raise KeyError(answer_id)
+            del self.answers[answer_id]
+        self.bus.emit("campaign.updated", {})  # other open windows refresh
+
     def _emit(self, a: Answer) -> None:
+        with self._lock:
+            if self.answers.get(a.id) is not a:
+                return  # deleted while it ran
         self.bus.emit("campaign.answer", a.to_json())
 
     def _run(self) -> None:
         while True:
             a = self._q.get()
+            with self._lock:
+                if self.answers.get(a.id) is not a:
+                    continue  # deleted while queued
             started = time.monotonic()
             try:
                 self._answer(a)

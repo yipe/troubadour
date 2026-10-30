@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { useAsk, type AnswerSource, type CampaignAnswer } from "@troubadour/api/ask"
+import { X } from "lucide-react"
+import { useAsk, useDeleteAnswer, type AnswerSource, type CampaignAnswer } from "@troubadour/api/ask"
 import { useCampaign } from "@troubadour/api/campaign"
 import { Button } from "@troubadour/ui/button"
 import { NavItem } from "@troubadour/ui/nav-item"
@@ -7,6 +8,7 @@ import { PageHeading } from "@troubadour/ui/page-heading"
 import { RailLayout } from "@troubadour/ui/rail-layout"
 import { Spinner } from "@troubadour/ui/spinner"
 import { Textarea } from "@troubadour/ui/textarea"
+import { notify } from "@troubadour/ui/toast"
 import { AskAnswer } from "../../components/ask/AskAnswer.tsx"
 import { obsidianUrl } from "../../lib/entities.ts"
 
@@ -21,6 +23,7 @@ function dotFor(answer: CampaignAnswer) {
 export function Component() {
   const campaign = useCampaign()
   const ask = useAsk()
+  const remove = useDeleteAnswer()
   const [question, setQuestion] = useState("")
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
@@ -41,6 +44,18 @@ export function Component() {
         },
       },
     )
+  }
+
+  function deleteQuestion(answer: CampaignAnswer) {
+    if (answer.id === current?.id) {
+      // Land on the next newest, not back on the first row.
+      const i = newestFirst.indexOf(answer)
+      setSelectedId((newestFirst[i + 1] ?? newestFirst[i - 1])?.id ?? null)
+    }
+    remove.mutate(answer.id, {
+      onSuccess: () => notify("Question deleted"),
+      onError: (e) => notify(e.message, { tone: "danger" }),
+    })
   }
 
   function openSource(source: AnswerSource) {
@@ -92,14 +107,24 @@ export function Component() {
               <p className="px-3 text-14 text-ink-subtle">No questions yet.</p>
             ) : (
               newestFirst.map((a) => (
-                <NavItem
-                  key={a.id}
-                  selected={a.id === current?.id}
-                  dot={dotFor(a)}
-                  onClick={() => setSelectedId(a.id)}
-                >
-                  {a.question}
-                </NavItem>
+                <div key={a.id} className="group relative">
+                  <NavItem
+                    selected={a.id === current?.id}
+                    dot={dotFor(a)}
+                    onClick={() => setSelectedId(a.id)}
+                    className="pr-9"
+                  >
+                    {a.question}
+                  </NavItem>
+                  <button
+                    type="button"
+                    aria-label={`Delete \u201C${a.question}\u201D`}
+                    onClick={() => deleteQuestion(a)}
+                    className="absolute top-1/2 right-1.5 flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-control text-ink-subtle opacity-0 group-hover:opacity-100 hover:bg-elevated hover:text-ink focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
+                  >
+                    <X className="size-3.5" aria-hidden />
+                  </button>
+                </div>
               ))
             )}
           </nav>

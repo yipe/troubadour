@@ -27,6 +27,10 @@ export const withAnswer =
   (answer: CampaignAnswer): Edit =>
   (c) => ({ ...c, answers: upsertById(c.answers, answer) })
 
+export const withoutAnswer =
+  (id: string): Edit =>
+  (c) => ({ ...c, answers: c.answers.filter((a) => a.id !== id) })
+
 /** Put a returned entry into the list, replacing `previousName` (a rename or a merge source). */
 export const withEntity =
   (e: Entity, previousName: string = e.name): Edit =>
