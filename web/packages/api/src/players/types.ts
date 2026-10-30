@@ -1,10 +1,16 @@
+import type { Schemas } from "../generated/index.ts"
+
+/** A class a player can have: an SRD built-in (`color` null: the shared token colour) or one the user added. */
+export type DndClass = Schemas["DndClass"]
+
 /** A person in the library. `character` and `is_gm` are their seat in the open campaign. */
 export interface Player {
   id: string
   name: string
   character: string
   avatar: string | null /* data URL */
-  color: string /* hex like #f59e0b */
+  color: string | null /* hex like #f59e0b; a custom override, null: the class colour */
+  dnd_class: string | null /* a DndClass id; may name a class deleted since ("unknown class") */
   trained: boolean
   is_gm: boolean
   clone_ok: boolean /* they agreed to a voice clone; turning it off deletes everything made from it */
@@ -22,5 +28,5 @@ export interface TrainStatus {
 }
 
 export type PlayerPatch = Partial<
-  Pick<Player, "name" | "character" | "avatar" | "is_gm" | "color" | "clone_ok">
+  Pick<Player, "name" | "character" | "avatar" | "is_gm" | "color" | "dnd_class" | "clone_ok">
 >

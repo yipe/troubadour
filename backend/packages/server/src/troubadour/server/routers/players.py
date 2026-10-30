@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, StringConstraints
+from troubadour.core import classes
 from troubadour.server import deps
 from troubadour.server.models import Label
 
@@ -31,7 +32,8 @@ class PlayerPatch(BaseModel):
     character: Label | None = None
     avatar: Avatar | None = None
     is_gm: bool | None = None
-    color: Color | None = None
+    color: Color | None = None  # null clears the override: the class colour shows
+    dnd_class: Annotated[str, StringConstraints(max_length=60)] | None = None  # null clears
     clone_ok: bool | None = None  # they agree to a voice clone; False deletes everything made from it
 
 
@@ -58,6 +60,44 @@ class CampaignsOut(BaseModel):
 
 class TrainIn(BaseModel):
     seconds: float = Field(20.0, ge=5, le=60)
+
+
+class ClassIn(BaseModel):
+    label: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=classes.MAX_LABEL)]
+    color: Color
+
+
+class ClassPatch(BaseModel):
+    label: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=classes.MAX_LABEL)] | None = None
+    color: Color | None = None
+
+
+class DndClass(BaseModel):
+    id: str
+    label: str
+    color: str | None  # None for built-ins: the client uses its shared token colour
+    builtin: bool
+
+
+@router.get("/api/classes", response_model=list[DndClass])
+def list_classes():
+    return classes.all_classes()
+
+
+@router.post("/api/classes", status_code=201, response_model=DndClass)
+def add_class(body: ClassIn):
+    return deps._call(classes.add, body.label, body.color)
+
+
+@router.patch("/api/classes/{class_id}", response_model=DndClass)
+def update_class(class_id: str, body: ClassPatch):
+    return deps._call(classes.update, class_id, body.label, body.color)
+
+
+@router.delete("/api/classes/{class_id}", status_code=204)
+def remove_class(class_id: str):
+    """Players using it keep the id and fall back to their own colour."""
+    deps._call(classes.remove, class_id)
 
 
 @router.post("/api/players")

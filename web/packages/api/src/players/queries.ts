@@ -1,12 +1,17 @@
-import { useMutation } from "@tanstack/react-query"
-import type { PlayerPatch } from "./types.ts"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { keys } from "../query/keys.ts"
+import type { DndClass, PlayerPatch } from "./types.ts"
 import {
+  addClass,
   benchPlayer,
   cancelTraining,
+  classes,
   createPlayer,
+  deleteClass,
   deletePlayer,
   seatPlayer,
   trainPlayer,
+  updateClass,
   updatePlayer,
 } from "./endpoints.ts"
 
@@ -32,3 +37,23 @@ export const useTrainPlayer = () =>
   useMutation({ mutationFn: (v: { id: string; seconds?: number }) => trainPlayer(v.id, v.seconds) })
 
 export const useCancelTraining = () => useMutation({ mutationFn: cancelTraining })
+
+/** The class list: SRD built-ins first, then the user's own. Refetched after our own writes only. */
+export const useClasses = () => useQuery<DndClass[]>({ queryKey: keys.classes(), queryFn: classes })
+
+function useClassWrite<V>(fn: (v: V) => Promise<unknown>) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.classes() }),
+  })
+}
+
+export const useAddClass = () => useClassWrite(addClass)
+
+export const useUpdateClass = () =>
+  useClassWrite((v: { id: string; label?: string; color?: string }) =>
+    updateClass(v.id, { label: v.label, color: v.color }),
+  )
+
+export const useDeleteClass = () => useClassWrite(deleteClass)

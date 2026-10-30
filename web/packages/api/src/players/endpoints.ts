@@ -1,5 +1,5 @@
 import { req, segment } from "../http/index.ts"
-import type { Player, PlayerPatch } from "./types.ts"
+import type { DndClass, Player, PlayerPatch } from "./types.ts"
 
 export const createPlayer = (b: {
   name: string
@@ -26,3 +26,13 @@ export const trainPlayer = (id: string, seconds?: number) =>
   req<void>("POST", `/api/players/${segment(id)}/train`, seconds === undefined ? {} : { seconds })
 
 export const cancelTraining = () => req<void>("POST", "/api/train/cancel")
+
+export const classes = () => req<DndClass[]>("GET", "/api/classes")
+
+export const addClass = (b: { label: string; color: string }) => req<DndClass>("POST", "/api/classes", b)
+
+export const updateClass = (id: string, b: { label?: string; color?: string }) =>
+  req<DndClass>("PATCH", `/api/classes/${segment(id)}`, b)
+
+/** Players using it keep the id; the UI shows "unknown class". */
+export const deleteClass = (id: string) => req<void>("DELETE", `/api/classes/${segment(id)}`)

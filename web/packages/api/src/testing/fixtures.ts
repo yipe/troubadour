@@ -15,6 +15,7 @@ export function player(p: Partial<Player> & { id: string }): Player {
     character: "",
     avatar: null,
     color: "#f59e0b",
+    dnd_class: null,
     trained: false,
     is_gm: false,
     clone_ok: false,
@@ -195,7 +196,15 @@ export function mic(m: Partial<MicInfo> & { name: string }): MicInfo {
 }
 
 export function libraryPlayer(p: Partial<LibraryPlayer> & { id: string }): LibraryPlayer {
-  return { name: p.id, avatar: null, color: "#f59e0b", trained: false, clone_ok: false, ...p }
+  return {
+    name: p.id,
+    avatar: null,
+    color: "#f59e0b",
+    dnd_class: null,
+    trained: false,
+    clone_ok: false,
+    ...p,
+  }
 }
 
 export function campaignInfo(c: Partial<CampaignInfo> & { id: string }): CampaignInfo {

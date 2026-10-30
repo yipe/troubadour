@@ -80,7 +80,7 @@ def test_sources_lists_readable_wavs_only(client, monkeypatch):
 def test_player_crud(client):
     p = client.post("/api/players", json={"name": "  Alice  ", "character": "Elara"}).json()
     assert p["name"] == "Alice"  # trimmed
-    assert p["color"].startswith("#")
+    assert p["color"] is None  # the class colour shows until they pick one
     r = client.patch(f"/api/players/{p['id']}", json={"is_gm": True, "color": "#00ff00"})
     assert r.json()["is_gm"] is True
     assert client.delete(f"/api/players/{p['id']}").status_code == 204

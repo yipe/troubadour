@@ -10,25 +10,24 @@ import re
 import time
 from pathlib import Path
 
-from troubadour.core import config
+from troubadour.core import classes, config
 from troubadour.lore import cleanup
 
 from .buffers import AudioBuffer
-from .model import PALETTE, Player, short_id
+from .model import Player, short_id
 from .state import MAIN_CAMPAIGN, Campaign
 
 SETTLE_S = 15.0  # a switch waits this long at most for the finished session's spelling fixes
 CAMPAIGN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")  # also Troubadour Cloud's rule for a campaign id
 
 
+NULLABLE = ("avatar", "color", "dnd_class")  # None clears these
+
+
 class LibraryMixin:
     def add_player(self, name: str, character: str = "", avatar: str | None = None, is_gm: bool = False) -> dict:
         with self.lock:
-            # Colors are per person: avoid everyone's, so seating someone later doesn't clash.
-            people = [*self.players.values(), *self.bench.values()]
-            used = {p.color for p in people}
-            color = next((c for c in PALETTE if c not in used), PALETTE[len(people) % len(PALETTE)])
-            p = Player(id=short_id("p"), name=name, character=character, avatar=avatar, color=color, is_gm=is_gm)
+            p = Player(id=short_id("p"), name=name, character=character, avatar=avatar, is_gm=is_gm)
             self.players[p.id] = p
             out = p.to_json()
         self._save_state()
@@ -36,11 +35,14 @@ class LibraryMixin:
         return out
 
     def update_player(self, pid: str, fields: dict) -> dict:
-        """fields: any of name, character, avatar (None clears), is_gm, color, clone_ok — already validated."""
+        """fields: any of name, character, avatar, color, dnd_class (None clears these three), is_gm,
+        clone_ok — already validated, except that dnd_class must name a known class."""
+        if fields.get("dnd_class") is not None and not classes.known(fields["dnd_class"]):
+            raise ValueError("Unknown class.")
         with self.lock:
             p = self.players[pid]
-            for key in ("name", "character", "avatar", "is_gm", "color", "clone_ok"):
-                if key in fields and (fields[key] is not None or key == "avatar"):
+            for key in ("name", "character", "avatar", "color", "dnd_class", "is_gm", "clone_ok"):
+                if key in fields and (fields[key] is not None or key in NULLABLE):
                     setattr(p, key, fields[key])
             out = p.to_json()
         if fields.get("clone_ok") is False:  # after the flag: a clone job checks it before it writes
