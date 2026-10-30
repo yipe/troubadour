@@ -11,7 +11,8 @@ from troubadour.core import config
 from troubadour.core.transcript import build
 from troubadour.engine import improve
 from troubadour.lore.campaign import Corrector, Entity
-from troubadour.server import app as server
+from troubadour.server import deps
+from troubadour.server.app import app
 
 SID = "2026-10-08_193401-eebf"
 
@@ -64,14 +65,14 @@ def test_improve_never_turns_a_line_into_filler():
 
 @pytest.fixture
 def api(engine, dirs, monkeypatch):
-    monkeypatch.setattr(server, "engine", engine)
+    monkeypatch.setattr(deps, "engine", engine)
     engine.status, engine.live = "idle", None
     folder = config.DATA_DIR / "sessions" / SID
     folder.mkdir(parents=True)
     (folder / "transcript.json").write_text(json.dumps(record(["Dallara, three.", "Hello."])))
     write_wav(folder / "audio.wav", tone(220, 6.0))
     monkeypatch.setattr("troubadour.sound.asr.transcribe", lambda clip, prompt=None, model=None: "Elara, three!")
-    return TestClient(server.app, base_url="http://127.0.0.1:8765"), folder
+    return TestClient(app, base_url="http://127.0.0.1:8765"), folder
 
 
 def wait_job(client, job_id):

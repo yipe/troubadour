@@ -5,7 +5,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from troubadour.core import config
-from troubadour.server import app as server
+from troubadour.server.app import app
 from troubadour.sound import mics
 
 
@@ -69,7 +69,7 @@ def test_api(dirs, monkeypatch):
         "system_devices",
         lambda: [{"name": "Yeti GX", "maker": "Logitech", "connection": "USB", "rate": 48000, "default": True}],
     )
-    client = TestClient(server.app, base_url="http://127.0.0.1:8765")
+    client = TestClient(app, base_url="http://127.0.0.1:8765")
     (gx,) = client.get("/api/mics").json()
     assert gx["specs"]["patterns"] == ["supercardioid"]
     assert by_id(gx["checks"])["around"] is False

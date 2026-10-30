@@ -9,7 +9,8 @@ from fastapi.testclient import TestClient
 from troubadour.core import config
 from troubadour.core.config import SR
 from troubadour.core.transcript import build
-from troubadour.server import app as server
+from troubadour.server import deps
+from troubadour.server.app import app
 from troubadour.sound import levels
 
 RNG = np.random.default_rng(7)
@@ -128,7 +129,7 @@ def test_mic_test_is_refused_during_a_session(engine):
 
 
 def test_quality_endpoint_measures_and_caches(engine, dirs, monkeypatch):
-    monkeypatch.setattr(server, "engine", engine)
+    monkeypatch.setattr(deps, "engine", engine)
     sid = "2026-10-08_193401-eebf"
     folder = config.DATA_DIR / "sessions" / sid
     folder.mkdir(parents=True)
@@ -141,7 +142,7 @@ def test_quality_endpoint_measures_and_caches(engine, dirs, monkeypatch):
         r["speaker"], r["player_id"] = m["speaker"], m["player_id"]
     (folder / "transcript.json").write_text(json.dumps(rec))
     (folder / "meta.json").write_text(json.dumps(rec["session"]))
-    client = TestClient(server.app, base_url="http://127.0.0.1:8765")
+    client = TestClient(app, base_url="http://127.0.0.1:8765")
     rep = client.get(f"/api/sessions/{sid}/quality").json()
     assert rep["mic"] == "Yeti GX"
     assert rep["verdict"]["kind"] == "microphone"

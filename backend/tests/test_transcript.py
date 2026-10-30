@@ -8,7 +8,8 @@ from test_engine import ALICE, BOB, named_voice, say
 from troubadour.core import config
 from troubadour.core.transcript import build, clock, filler_only, markdown, without_fillers
 from troubadour.engine import _audio_seconds
-from troubadour.server import app as server
+from troubadour.server import deps
+from troubadour.server.app import app
 from troubadour.sound.audio import wav_bytes
 
 
@@ -133,8 +134,8 @@ def test_list_sessions_skips_corrupt_meta(engine, dirs):
 
 @pytest.fixture
 def api_engine(engine, monkeypatch):
-    monkeypatch.setattr(server, "engine", engine)
-    return TestClient(server.app, base_url="http://127.0.0.1:8765")
+    monkeypatch.setattr(deps, "engine", engine)
+    return TestClient(app, base_url="http://127.0.0.1:8765")
 
 
 def test_current_transcript_download(api_engine, engine):

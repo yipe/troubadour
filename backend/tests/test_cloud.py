@@ -20,7 +20,9 @@ from fastapi.testclient import TestClient
 from troubadour.cloud import backup as cloud
 from troubadour.cloud.backup import AutoBackup, Cloud, CloudError, NotConnected, fingerprint, path_problem, scan
 from troubadour.core import config
-from troubadour.server import app as server
+from troubadour.server import deps
+from troubadour.server.app import app
+from troubadour.server.routers import cloud as cloud_router
 
 SERVICE = "https://cloud.test"
 AUTH = "https://auth.test"
@@ -512,9 +514,9 @@ def test_network_failure_is_a_clean_error(tmp_path):
 def api(dirs, service, monkeypatch):
     monkeypatch.delenv("TROUBADOUR_VAULT", raising=False)
     fake = Cloud(url=SERVICE, http=httpx.Client(transport=service.transport()))
-    monkeypatch.setattr(server, "cloud", fake)
-    monkeypatch.setattr(server.engine, "campaigns", dict(server.engine.campaigns))  # restores add campaigns
-    return TestClient(server.app, base_url="http://127.0.0.1:8765")
+    monkeypatch.setattr(deps, "cloud", fake)
+    monkeypatch.setattr(deps.engine, "campaigns", dict(deps.engine.campaigns))  # restores add campaigns
+    return TestClient(app, base_url="http://127.0.0.1:8765")
 
 
 def test_api_status_and_backup_needs_connecting(api, service):
@@ -556,7 +558,7 @@ def test_api_backup_runs_as_a_job(api, service, dirs):
     job = api.post("/api/cloud/backup").json()
     assert job["kind"] == "backup"
     for _ in range(200):
-        job = next(j for j in server.memory.list_jobs() if j["id"] == job["id"])
+        job = next(j for j in deps.memory.list_jobs() if j["id"] == job["id"])
         if job["state"] in ("done", "error"):
             break
         time.sleep(0.02)
@@ -764,7 +766,7 @@ def test_restore_of_unknown_or_empty_vaults(client, service, vault):
 
 def wait_job(job_id: str) -> dict:
     for _ in range(300):
-        job = next(j for j in server.memory.list_jobs() if j["id"] == job_id)
+        job = next(j for j in deps.memory.list_jobs() if j["id"] == job_id)
         if job["state"] in ("done", "error"):
             return job
         time.sleep(0.02)
@@ -872,8 +874,8 @@ def test_api_automatic_failure_is_quiet_but_remembered(api, service):
     notes.mkdir(parents=True, exist_ok=True)
     (notes / "Facts.md").write_text("The gate opens at dawn.\n")
     service.fail_next_commit = "quota_exceeded"
-    cid, name, root = server._open_campaign()
-    job = wait_job(server._submit_backup(cid, name, root, automatic=True).id)
+    cid, name, root = cloud_router._open_campaign()
+    job = wait_job(cloud_router._submit_backup(cid, name, root, automatic=True).id)
     assert job["state"] == "done"  # no red chip in the header
     assert job["message"].startswith("Automatic backup didn't run")
     assert api.get("/api/cloud").json()["last_error"]["message"] == "quota_exceeded"

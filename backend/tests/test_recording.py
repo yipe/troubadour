@@ -13,7 +13,8 @@ from troubadour.core import config
 from troubadour.core.config import SR
 from troubadour.core.transcript import build
 from troubadour.engine import LiveSession, session_audio, sim
-from troubadour.server import app as server
+from troubadour.server import deps
+from troubadour.server.app import app
 from troubadour.sound.audio import FRAME, Recorder, read_wav, wav_bytes
 
 A, B, C, D = (f"2026-10-08_1400{i:02d}-abcd" for i in range(4))
@@ -383,8 +384,8 @@ def test_file_source_honours_end(dirs):
 def test_api_cannot_pass_end(engine, monkeypatch, dirs):
     seen = {}
     monkeypatch.setattr(engine, "start", lambda source: seen.update(source) or {})
-    monkeypatch.setattr(server, "engine", engine)
-    client = TestClient(server.app, base_url="http://127.0.0.1:8765")
+    monkeypatch.setattr(deps, "engine", engine)
+    client = TestClient(app, base_url="http://127.0.0.1:8765")
     r = client.post("/api/session/start", json={"source": {"kind": "file", "name": "x.wav", "speed": 1, "end": 1}})
     assert r.status_code == 200
     assert seen["name"] == "x.wav"  # start() was reached: the check below isn't vacuous
@@ -407,8 +408,8 @@ def test_list_sessions_says_what_can_be_replayed(engine):
 
 @pytest.fixture
 def api(engine, monkeypatch):
-    monkeypatch.setattr(server, "engine", engine)
-    return TestClient(server.app, base_url="http://127.0.0.1:8765")
+    monkeypatch.setattr(deps, "engine", engine)
+    return TestClient(app, base_url="http://127.0.0.1:8765")
 
 
 def test_replay_api(api, engine, monkeypatch):
