@@ -508,7 +508,7 @@ owns = ["{app}pages/home/LastSession.tsx", "{app}pages/home/LastSession.test.tsx
 id = "F24"
 title = "The table's name (party name), default \"The table\""
 size = "M"
-deps = ["F1", "F3", "S11"]
+deps = ["F1", "F2", "F3", "S11"]
 owns = ["backend/packages/engine/src/troubadour/engine/state.py", "backend/packages/engine/src/troubadour/engine/_library.py", "backend/packages/engine/src/troubadour/engine/_sessions.py", "{server}routers/players.py", "{tests}test_table_name.py", "{api}campaigns/", "{app}lib/table.ts", "{app}lib/table.test.ts", "{app}pages/welcome/", "{app}pages/home/TheTable.tsx", "{app}pages/home/TheTable.test.tsx", "{app}pages/ready/index.tsx", "{app}shell/CampaignSwitcher.tsx", "{app}shell/CampaignSwitcher.test.tsx"]
 
 [[task]]
@@ -519,10 +519,17 @@ deps = ["S8", "F20"]
 owns = ["{app}components/players/"]
 
 [[task]]
+id = "F26"
+title = "Settings › Content: classes and D&D terms"
+size = "M"
+deps = ["F20", "F18", "C1", "F21", "F22", "F19"]
+owns = ["{lore}dnd_terms.py", "{server}routers/terms.py", "{server}app.py", "{tests}test_terms.py", "{tests}test_routes.py", "{api}terms/", "{api}query/keys.ts", "{app}paths.ts", "{app}pages/settings/index.tsx", "{app}pages/settings/index.test.tsx", "{app}pages/settings/sections/content/", "{app}pages/settings/sections/players/"]
+
+[[task]]
 id = "R1"
 title = "Responsive layouts: wrap to two columns, then one"
 size = "L"
-deps = ["F24", "F25", "F23", "X3"]
+deps = ["F24", "F25", "F26", "F23", "X3"]
 owns = ["{ui}components/rail-layout.tsx", "{app}shell/", "{app}pages/", "{app}components/", "web/app/scripts/smoke.ts"]
 
 # ---------------------------------------------------------------- X: finish
