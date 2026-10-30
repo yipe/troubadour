@@ -98,7 +98,7 @@ def build(meta: dict, players: list[dict], voices: list[dict], messages: list[di
     return {
         "version": VERSION,
         "session": meta | {"lines": len(out_messages)},
-        "players": [{k: p.get(k) for k in ("id", "name", "character", "is_gm", "color")} for p in players],
+        "players": [{k: p.get(k) for k in ("id", "name", "character", "is_gm", "color", "dnd_class")} for p in players],
         "voices": [
             {k: v[k] for k in ("id", "label", "player_id", "character", "trained")} for v in voices if v["status"] == "named"
         ],

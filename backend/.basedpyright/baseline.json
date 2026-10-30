@@ -398,14 +398,6 @@
             {
                 "code": "reportAttributeAccessIssue",
                 "range": {
-                    "startColumn": 52,
-                    "endColumn": 57,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportAttributeAccessIssue",
-                "range": {
                     "startColumn": 13,
                     "endColumn": 24,
                     "lineCount": 1

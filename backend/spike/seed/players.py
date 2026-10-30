@@ -12,6 +12,9 @@ from .common import CAMPAIGN_ID, CAMPAIGN_NAME, OTHER_CAMPAIGN_ID, OTHER_CAMPAIG
 
 # The engine's palette (engine.live.PALETTE), repeated because the seed may not import the engine.
 PALETTE = ["#f59e0b", "#10b981", "#3b82f6", "#ec4899", "#8b5cf6"]
+# Each player's class (the GM has none), and a made-up custom class nobody uses yet.
+CLASSES = {"p-sam": "bard", "p-jo": "druid", "p-rin": "barbarian", "p-maya": "wizard"}
+CUSTOM_CLASSES = {"classes": [{"id": "tinkerer", "label": "Tinkerer", "color": "#8c6040"}]}
 EMBEDDING_DIM = 256  # what the speaker embedder produces
 
 
@@ -32,11 +35,22 @@ def seed(ctx: SeedContext) -> None:
         PlayerSeed("p-maya", "Maya", "Velis Anwe", False, PALETTE[4], False, "v-maya"),
     ]
     people = [
-        {"id": p.id, "name": p.name, "avatar": None, "color": p.color, "trained": p.trained, "clone_ok": False}
+        {
+            "id": p.id,
+            "name": p.name,
+            "avatar": None,
+            # A player with a class shows the class colour; the GM keeps a picked colour.
+            "color": None if p.id in CLASSES else p.color,
+            "dnd_class": CLASSES.get(p.id),
+            "trained": p.trained,
+            "clone_ok": False,
+        }
         for p in ctx.players
     ]
     # In the library, playing only in the second campaign.
-    people.append({"id": "p-dee", "name": "Dee", "avatar": None, "color": "#14b8a6", "trained": False, "clone_ok": False})
+    people.append(
+        {"id": "p-dee", "name": "Dee", "avatar": None, "color": "#14b8a6", "dnd_class": None, "trained": False, "clone_ok": False}
+    )
 
     def voice(vid: str, label: str, player_id: str, character: str | None, trained: bool, seconds: float) -> dict:
         return {
@@ -84,3 +98,4 @@ def seed(ctx: SeedContext) -> None:
         "next_label": 4,  # "Voice 3" is the unnamed voice heard in the latest session
     }
     write_atomic(ctx.data_dir / "state.json", json.dumps(state))
+    write_atomic(ctx.data_dir / "classes.json", json.dumps(CUSTOM_CLASSES))

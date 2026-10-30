@@ -10,8 +10,7 @@ SR = config.SR
 PANEL_S = 3.0  # speech a new voice needs before it shows in the panel (benchmark default)
 JOIN = 0.5  # cosine to a pending voice's centroid to join it
 PROVISIONAL_BELOW = 0.55
-PALETTE = ["#f59e0b", "#10b981", "#3b82f6", "#ec4899", "#8b5cf6", "#ef4444", "#14b8a6", "#f97316", "#84cc16", "#06b6d4"]
-PERSON_KEYS = ("id", "name", "avatar", "color", "trained", "clone_ok")
+PERSON_KEYS = ("id", "name", "avatar", "color", "dnd_class", "trained", "clone_ok")
 
 
 def short_id(prefix: str) -> str:
@@ -27,7 +26,8 @@ class Player:
     name: str
     character: str = ""
     avatar: str | None = None
-    color: str = PALETTE[0]
+    color: str | None = None  # an override; None: the colour of their class
+    dnd_class: str | None = None  # a core.classes id; may name a class deleted since
     trained: bool = False
     is_gm: bool = False
     clone_ok: bool = False  # they agreed to a voice clone (tts.py); off deletes everything made from it

@@ -287,7 +287,7 @@ def test_removing_from_a_campaign_keeps_the_training(engine):
     vid = named_voice(engine, p["id"], ALICE)
     idle(engine).bench_player(p["id"])
     assert p["id"] not in engine.players
-    assert engine.library_json() == [{k: p[k] for k in ("id", "name", "avatar", "color", "trained", "clone_ok")}]
+    assert engine.library_json() == [{k: p[k] for k in ("id", "name", "avatar", "color", "dnd_class", "trained", "clone_ok")}]
     assert vid in engine.parked
     assert vid not in engine.matcher.names
     engine.seat_player(p["id"])
@@ -312,10 +312,8 @@ def test_first_player_seated_at_an_empty_table_is_the_gm(engine):
     assert engine.seat_player(b["id"])["is_gm"] is False
 
 
-def test_new_players_get_a_color_nobody_in_the_library_has(engine):
-    a = engine.add_player("Nora")
-    idle(engine).open_campaign(engine.create_campaign("Morvath")["id"])
-    assert engine.add_player("Ana")["color"] != a["color"]
+def test_new_players_have_no_color_override(engine):
+    assert engine.add_player("Nora")["color"] is None
 
 
 def test_state_without_campaigns_still_loads_everyone(dirs):
