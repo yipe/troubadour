@@ -28,23 +28,31 @@ export function CampaignStep({ onBusy }: { onBusy: (busy: boolean) => void }) {
   const open = useOpenCampaign()
   const rename = useRenameCampaign()
   const [typed, setTyped] = useState<string | null>(null)
+  const [typedTable, setTypedTable] = useState<string | null>(null)
 
   const current = campaigns?.campaigns.find((c) => c.id === campaigns.campaign)
   const forceNew = params.get("new") === "1"
   const renaming = !forceNew && !!current && sessions.data?.length === 0
   const name = typed ?? (renaming ? current.name : "")
   const trimmed = name.trim()
+  const table = (typedTable ?? (renaming ? current.table_name : "")).trim()
   const error = trimmed.length > MAX_NAME ? `Keep it to ${MAX_NAME} characters or fewer.` : undefined
+  const tableError = table.length > MAX_NAME ? `Keep it to ${MAX_NAME} characters or fewer.` : undefined
   const ready = forceNew || sessions.isSuccess
 
   const submit = async () => {
-    if (!trimmed || error || !ready) return
+    if (!trimmed || error || tableError || !ready) return
     onBusy(true)
     try {
       if (renaming) {
-        if (trimmed !== current.name) await rename.mutateAsync({ id: current.id, name: trimmed })
+        const patch = {
+          ...(trimmed !== current.name && { name: trimmed }),
+          ...(table !== current.table_name.trim() && { table_name: table }),
+        }
+        if (Object.keys(patch).length > 0) await rename.mutateAsync({ id: current.id, ...patch })
       } else {
         const made = await create.mutateAsync(trimmed)
+        if (table) await rename.mutateAsync({ id: made.id, table_name: table })
         await open.mutateAsync(made.id)
       }
       await navigate(paths.welcome("table"))
@@ -71,6 +79,18 @@ export function CampaignStep({ onBusy }: { onBusy: (busy: boolean) => void }) {
           value={name}
           placeholder="Sunken Crown"
           onChange={(e) => setTyped(e.target.value)}
+        />
+      </Field>
+      <Field
+        label="Your table’s name"
+        hint="What the party calls itself. Leave empty for “The table”."
+        error={tableError}
+      >
+        <Input
+          maxLength={MAX_NAME + 20}
+          value={typedTable ?? (renaming ? current.table_name : "")}
+          placeholder="e.g. Magic Mushroom Mob"
+          onChange={(e) => setTypedTable(e.target.value)}
         />
       </Field>
       <fieldset className="flex flex-col gap-2.5">

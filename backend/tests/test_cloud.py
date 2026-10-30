@@ -815,7 +815,7 @@ def test_api_restoring_a_campaign_from_another_mac_adds_it_to_the_picker(api, se
     assert job["state"] == "done", job["message"]
     assert job["title"] == "The Sunken Gate"
     state = api.get("/api/state").json()
-    assert {"id": "c0123456789", "name": "The Sunken Gate"} in state["campaigns"]
+    assert {"id": "c0123456789", "name": "The Sunken Gate", "table_name": ""} in state["campaigns"]
     assert state["campaign"] == "main"  # restoring doesn't switch campaigns
     assert (config.DATA_DIR / "campaigns" / "c0123456789" / "Facts.md").read_text() == "The gate opens at dawn.\n"
 

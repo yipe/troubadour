@@ -4,16 +4,19 @@ import { keys } from "@troubadour/api/query"
 import { bodyOf, mockFetch, savedSession, session } from "@troubadour/api/testing"
 import { renderApp } from "../../test/render.tsx"
 
-const ONE = { campaign: "main", campaigns: [{ id: "main", name: "Blank" }] }
+const ONE = { campaign: "main", campaigns: [{ id: "main", name: "Blank", table_name: "" }] }
 
 function setup(route: string, sessions: unknown[] = []) {
   const server = mockFetch((c) => {
     if (c.method === "POST" && c.url === "/api/campaigns")
-      return { id: "c2", name: bodyOf<{ name: string }>(c).name }
+      return { id: "c2", name: bodyOf<{ name: string }>(c).name, table_name: "" }
     if (c.method === "POST" && c.url === "/api/campaigns/c2/open")
-      return { campaign: "c2", campaigns: [...ONE.campaigns, { id: "c2", name: "Sunken Crown" }] }
+      return {
+        campaign: "c2",
+        campaigns: [...ONE.campaigns, { id: "c2", name: "Sunken Crown", table_name: "" }],
+      }
     if (c.method === "PATCH" && c.url === "/api/campaigns/main")
-      return { id: "main", name: bodyOf<{ name: string }>(c).name }
+      return { id: "main", name: bodyOf<{ name: string }>(c).name ?? "Blank", table_name: "" }
     if (c.url === "/api/sessions") return sessions
     return []
   })
@@ -65,6 +68,20 @@ describe("welcome wizard", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/welcome/table"))
     expect(writes()).toEqual([
       { method: "PATCH", url: "/api/campaigns/main", body: { name: "Sunken Crown" } },
+    ])
+  })
+
+  it("saves the table name with the campaign", async () => {
+    const { router, writes } = setup("/welcome/campaign")
+    const name = await screen.findByLabelText("Campaign name")
+    await waitFor(() => expect(name).toHaveValue("Blank"))
+    fireEvent.change(screen.getByLabelText("Your table’s name"), {
+      target: { value: " Magic Mushroom Mob " },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /Continue to the table/ }))
+    await waitFor(() => expect(router.state.location.pathname).toBe("/welcome/table"))
+    expect(writes()).toEqual([
+      { method: "PATCH", url: "/api/campaigns/main", body: { table_name: "Magic Mushroom Mob" } },
     ])
   })
 

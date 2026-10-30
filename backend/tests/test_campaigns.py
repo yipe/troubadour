@@ -273,8 +273,8 @@ def test_each_campaign_has_its_own_vault(engine):
 
 
 def test_rename_campaign(engine):
-    assert engine.rename_campaign(MAIN_CAMPAIGN, "Phandelver") == {"id": MAIN_CAMPAIGN, "name": "Phandelver"}
-    assert engine.bus.of("campaigns.updated")[-1]["campaigns"] == [{"id": MAIN_CAMPAIGN, "name": "Phandelver"}]
+    assert engine.rename_campaign(MAIN_CAMPAIGN, "Phandelver") == {"id": MAIN_CAMPAIGN, "name": "Phandelver", "table_name": ""}
+    assert engine.bus.of("campaigns.updated")[-1]["campaigns"] == [{"id": MAIN_CAMPAIGN, "name": "Phandelver", "table_name": ""}]
     with pytest.raises(KeyError):
         engine.rename_campaign("c-nope", "X")
 

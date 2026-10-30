@@ -36,7 +36,8 @@ export function useCreateCampaign() {
 export function useRenameCampaign() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (v: { id: string; name: string }) => renameCampaign(v.id, v.name),
+    mutationFn: ({ id, ...patch }: { id: string; name?: string; table_name?: string }) =>
+      renameCampaign(id, patch),
     onSuccess: (info) =>
       client.setQueryData<Campaigns>(
         keys.campaigns(),

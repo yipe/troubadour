@@ -12,8 +12,8 @@ vi.mock("@troubadour/ui/toast", () => ({ notify: vi.fn() }))
 const TWO = {
   campaign: "main",
   campaigns: [
-    { id: "main", name: "Phandelver" },
-    { id: "c2", name: "Morvath" },
+    { id: "main", name: "Phandelver", table_name: "" },
+    { id: "c2", name: "Morvath", table_name: "" },
   ],
 }
 
@@ -108,9 +108,22 @@ describe("CampaignSwitcher", () => {
     await waitFor(() =>
       expect(writes().map((c) => [c.method, c.url])).toEqual([["PATCH", "/api/campaigns/main"]]),
     )
-    expect(bodyOf<{ name: string }>(writes()[0]!)).toEqual({ name: "Lost Mine" })
+    expect(bodyOf(writes()[0]!)).toEqual({ name: "Lost Mine", table_name: "" })
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
     expect(screen.getByRole("button", { name: "Campaign" })).toHaveTextContent("Lost Mine")
+  })
+
+  it("edits the table name in the same dialog", async () => {
+    const { writes } = mockFetch((c) => (c.method === "PATCH" ? { id: "main", name: "Phandelver" } : []))
+    setup()
+    openMenu()
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename…" }))
+    fireEvent.change(await screen.findByRole("textbox", { name: "Table name" }), {
+      target: { value: " Magic Mushroom Mob " },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(bodyOf(writes()[0]!)).toEqual({ name: "Phandelver", table_name: "Magic Mushroom Mob" })
   })
 
   it("rejects empty and over-long names without calling the server", async () => {

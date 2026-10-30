@@ -40,7 +40,7 @@ export function CampaignSwitcher() {
   const jobsBusy = useCampaign().data?.jobs.some((j) => j.state === "queued" || j.state === "running")
   const gm = useLive((s) => s.players.find((p) => p.is_gm))
   const classes = useClasses().data ?? []
-  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
+  const [renaming, setRenaming] = useState<{ id: string; name: string; table_name: string } | null>(null)
 
   const current = data?.campaigns.find((c) => c.id === data.campaign)
   const reason = running
@@ -88,7 +88,7 @@ export function CampaignSwitcher() {
           <DropdownMenuItem
             icon={<Pencil />}
             disabled={!current}
-            onClick={() => current && setRenaming({ id: current.id, name: current.name })}
+            onClick={() => current && setRenaming(current)}
           >
             Rename…
           </DropdownMenuItem>
@@ -99,17 +99,25 @@ export function CampaignSwitcher() {
   )
 }
 
-function RenameDialog({ target, onClose }: { target: { id: string; name: string }; onClose: () => void }) {
+function RenameDialog({
+  target,
+  onClose,
+}: {
+  target: { id: string; name: string; table_name: string }
+  onClose: () => void
+}) {
   const rename = useRenameCampaign()
   const [name, setName] = useState(target.name)
+  const [tableName, setTableName] = useState(target.table_name)
   const [touched, setTouched] = useState(false)
   const error = touched ? nameError(name) : null
+  const tableError = tableName.trim().length > MAX_NAME ? `Keep it to ${MAX_NAME} characters or fewer.` : null
 
   const submit = () => {
     setTouched(true)
-    if (nameError(name)) return
+    if (nameError(name) || tableError) return
     rename.mutate(
-      { id: target.id, name: name.trim() },
+      { id: target.id, name: name.trim(), table_name: tableName.trim() },
       { onSuccess: onClose, onError: (e) => notify(e.message, { tone: "danger" }) },
     )
   }
@@ -133,6 +141,17 @@ function RenameDialog({ target, onClose }: { target: { id: string; name: string 
                   setName(e.target.value)
                   setTouched(true)
                 }}
+              />
+            </Field>
+            <Field
+              label="Table name"
+              hint="What the party calls itself. Leave empty for “The table”."
+              error={tableError ?? undefined}
+            >
+              <Input
+                value={tableName}
+                placeholder="e.g. Magic Mushroom Mob"
+                onChange={(e) => setTableName(e.target.value)}
               />
             </Field>
           </DialogBody>

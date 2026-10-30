@@ -25,7 +25,12 @@ export function player(p: Partial<Player> & { id: string }): Player {
 
 /** The campaign fields every snapshot carries: one campaign, nobody in the library. */
 export function snapshotBase(s: Partial<Pick<Snapshot, "campaign" | "campaigns" | "library">> = {}) {
-  return { campaign: "main", campaigns: [{ id: "main", name: "My campaign" }], library: [], ...s }
+  return {
+    campaign: "main",
+    campaigns: [{ id: "main", name: "My campaign", table_name: "" }],
+    library: [],
+    ...s,
+  }
 }
 
 export function voice(v: Partial<Voice> & { id: string }): Voice {
@@ -235,7 +240,7 @@ export function libraryPlayer(p: Partial<LibraryPlayer> & { id: string }): Libra
 }
 
 export function campaignInfo(c: Partial<CampaignInfo> & { id: string }): CampaignInfo {
-  return { name: c.id, ...c }
+  return { name: c.id, table_name: "", ...c }
 }
 
 /** A full snapshot: the base campaign fields, an idle-ish session and empty lists. */

@@ -17,9 +17,11 @@ class Campaign:
     roster: dict[str, dict] = field(default_factory=dict)
     # Seats of people taken out of this campaign, so adding them back restores their character.
     left: dict[str, dict] = field(default_factory=dict)
+    # What the party calls itself; empty shows as "The table" in the UI.
+    table_name: str = ""
 
     def to_json(self) -> dict:
-        return {"id": self.id, "name": self.name}
+        return {"id": self.id, "name": self.name, "table_name": self.table_name}
 
 
 def migrate_state(data: dict) -> dict:

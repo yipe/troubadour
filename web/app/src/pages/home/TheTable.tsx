@@ -5,6 +5,7 @@ import type { Voice } from "@troubadour/api/session"
 import { Card, CardHeader } from "@troubadour/ui/card"
 import { PlayerAvatar } from "../../components/people/PlayerAvatar.tsx"
 import { playerColor } from "../../lib/players.ts"
+import { useTableName } from "../../lib/table.ts"
 import { paths } from "../../paths.ts"
 
 type VoiceStatus = "Trained" | "Learned in play" | "No voice yet"
@@ -25,13 +26,14 @@ export type TheTableProps = { players: Player[]; voices: Voice[] }
 
 export function TheTable({ players, voices }: TheTableProps) {
   const classes = useClasses().data ?? []
+  const title = useTableName()
   const trained = players.filter((p) => p.trained).length
   const label = (p: Player) => classes.find((c) => c.id === p.dnd_class)?.label ?? null
 
   return (
     <Card className="flex min-h-0 flex-col">
       <CardHeader
-        title="The table"
+        title={title}
         action={
           <span className="text-12 text-ink-subtle">
             {players.length} {players.length === 1 ? "player" : "players"} · voices trained {trained}/

@@ -46,11 +46,17 @@ class CampaignIn(BaseModel):
     name: Name
 
 
+class CampaignPatch(BaseModel):
+    name: Name | None = None
+    table_name: Annotated[str, StringConstraints(strip_whitespace=True, max_length=60)] | None = None  # "" clears
+
+
 class CampaignInfo(BaseModel):
     """A campaign: its own players' characters, notes (vault) and saved sessions."""
 
     id: str
     name: str
+    table_name: str  # what the party calls itself; "" when unset
 
 
 class CampaignsOut(BaseModel):
@@ -137,8 +143,10 @@ def create_campaign(body: CampaignIn):
 
 
 @router.patch("/api/campaigns/{cid}", response_model=CampaignInfo)
-def rename_campaign(cid: str, body: CampaignIn):
-    return deps._call(deps.engine.rename_campaign, cid, body.name)
+def rename_campaign(cid: str, body: CampaignPatch):
+    if body.name is None and body.table_name is None:
+        raise HTTPException(422, "Give a name or a table name.")
+    return deps._call(deps.engine.rename_campaign, cid, body.name, body.table_name)
 
 
 @router.post("/api/campaigns/{cid}/open", response_model=CampaignsOut)
