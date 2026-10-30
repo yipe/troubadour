@@ -197,7 +197,7 @@ export function MicCard({ mode, device, onDeviceChange, sources }: MicCardProps)
       <div className="grid grid-cols-[minmax(0,1fr)_300px] items-center gap-5">
         <div className="flex flex-col gap-2">
           <LevelMeter48 key={source} source={source} />
-          {!sessionRunning && <TestControl device={device.kind === "mic" ? device.device : null} />}
+          {!sessionRunning && <TestControl device={device.kind === "mic" ? (device.device ?? null) : null} />}
         </div>
         <MicChecklist rows={rows} />
       </div>

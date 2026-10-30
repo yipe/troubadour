@@ -274,7 +274,8 @@ def test_reviewed_can_be_set_and_cleared(engine, client):
 
 def test_reviewed_is_404_for_an_unknown_session(client):
     assert client.post("/api/sessions/2026-01-01_000000-ffff/reviewed", json={"reviewed": True}).status_code == 404
-    assert client.post("/api/sessions/..%2Fstate/reviewed", json={"reviewed": True}).status_code == 404
+    # A traversal id never reaches the handler: 404, or 405 when the built UI's fallback catches the path.
+    assert client.post("/api/sessions/..%2Fstate/reviewed", json={"reviewed": True}).status_code in (404, 405)
 
 
 def test_an_autosave_keeps_the_reviewed_time(started, engine):
