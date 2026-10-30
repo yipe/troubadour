@@ -83,7 +83,7 @@ def test_trashed_sessions_are_skipped_by_numbering_and_scans(engine, client, pai
 
 def test_delete_refusals(engine, client, pair):
     assert client.delete("/api/sessions/2025-03-01_999999-cccc").status_code == 404
-    assert client.delete("/api/sessions/..%2Fx").status_code in (404, 422)
+    assert client.delete("/api/sessions/..%2Fx").status_code in (404, 405, 422)  # 405: the built UI's fallback
     assert client.delete("/api/sessions/not-an-id").status_code == 422
     assert client.post("/api/sessions/not-an-id/undelete").status_code == 422
     assert client.post(f"/api/sessions/{EARLY}/undelete").status_code == 404  # not in the trash
