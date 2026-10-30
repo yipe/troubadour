@@ -554,10 +554,17 @@ deps = ["F14", "F15", "C9"]
 owns = ["{lore}timeline.py", "{server}routers/timeline.py", "{tests}test_appearances.py", "{api}timeline/", "{app}pages/codex/"]
 
 [[task]]
+id = "F32"
+title = "Refresh a session, and upgrade old sessions after a software update"
+size = "L"
+deps = ["F30", "F28", "F24"]
+owns = ["backend/packages/engine/src/troubadour/engine/pipeline.py", "backend/packages/engine/src/troubadour/engine/improve.py", "backend/packages/engine/src/troubadour/engine/_sessions.py", "{server}routers/sessions.py", "{tests}test_pipeline.py", "{api}sessions/", "{app}pages/sessions/tools/", "{app}pages/sessions/UpgradeBanner.tsx", "{app}pages/home/UpgradeBanner.tsx", "{app}pages/home/index.tsx", "{app}pages/sessions/index.tsx", "backend/AGENTS.md"]
+
+[[task]]
 id = "R1"
 title = "Responsive layouts: wrap to two columns, then one"
 size = "L"
-deps = ["F24", "F25", "F26", "F28", "F29", "F30", "F31", "F23", "X3"]
+deps = ["F24", "F25", "F26", "F28", "F29", "F30", "F31", "F32", "F23", "X3"]
 owns = ["{ui}components/rail-layout.tsx", "{app}shell/", "{app}pages/", "{app}components/", "web/app/scripts/smoke.ts"]
 
 [[task]]
