@@ -1,9 +1,6 @@
+import type { Schemas } from "../generated/index.ts"
+
 /** A campaign: its own players' characters, notes (vault) and saved sessions. */
-export interface CampaignInfo {
-  id: string
-  name: string
-}
-export interface Campaigns {
-  campaign: string /* id of the open campaign */
-  campaigns: CampaignInfo[]
-}
+export type CampaignInfo = Schemas["CampaignInfo"]
+/** The campaign list and the id of the open one. */
+export type Campaigns = Schemas["CampaignsOut"]

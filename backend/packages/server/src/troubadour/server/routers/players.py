@@ -44,6 +44,18 @@ class CampaignIn(BaseModel):
     name: Name
 
 
+class CampaignInfo(BaseModel):
+    """A campaign: its own players' characters, notes (vault) and saved sessions."""
+
+    id: str
+    name: str
+
+
+class CampaignsOut(BaseModel):
+    campaign: str  # id of the open campaign
+    campaigns: list[CampaignInfo]
+
+
 class TrainIn(BaseModel):
     seconds: float = Field(20.0, ge=5, le=60)
 
@@ -79,17 +91,17 @@ def bench_player(pid: str):
         deps._call(deps.engine.bench_player, pid)
 
 
-@router.post("/api/campaigns")
+@router.post("/api/campaigns", response_model=CampaignInfo)
 def create_campaign(body: CampaignIn):
     return deps.engine.create_campaign(body.name)
 
 
-@router.patch("/api/campaigns/{cid}")
+@router.patch("/api/campaigns/{cid}", response_model=CampaignInfo)
 def rename_campaign(cid: str, body: CampaignIn):
     return deps._call(deps.engine.rename_campaign, cid, body.name)
 
 
-@router.post("/api/campaigns/{cid}/open")
+@router.post("/api/campaigns/{cid}/open", response_model=CampaignsOut)
 def open_campaign(cid: str):
     """Switch campaigns (between sessions): players, voices, notes and History follow."""
     with deps.campaign_gate:
