@@ -14,7 +14,9 @@ it("routes /settings/:section to its section, and unknown ones to models", async
   mockFetch((c) =>
     c.url === "/api/storage"
       ? { root: "~/troubador", recordings: 1, voices: 1, notes: 1, other: 1 }
-      : modelSettings(),
+      : c.url === "/api/mics"
+        ? []
+        : modelSettings(),
   )
   const page = (route: string) =>
     renderWithProviders(
@@ -24,7 +26,7 @@ it("routes /settings/:section to its section, and unknown ones to models", async
       { route },
     )
   const { unmount } = page("/settings/microphone")
-  expect(await screen.findByRole("heading", { name: "Microphone" })).toBeInTheDocument()
+  expect(await screen.findByRole("heading", { name: "Microphone", level: 1 })).toBeInTheDocument()
   unmount()
   page("/settings/bogus")
   expect(await screen.findByRole("heading", { name: "Models & privacy", level: 1 })).toBeInTheDocument()
