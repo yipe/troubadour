@@ -8,7 +8,7 @@ export function Component() {
     <div className="flex items-start gap-8 p-8">
       <div className="min-w-0 flex-1">
         <PageHeading
-          eyebrow="Models & privacy"
+          tone="accent"
           title="Models & privacy"
           subtitle="Where each part of Troubadour runs. Audio and voices never leave this Mac."
           className="mb-6"

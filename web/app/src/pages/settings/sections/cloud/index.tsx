@@ -41,7 +41,7 @@ export function Component() {
   if (!status) {
     return (
       <div className="p-8">
-        <PageHeading eyebrow="Troubadour Cloud" title="Troubadour Cloud" subtitle={SUBTITLE} />
+        <PageHeading tone="accent" title="Troubadour Cloud" subtitle={SUBTITLE} />
         <Spinner />
       </div>
     )
@@ -54,7 +54,7 @@ function NotConnected({ campaignName }: { campaignName: string }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="flex max-w-[760px] flex-col gap-5 p-8">
-      <PageHeading eyebrow="Troubadour Cloud" title="Troubadour Cloud" subtitle={SUBTITLE} />
+      <PageHeading tone="accent" title="Troubadour Cloud" subtitle={SUBTITLE} />
       <Card className="flex items-center gap-4 px-5 py-4">
         <IconTile size={36}>
           <CloudOff size={20} aria-hidden />
@@ -81,7 +81,7 @@ function Connected({ campaignName }: { campaignName: string }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_420px] items-start gap-8 p-8">
       <section className="flex flex-col gap-4.5">
-        <PageHeading eyebrow="Troubadour Cloud" title="Troubadour Cloud" subtitle={SUBTITLE} />
+        <PageHeading tone="accent" title="Troubadour Cloud" subtitle={SUBTITLE} />
         <StatusCard campaignName={campaignName} />
         <WhatGoesUp />
         <Card className="flex items-center gap-3.5 px-4 py-3">

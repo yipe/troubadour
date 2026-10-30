@@ -52,3 +52,10 @@ it("links to Obsidian when it knows the folder, and explains otherwise", async (
   expect(await screen.findByText("Open this folder as a vault in Obsidian first")).toBeInTheDocument()
   expect(screen.queryByRole("link", { name: /Open in Obsidian/ })).toBeNull()
 })
+
+it("names the page once, in one heading", async () => {
+  server({})
+  renderWithProviders(<VaultSettings />)
+  expect(await screen.findByRole("heading", { level: 1, name: "Obsidian vault" })).toBeInTheDocument()
+  expect(screen.getAllByText("Obsidian vault")).toHaveLength(1)
+})
