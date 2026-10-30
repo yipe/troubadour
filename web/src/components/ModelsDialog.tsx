@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ExternalLink, Loader2, RefreshCw } from "lucide-react"
+import { Check, ChevronDown, ExternalLink, Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { NativeSelect } from "@/components/ui/native-select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { api } from "@/lib/api"
 import { setLlmProviders, useLlmProviders } from "@/lib/llmStore"
 import { useStore } from "@/lib/store"
@@ -250,8 +250,10 @@ export function ModelsDialog({
                       {scan.busy ? <Loader2 className="animate-spin" /> : <RefreshCw />} Rescan
                     </Button>
                   </div>
-                  <CommonServers
+                  <ServerPick
+                    label="Common servers"
                     servers={servers}
+                    selected={url}
                     onPick={(address) => {
                       setUrl(address)
                       void rescan(address)
@@ -291,29 +293,20 @@ export function ModelsDialog({
               onChange={(v) => setPair("memory", v)}
             />
             {!chosen && (
-              <label className="block space-y-1">
+              <div className="space-y-1">
                 <span className="text-xs text-muted-foreground">Its server</span>
-                <NativeSelect
-                  aria-label="Server for questions, write-ups, and facts"
-                  className="h-8 w-full text-xs"
+                <ServerPick
+                  label="Server for questions, write-ups, and facts"
+                  servers={servers}
                   value={memoryUrl}
-                  onChange={(e) => {
-                    setMemoryUrl(e.target.value)
-                    if (e.target.value) void scanMemory(e.target.value)
+                  auto="Auto (the model server above)"
+                  onPick={(address) => {
+                    setMemoryUrl(address)
+                    if (address) void scanMemory(address)
                     else setMemoryChoices(null)
                   }}
-                >
-                  <option value="">Auto (the model server above)</option>
-                  {memoryUrl && !servers?.some((s) => s.url === memoryUrl) && (
-                    <option value={memoryUrl}>{memoryUrl}</option>
-                  )}
-                  {(servers ?? []).map((s) => (
-                    <option key={s.port} value={s.url}>
-                      {serverLabel(s)}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </label>
+                />
+              </div>
             )}
             {priceNote && <p className="text-xs text-muted-foreground">{priceNote}</p>}
             {chosen ? (
@@ -584,34 +577,101 @@ function ServerStatus({ scanned }: { scanned: string | null }) {
 
 type LocalServer = { port: number; name: string; url: string; running: boolean; models: number }
 
-function serverLabel(s: LocalServer): string {
-  const state = s.running ? `running, ${s.models} ${s.models === 1 ? "model" : "models"}` : "not running"
-  return `${s.name} · ${s.port} · ${state}`
+/** A server's model count: blue with the number when it answers with some, grey when it's down or has none. */
+function ServerBadge({ server }: { server: LocalServer }) {
+  const some = server.running && server.models > 0
+  return (
+    <span
+      title={server.running ? `${server.models} ${server.models === 1 ? "model" : "models"}` : "not running"}
+      className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-medium tabular-nums ${
+        some ? "bg-blue-600 text-white" : "bg-muted text-muted-foreground"
+      }`}
+    >
+      {some ? server.models : server.running ? 0 : "–"}
+    </span>
+  )
 }
 
-/** The usual local model servers (LM Studio, Ollama, MTPLX, ...), checked when the dialog opens: picking one
- * fills in its address and rescans it. */
-function CommonServers({
+/** A pick among the usual local model servers (LM Studio, Ollama, MTPLX, ...), each with its model count.
+ * `auto`: an extra first choice ("" = the model server above). */
+function ServerPick({
+  label,
   servers,
+  value,
+  auto,
   onPick,
+  selected = value,
 }: {
+  label: string
   servers: LocalServer[] | null
+  value?: string
+  auto?: string
   onPick: (url: string) => void
+  /** The address in use (marked in the list); defaults to `value`. */
+  selected?: string
 }) {
+  const [open, setOpen] = useState(false)
   if (!servers?.length) return null
+  const current = servers.find((s) => s.url === value)
+  const shown =
+    value === undefined
+      ? label
+      : value === ""
+        ? (auto ?? label)
+        : current
+          ? `${current.name} · ${current.port}`
+          : value
+  const choose = (url: string) => {
+    setOpen(false)
+    onPick(url)
+  }
   return (
-    <NativeSelect
-      aria-label="Common servers"
-      className="h-8 w-full text-xs"
-      value=""
-      onChange={(e) => e.target.value && onPick(e.target.value)}
-    >
-      <option value="">Common servers on this Mac…</option>
-      {servers.map((s) => (
-        <option key={s.port} value={s.url}>
-          {serverLabel(s)}
-        </option>
-      ))}
-    </NativeSelect>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button variant="outline" size="sm" aria-label={label} className="w-full justify-between text-xs" />
+        }
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          {current && <ServerBadge server={current} />}
+          <span className="truncate">{shown}</span>
+        </span>
+        <ChevronDown className="size-3.5" />
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80 p-1">
+        <ul aria-label={label} className="text-sm">
+          {auto !== undefined && (
+            <li>
+              <button
+                type="button"
+                aria-current={selected === "" ? "true" : undefined}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted ${selected === "" ? "bg-muted font-medium" : ""}`}
+                onClick={() => choose("")}
+              >
+                <span className="w-5" />
+                <span className="flex-1">{auto}</span>
+                {selected === "" && <Check className="size-3.5" />}
+              </button>
+            </li>
+          )}
+          {servers.map((s) => (
+            <li key={s.port}>
+              <button
+                type="button"
+                aria-current={s.url === selected ? "true" : undefined}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted ${s.url === selected ? "bg-muted font-medium" : ""}`}
+                onClick={() => choose(s.url)}
+              >
+                <ServerBadge server={s} />
+                <span className="flex-1">
+                  {s.name} <span className="font-normal text-muted-foreground">· {s.port}</span>
+                </span>
+                {s.url === selected && <Check className="size-3.5" />}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </PopoverContent>
+    </Popover>
   )
 }

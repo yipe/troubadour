@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useLlmProviders } from "@/lib/llmStore"
 import { applyEvent } from "@/lib/store"
@@ -119,13 +119,19 @@ describe("Models dialog", () => {
       if (call.url === "/api/llm/local/models") return { installed: ["mtplx-qwen"], found: 1, error: null }
     })
     await openDialog()
-    const pick = screen.getByRole("combobox", { name: "Common servers" })
-    expect([...(pick as HTMLSelectElement).options].map((o) => o.text)).toEqual([
-      "Common servers on this Mac…",
-      "LM Studio · 1234 · not running",
-      "MTPLX / vLLM · 8000 · running, 1 model",
-    ])
-    fireEvent.change(pick, { target: { value: "http://127.0.0.1:8000/v1" } })
+    fireEvent.click(screen.getByRole("button", { name: "Common servers" }))
+    await act(async () => {})
+    const list = screen.getByRole("list", { name: "Common servers" })
+    const rows = within(list).getAllByRole("button")
+    expect(rows.map((r) => r.textContent)).toEqual(["–LM Studio · 1234", "1MTPLX / vLLM · 8000"]) // count first
+    expect(rows.map((r) => r.getAttribute("aria-current"))).toEqual([null, null]) // 1235 is in use: not listed
+    expect(within(rows[0]).getByTitle("not running")).toHaveClass("bg-muted")
+    expect(within(rows[1]).getByTitle("1 model")).toHaveClass("bg-blue-600")
+    fireEvent.click(rows[1])
+    await act(async () => {})
+    fireEvent.click(screen.getByRole("button", { name: "Common servers" }))
+    await act(async () => {})
+    expect(screen.getByRole("button", { name: /MTPLX/ })).toHaveAttribute("aria-current", "true") // now the one in use
     await act(async () => {})
     expect(screen.getByLabelText("Model server")).toHaveValue("http://127.0.0.1:8000/v1")
     expect(writes()).toEqual([
@@ -148,10 +154,11 @@ describe("Models dialog", () => {
       if (call.url === "/api/settings/models") return settings()
     })
     await openDialog()
-    const server = screen.getByRole("combobox", { name: "Server for questions, write-ups, and facts" })
-    expect(server).toHaveValue("")
-    expect((server as HTMLSelectElement).options[0].text).toBe("Auto (the model server above)")
-    fireEvent.change(server, { target: { value: "http://127.0.0.1:8000/v1" } })
+    const server = screen.getByRole("button", { name: "Server for questions, write-ups, and facts" })
+    expect(server).toHaveTextContent("Auto (the model server above)")
+    fireEvent.click(server)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole("button", { name: /MTPLX \/ vLLM/ }))
     await act(async () => {})
     pick("Questions, write-ups, and facts", "mtplx-qwen") // its list is that server's models
     expect(screen.getByLabelText("Live spelling")).toHaveValue("gemma")
