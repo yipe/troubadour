@@ -32,7 +32,10 @@ fi
 mkdir -p "$DATA"
 
 cd "$ROOT/backend"
-if [ -f spike/seed_demo.py ]; then
+if [ "$KEEP" = 1 ] && [ -f "$DATA/.troubadour-seed" ]; then
+  # Reseeding would reset the seed-owned files and lose what was changed in the last run.
+  echo "(--keep: reusing the seeded data dir as it is)"
+elif [ -f spike/seed_demo.py ]; then
   uv run python spike/seed_demo.py "$DATA"
 else
   echo "(no spike/seed_demo.py yet: starting with an empty data dir)"
