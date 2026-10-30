@@ -1,20 +1,12 @@
+import type { Schemas } from "../generated/index.ts"
 import type { QualityNumbers, QualityVerdict } from "../audio/types.ts"
-import type { Fix, Source } from "../session/types.ts"
+import type { Fix } from "../session/types.ts"
 
-export interface SavedSession {
-  id: string
-  started_at: number /* epoch seconds */
-  source: Source | null
-  duration_s: number
-  lines: number
-  audio: boolean /* has its own mic recording at /api/sessions/{id}/audio.wav */
-  replayable: boolean /* its recording, or the sample file it replayed, still exists */
-  restorable: boolean /* improved; the original transcript can be restored */
-  /** The recording's verdict, once measured (GET /api/sessions/{id}/quality); null = not yet. */
-  quality: QualityVerdict | null
-  /** Ids of later sessions already appended onto this one. */
-  merged_from?: string[]
-}
+/** One saved session's summary. `title` is the write-up's, else the working title; `n` is its session number. */
+export type SavedSession = Schemas["SavedSession"]
+/** What a start sets or the server fills in after the fact; absent from records saved by older versions. */
+type LaterFields = "title" | "present_player_ids" | "reviewed_at" | "talk" | "merged_from"
+export type ReviewedResult = Schemas["ReviewedOut"]
 /** Set on a saved record once "Improve transcript" re-transcribed it. */
 export interface ImprovedInfo {
   at: number /* epoch seconds */
@@ -72,12 +64,16 @@ export interface RecordMessage {
 }
 export interface SessionRecord {
   version: number
-  session: Omit<SavedSession, "audio" | "replayable" | "restorable" | "quality"> & {
-    improved?: ImprovedInfo
-    in_character?: InCharacterInfo
-    spelling?: SpellingInfo
-    retranscribed?: RetranscribedInfo
-  }
+  session: Omit<
+    SavedSession,
+    "audio" | "replayable" | "restorable" | "quality" | "n" | "summary" | LaterFields
+  > &
+    Partial<Pick<SavedSession, LaterFields>> & {
+      improved?: ImprovedInfo
+      in_character?: InCharacterInfo
+      spelling?: SpellingInfo
+      retranscribed?: RetranscribedInfo
+    }
   players: RecordPlayer[]
   voices: {
     id: string

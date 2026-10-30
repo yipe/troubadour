@@ -66,6 +66,8 @@ export function session(s: Partial<Session> = {}): Session {
     asr: { model: "whisper", state: "ready" },
     training: null,
     audio_monitor: true,
+    title: "",
+    present_player_ids: [],
     error: null,
     ...s,
   }
@@ -81,6 +83,13 @@ export function savedSession(s: Partial<SavedSession> & { id: string }): SavedSe
     replayable: false,
     restorable: false,
     quality: null,
+    n: 1,
+    merged_from: [],
+    title: null,
+    summary: null,
+    present_player_ids: null,
+    reviewed_at: null,
+    talk: {},
     ...s,
   }
 }

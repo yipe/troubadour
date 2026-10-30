@@ -1,13 +1,17 @@
 import type { CampaignJob } from "../campaign/types.ts"
 import { req, segment } from "../http/index.ts"
 import { transcriptUrl } from "../session/endpoints.ts"
-import type { RecordingQuality, SavedSession, SessionRecord } from "./types.ts"
+import type { RecordingQuality, ReviewedResult, SavedSession, SessionRecord } from "./types.ts"
 
 export const sessions = () => req<SavedSession[]>("GET", "/api/sessions")
 
 /** Append the later saved session onto the earlier one. Returns the session that remains. */
 export const mergeSessions = (ids: [string, string]) =>
   req<SavedSession>("POST", "/api/sessions/merge", { ids })
+
+/** Set (or clear) the "reviewed" mark on a saved session. */
+export const markReviewed = (id: string, reviewed: boolean) =>
+  req<ReviewedResult>("POST", `/api/sessions/${segment(id)}/reviewed`, { reviewed })
 
 export const sessionRecord = (id: string) => req<SessionRecord>("GET", transcriptUrl("json", id))
 

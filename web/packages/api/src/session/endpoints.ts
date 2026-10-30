@@ -1,5 +1,5 @@
 import { req, segment } from "../http/index.ts"
-import type { Message, Session, Source, SourceList, TranscriptFormat, Voice } from "./types.ts"
+import type { Message, Session, Source, SourceList, StartOptions, TranscriptFormat, Voice } from "./types.ts"
 
 /** Download URL for a transcript: the current/just-finished session, or a saved one by id. */
 export function transcriptUrl(format: TranscriptFormat, sessionId?: string): string {
@@ -7,7 +7,8 @@ export function transcriptUrl(format: TranscriptFormat, sessionId?: string): str
 }
 
 // Session responses are deliberately not applied to the store: WS events are the only source of truth.
-export const startSession = (source: Source) => req<Session>("POST", "/api/session/start", { source })
+export const startSession = (source: Source, options: StartOptions = {}) =>
+  req<Session>("POST", "/api/session/start", { source, ...options })
 export const pauseSession = () => req<Session>("POST", "/api/session/pause")
 export const resumeSession = () => req<Session>("POST", "/api/session/resume")
 export const stopSession = () => req<Session>("POST", "/api/session/stop")

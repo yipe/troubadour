@@ -10,6 +10,8 @@ import json
 import logging
 import shutil
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -24,8 +26,30 @@ from .state import MAIN_CAMPAIGN, STATE_VERSION, Campaign, migrate_state
 
 log = logging.getLogger("troubadour")
 
+_talk_cache: dict[str, tuple[int, dict[str, float]]] = {}  # session id → (transcript mtime_ns, talk), for old sessions
+
+
+def talk_seconds(messages: list[dict]) -> dict[str, float]:
+    """Seconds spoken per player id; lines of a voice nobody owns count under "voice:<voice_id>"."""
+    talk: dict[str, float] = {}
+    for m in messages:
+        who = m.get("player_id") or (f"voice:{m['voice_id']}" if m.get("voice_id") else None)
+        if who is not None:
+            talk[who] = round(talk.get(who, 0.0) + max(0.0, m["t_end"] - m["t_start"]), 2)
+    return talk
+
+
+def _write_files(folder: Path, files: dict[str, str]) -> None:
+    for name, body in files.items():
+        tmp = folder / f".{name}.tmp"
+        tmp.write_text(body, encoding="utf-8")
+        tmp.replace(folder / name)
+
 
 class SessionsMixin:
+    live: LiveSession | None  # set in Engine.__init__
+    _transcript_lock: threading.Lock
+
     def sessions_dir(self) -> Path:
         return config.DATA_DIR / "sessions"
 
@@ -41,13 +65,18 @@ class SessionsMixin:
                 "source": sess.desc,
                 "duration_s": round(sess.buffer.n / SR, 1),
                 "campaign": sess.campaign,
+                "title": sess.title,
+                "present_player_ids": sess.present_player_ids,
+                "reviewed_at": None,  # save_transcript keeps a value set since the last save
             }
-            return transcript.build(
+            record = transcript.build(
                 meta,
                 [p.to_json() for p in self.players.values()],
                 [v.to_json() for v in self.voices.values()],
                 [m.to_json() for m in self.messages.values()],
             )
+            record["session"]["talk"] = talk_seconds(record["messages"])
+            return record
 
     def _transcript_signature(self) -> tuple:
         """Changes whenever the saved transcript would: lines, speakers, names."""
@@ -69,6 +98,8 @@ class SessionsMixin:
                 if not force and sig == self._saved_signature:
                     return None
                 record = self.transcript_record()
+            if record is None:
+                return None
             folder = self.sessions_dir() / record["session"]["id"]
             if (folder / "transcript.orig.json").exists():
                 # Improve / Fix spellings rewrote it after the session ended: theirs is newer than
@@ -76,17 +107,40 @@ class SessionsMixin:
                 self._saved_signature = sig
                 return None
             folder.mkdir(parents=True, exist_ok=True)
-            files = {
-                "transcript.json": json.dumps(record, ensure_ascii=False, indent=1),
-                "transcript.md": transcript.markdown(record),
-                "meta.json": json.dumps(record["session"]),
-            }
-            for name, body in files.items():
-                tmp = folder / f".{name}.tmp"
-                tmp.write_text(body, encoding="utf-8")
-                tmp.replace(folder / name)
+            # "Reviewed" is set from outside the live session; a later autosave must not undo it.
+            record["session"]["reviewed_at"] = self._read_meta(folder).get("reviewed_at")
+            _write_files(
+                folder,
+                {
+                    "transcript.json": json.dumps(record, ensure_ascii=False, indent=1),
+                    "transcript.md": transcript.markdown(record),
+                    "meta.json": json.dumps(record["session"]),
+                },
+            )
             self._saved_signature = sig
             return folder
+
+    @staticmethod
+    def _read_meta(folder: Path) -> dict:
+        try:
+            meta = json.loads((folder / "meta.json").read_text())
+        except (OSError, ValueError):
+            return {}
+        return meta if isinstance(meta, dict) else {}
+
+    def set_reviewed(self, sid: str, reviewed: bool) -> float | None:
+        """Set (now) or clear the reviewed time in a saved session's meta.json; returns the new value.
+        A patch under the transcript lock, so it can't interleave with the live session's autosave."""
+        if not SESSION_ID.fullmatch(sid):
+            raise KeyError(sid)
+        folder = self.sessions_dir() / sid
+        with self._transcript_lock:
+            meta = self._read_meta(folder)
+            if not meta:
+                raise KeyError(sid)
+            meta["reviewed_at"] = round(time.time(), 3) if reviewed else None
+            _write_files(folder, {"meta.json": json.dumps(meta)})
+            return meta["reviewed_at"]
 
     def session_campaign(self, sid: str) -> str | None:
         """The campaign a saved session belongs to (MAIN for those from before campaigns); None if
@@ -112,6 +166,17 @@ class SessionsMixin:
                 s = json.loads(meta.read_text())
             except (OSError, json.JSONDecodeError):
                 continue
+            # Sessions saved before these fields existed list with nulls (and talk, worked out below).
+            s.setdefault("started_at", 0)
+            s.setdefault("source", None)
+            s.setdefault("duration_s", 0)
+            s.setdefault("lines", 0)
+            s.setdefault("merged_from", [])
+            s.setdefault("title", None)
+            s.setdefault("present_player_ids", None)
+            s.setdefault("reviewed_at", None)
+            if not isinstance(s.get("talk"), dict):
+                s["talk"] = self._talk_of(meta.parent)
             s["audio"] = (meta.parent / "audio.wav").is_file()
             s["restorable"] = (meta.parent / "transcript.orig.json").is_file()  # improved; original kept
             try:  # the verdict, if the recording has been measured
@@ -125,6 +190,20 @@ class SessionsMixin:
                 s["replayable"] = False
             out.append(s)
         return sorted(out, key=lambda s: s.get("started_at", 0), reverse=True)
+
+    def _talk_of(self, folder: Path) -> dict[str, float]:
+        """Talk time from transcript.json, cached until the file changes. Never written back."""
+        path = folder / "transcript.json"
+        try:
+            mtime = path.stat().st_mtime_ns
+            cached = _talk_cache.get(folder.name)
+            if cached is not None and cached[0] == mtime:
+                return cached[1]
+            talk = talk_seconds(json.loads(path.read_text())["messages"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return {}
+        _talk_cache[folder.name] = (mtime, talk)
+        return talk
 
     def merge_sessions(self, ids: list[str]) -> dict:
         """Append one saved session onto an earlier one and delete the later folder.
@@ -174,6 +253,8 @@ class SessionsMixin:
         session = dict(keep["session"])
         session["duration_s"] = round(offset + added, 1)
         session["lines"] = len(messages)
+        session["talk"] = talk_seconds(messages)
+        session["reviewed_at"] = None  # new content to review
         merged_from = list(session.get("merged_from") or [])
         merged_from.append(drop["session"]["id"])
         session["merged_from"] = merged_from
@@ -182,15 +263,14 @@ class SessionsMixin:
             _concat_wav(keep_audio, drop_audio)
         for name in ("quality.json", "transcript.orig.json"):
             (keep_dir / name).unlink(missing_ok=True)
-        files = {
-            "transcript.json": json.dumps(record, ensure_ascii=False, indent=1),
-            "transcript.md": transcript.markdown(record),
-            "meta.json": json.dumps(session),
-        }
-        for name, body in files.items():
-            tmp = keep_dir / f".{name}.tmp"
-            tmp.write_text(body, encoding="utf-8")
-            tmp.replace(keep_dir / name)
+        _write_files(
+            keep_dir,
+            {
+                "transcript.json": json.dumps(record, ensure_ascii=False, indent=1),
+                "transcript.md": transcript.markdown(record),
+                "meta.json": json.dumps(session),
+            },
+        )
         shutil.rmtree(drop_dir)
         return next(s for s in self.list_sessions() if s["id"] == keep["session"]["id"])
 
@@ -298,6 +378,8 @@ class SessionsMixin:
     def _voiceprint(self, vid: str) -> np.ndarray | None:
         if self.matcher and vid in self.matcher.names:
             return self.matcher.vector(vid)
+        if self.live is not None and vid in self.live.absent_vecs:
+            return self.live.absent_vecs[vid]  # left out of matching for this session
         if vid in self._parked_vecs:
             return self._parked_vecs[vid]
         return self._persisted_vecs.get(vid)  # models not loaded yet
@@ -381,6 +463,8 @@ class SessionsMixin:
             "t": round(self.buffer.n / SR, 2),
             "llm": {"url": self.cleanup_llm.url, "model": self.cleanup_llm.model, "ok": self.llm_ok},
             "audio_monitor": self.audio_monitor,
+            "title": self.live.title if self.live else "",
+            "present_player_ids": self.live.present_player_ids if self.live else [],
             # Speech models (Whisper, VAD, voices) load once at start-up: ~20 s, or fail for good.
             "asr": {
                 "model": settings.current()["whisper"],

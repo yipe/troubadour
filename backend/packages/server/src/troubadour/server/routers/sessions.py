@@ -1,14 +1,16 @@
 """Saved sessions: list, merge, jobs over a recording, quality and audio."""
 
 import json
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from troubadour.core import settings, transcript
 from troubadour.engine import improve, session_audio
+from troubadour.lore import pages
 from troubadour.server import deps
+from troubadour.server.routers.session import FileDesc, MicDesc, ReplayDesc
 
 router = APIRouter()
 
@@ -17,16 +19,72 @@ class SessionMergeIn(BaseModel):
     ids: list[str] = Field(min_length=2, max_length=2)
 
 
-@router.get("/api/sessions")
+class ReviewedIn(BaseModel):
+    reviewed: bool
+
+
+class ReviewedOut(BaseModel):
+    id: str
+    reviewed_at: float | None
+
+
+class SavedSession(BaseModel):
+    """One saved session's summary."""
+
+    id: str
+    n: int | None  # 1-based position among the campaign's sessions, oldest first (None: not listed)
+    started_at: float  # epoch seconds
+    source: Annotated[MicDesc | FileDesc | ReplayDesc, Field(discriminator="kind")] | None
+    duration_s: float
+    lines: int
+    campaign: str | None = None
+    audio: bool  # has its own mic recording
+    replayable: bool  # its recording, or the sample file it replayed, still exists
+    restorable: bool  # improved; the original transcript can be restored
+    quality: Literal["good", "settings", "microphone"] | None  # None: not measured yet
+    merged_from: list[str]  # ids of later sessions already appended onto this one
+    title: str | None  # the write-up's title, else the working title
+    summary: str | None  # first paragraph of the write-up's wrap-up
+    present_player_ids: list[str] | None  # None: saved before this was recorded
+    reviewed_at: float | None
+    talk: dict[str, float]  # seconds per player id; unnamed voices under "voice:<id>"
+
+
+def _summaries(rows: list[dict]) -> list[dict]:
+    """The engine's rows plus what the vault knows: the write-up's title and wrap-up, and each session's number."""
+    numbers = pages.session_numbers(rows)
+    written = deps.memory.written_up()
+    out = []
+    for row in rows:
+        page = pages.session_page(deps.vault.root, written[row["id"]]) if row["id"] in written else {}
+        out.append(
+            {
+                **row,
+                "n": numbers.get(row["id"]),
+                "title": page.get("title") or row["title"] or None,
+                "summary": page.get("summary"),
+            }
+        )
+    return out
+
+
+@router.get("/api/sessions", response_model=list[SavedSession])
 def sessions():
     """Saved sessions (autosaved every few seconds and when a session ends), newest first."""
-    return deps.engine.list_sessions()
+    return _summaries(deps.engine.list_sessions())
 
 
-@router.post("/api/sessions/merge")
+@router.post("/api/sessions/merge", response_model=SavedSession)
 def merge_sessions(body: SessionMergeIn):
     """Append the later of two saved sessions onto the earlier one. The later folder is removed."""
-    return deps._call(deps.engine.merge_sessions, body.ids)
+    kept = deps._call(deps.engine.merge_sessions, body.ids)
+    return next(s for s in _summaries(deps.engine.list_sessions()) if s["id"] == kept["id"])
+
+
+@router.post("/api/sessions/{sid}/reviewed", response_model=ReviewedOut)
+def mark_reviewed(sid: str, body: ReviewedIn):
+    """Mark a saved session as reviewed (or clear it)."""
+    return {"id": sid, "reviewed_at": deps._call(deps.engine.set_reviewed, sid, body.reviewed)}
 
 
 @router.get("/api/sessions/{sid}/transcript.{fmt}")

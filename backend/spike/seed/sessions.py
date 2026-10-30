@@ -8,6 +8,7 @@ import json
 
 from troubadour.core import transcript
 from troubadour.core.fsutil import write_atomic
+from troubadour.engine._sessions import talk_seconds
 
 from .common import CAMPAIGN_ID, SeedContext, SessionSeed, rng, session_id, utc
 
@@ -192,6 +193,13 @@ def _messages(n: int, duration: float, r) -> list[dict]:
     return messages
 
 
+def _present(n: int, ctx: SeedContext) -> list[str]:
+    """Who sat at the table: everyone, except one player now and then (never the GM, who runs it)."""
+    r = rng("present", n)
+    away = r.choice([p.id for p in ctx.players if not p.is_gm]) if n % 3 == 0 else None
+    return [p.id for p in ctx.players if p.id != away]
+
+
 def seed(ctx: SeedContext) -> None:
     people = [
         {
@@ -238,8 +246,14 @@ def seed(ctx: SeedContext) -> None:
             "source": {"kind": "mic", "device": "Demo table mic"},
             "duration_s": duration,
             "campaign": CAMPAIGN_ID,
+            # S7 is the session that was never written up; it keeps no working title either.
+            "title": "" if n == 7 else title,
+            "present_player_ids": _present(n, ctx),
+            # S11 is written up but not yet reviewed, and S12 is the one that needs review.
+            "reviewed_at": started_at + duration + 3600 if n <= 10 else None,
         }
         record = transcript.build(meta, people, voices, _messages(n, duration, r))
+        record["session"]["talk"] = talk_seconds(record["messages"])
         folder = ctx.data_dir / "sessions" / sid
         write_atomic(folder / "transcript.json", json.dumps(record, ensure_ascii=False, indent=1))
         write_atomic(folder / "transcript.md", transcript.markdown(record))

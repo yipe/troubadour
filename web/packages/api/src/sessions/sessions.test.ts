@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest"
 import { bodyOf, mockFetch, savedSession } from "../testing/index.ts"
-import { mergeSessions, sessionAudioUrl } from "./index.ts"
+import { markReviewed, mergeSessions, sessionAudioUrl } from "./index.ts"
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -13,4 +13,11 @@ it("mergeSessions POSTs both ids", async () => {
 
 it("sessionAudioUrl escapes the id", () => {
   expect(sessionAudioUrl("x y")).toBe("/api/sessions/x%20y/audio.wav")
+})
+
+it("markReviewed POSTs the flag", async () => {
+  const m = mockFetch(() => ({ id: "a", reviewed_at: 5 }))
+  await markReviewed("a", true)
+  expect(m.calls[0]).toMatchObject({ method: "POST", url: "/api/sessions/a/reviewed" })
+  expect(bodyOf(m.calls[0]!)).toEqual({ reviewed: true })
 })
