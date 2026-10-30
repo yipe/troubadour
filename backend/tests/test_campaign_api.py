@@ -29,7 +29,7 @@ def test_entity_lifecycle(api):
     assert r.json()["aliases"] == ["Elara"]
     assert api.get("/api/campaign/entities/Elara%20Moonwhisper").json()["description"] == "Ranger."
     r = api.post("/api/campaign/entities/Elara%20Moonwhisper/facts", json={"text": "Has an owl.", "suggested": True})
-    assert r.json()["suggested_facts"] == ["Has an owl."]
+    assert [f["text"] for f in r.json()["suggested_facts"]] == ["Has an owl."]
     listing = api.get("/api/campaign").json()
     assert [e["name"] for e in listing["entities"]] == ["Elara Moonwhisper"]
     assert listing["types"][0] == "pc"
@@ -42,8 +42,8 @@ def test_merge_and_campaign_facts(api):
     api.post("/api/campaign/entities", json={"name": "Cassia", "type": "npc"})
     r = api.post("/api/campaign/entities/Cassia/merge", json={"into": "Kessia"})
     assert r.json()["aliases"] == ["Cassia"]
-    assert api.post("/api/campaign/facts", json={"text": "The party is in Dallon."}).json() == ["The party is in Dallon."]
-    assert api.put("/api/campaign/facts", json={"facts": ["A", "B"]}).json() == ["A", "B"]
+    facts = api.post("/api/campaign/facts", json={"text": "The party is in Dallon."}).json()
+    assert [(f["text"], f["about"], f["confidence"]) for f in facts] == [("The party is in Dallon.", None, "once")]
 
 
 def test_campaign_names_its_obsidian_vault_by_registry_id(api, tmp_path, monkeypatch):

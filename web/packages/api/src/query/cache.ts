@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query"
 import type { CampaignAnswer } from "../ask/types.ts"
-import type { Campaign, CampaignJob, CampaignSuggestions, Entity } from "../campaign/types.ts"
+import type { Campaign, CampaignJob, CampaignSuggestions, Entity, Fact } from "../campaign/types.ts"
 import { keys } from "./keys.ts"
 
 /** Pure edits of the cached `Campaign`; every one is a no-op while nothing is cached. */
@@ -44,7 +44,7 @@ export const withIgnored =
   (c) => ({ ...c, ignored })
 
 export const withFacts =
-  (facts: string[]): Edit =>
+  (facts: Fact[]): Edit =>
   (c) => ({ ...c, facts })
 
 export function editCampaign(client: QueryClient, edit: Edit) {

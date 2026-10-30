@@ -30,6 +30,7 @@ import httpx
 from troubadour.core.transcript import clock
 
 from .campaign import Entity, Vault, norm, split_frontmatter
+from .facts import LABELS, Fact
 from .memory import STR, MemoryLLM, _obj, _text, chunks, glossary_brief
 
 log = logging.getLogger("troubadour")
@@ -346,6 +347,17 @@ def session_passages(folder: Path, title: str | None = None) -> tuple[list[Passa
     return out, record.get("players", [])
 
 
+def fact_line(f: Fact) -> str:
+    """A fact as passage text: its wording, who said it, how sure, and the wording it replaced."""
+    notes = [
+        f.said_by and f"said by {f.said_by}",
+        f.confidence != "once" and LABELS[f.confidence],
+        f.source and f"from {f.source.session_page}",
+    ]
+    line = f"{f.text} ({', '.join(n for n in notes if n)})" if any(notes) else f.text
+    return line + "".join(f" (earlier: {v.text})" for v in f.history)
+
+
 def entry_passage(e: Entity, root: Path) -> Passage:
     """A glossary entry as one passage: what it is, what's known, what's only suggested."""
     parts = [f"{e.name} ({TYPE_LABELS.get(e.type, e.type)})"]
@@ -354,9 +366,9 @@ def entry_passage(e: Entity, root: Path) -> Passage:
     if e.description:
         parts.append(e.description)
     if e.facts:
-        parts.append("Facts:\n" + "\n".join(f"- {f}" for f in e.facts))
+        parts.append("Facts:\n" + "\n".join(f"- {fact_line(f)}" for f in e.facts))
     if e.suggested_facts:
-        parts.append("Unconfirmed facts:\n" + "\n".join(f"- {f}" for f in e.suggested_facts))
+        parts.append("Unconfirmed facts:\n" + "\n".join(f"- {fact_line(f)}" for f in e.suggested_facts))
     parts += [f"{heading}:\n{body.strip()}" for heading, body in e.extra_sections if body.strip()]
     path = str(e.path.relative_to(root)) if e.path else None
     return Passage("entry", "\n".join(parts), e.name, path=path, entry=e.name, order=(0, e.name))

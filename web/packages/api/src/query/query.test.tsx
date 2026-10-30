@@ -14,6 +14,7 @@ import {
   campaign,
   campaignJob,
   entity,
+  fact,
   httpError,
   mockFetch,
   session,
@@ -83,17 +84,17 @@ describe("campaignWrite", () => {
     let n = 0
     const m = mockFetch((call) => {
       if (call.method === "POST" && n++ === 0) return httpError(500, "boom")
-      return ["a fact"]
+      return [fact({ text: "a fact" })]
     })
     const { result } = renderHook(() => useAddCampaignFact(), { wrapper })
     let failed!: Promise<unknown>
     let ok!: Promise<unknown>
     act(() => {
-      failed = result.current.mutateAsync("one").catch((e: Error) => e.message)
-      ok = result.current.mutateAsync("two")
+      failed = result.current.mutateAsync({ text: "one" }).catch((e: Error) => e.message)
+      ok = result.current.mutateAsync({ text: "two" })
     })
     expect(await failed).toBe("boom")
-    expect(await ok).toEqual(["a fact"])
+    expect(await ok).toEqual([fact({ text: "a fact" })])
     expect(m.writes()).toHaveLength(2)
   })
 
@@ -141,9 +142,9 @@ describe("campaignWrite", () => {
 
 describe("useCampaign", () => {
   it("loads the campaign", async () => {
-    mockFetch(() => campaign({ facts: ["The king is dead"] }))
+    mockFetch(() => campaign({ facts: [fact({ text: "The king is dead" })] }))
     const { result } = renderHook(() => useCampaign(), { wrapper })
-    await waitFor(() => expect(result.current.data?.facts).toEqual(["The king is dead"]))
+    await waitFor(() => expect(result.current.data?.facts.map((f) => f.text)).toEqual(["The king is dead"]))
   })
 
   it("keeps a job that already ended when an older fetch says it is running", async () => {

@@ -10,6 +10,12 @@ from troubadour.core.transcript import build
 from troubadour.lore import memory as mem
 from troubadour.lore import writeup
 from troubadour.lore.campaign import Vault
+from troubadour.lore.facts import Fact, render_bullets
+
+
+def lines(facts):
+    """Facts as the vault writes them, minus the bullet: "text ([[page]])"."""
+    return [b[2:] for b in render_bullets(facts)]
 
 
 class FakeLLM:
@@ -94,10 +100,10 @@ def test_import_creates_entities_keeps_notes_and_seeds_pcs(setup):
     assert set(names) == {"Elara", "Magenta", "Dallon", "Zorbo"}
     assert names["Elara"].type == "pc"  # from Setup, not the model
     assert names["Magenta"].aliases == ["Maggie"]
-    assert names["Magenta"].facts == ["Owes Kessia a favour. ([[Session 12]])"]
+    assert lines(names["Magenta"].facts) == ["Owes Kessia a favour. ([[Session 12]])"]
     assert names["Zorbo"].type == "term"
     assert len(names["Zorbo"].description) == mem.TEXT_MAX
-    assert vault.campaign_facts() == ["The party is heading to Dallon. ([[Session 12]])"]
+    assert lines(vault.campaign_facts()) == ["The party is heading to Dallon. ([[Session 12]])"]
     note = (vault.root / "Notes" / "Session 12.md").read_text()
     assert "Elara met Magenta in Dallon.\n\nThey talked about Zorbo." in note
     assert (vault.root / "Glossary.md").exists()
@@ -107,7 +113,7 @@ def test_import_creates_entities_keeps_notes_and_seeds_pcs(setup):
 
 def test_import_merges_into_existing_entries(setup):
     vault, _, make = setup
-    vault.create("Kessia", "pc", facts=["Is a tiefling."])
+    vault.create("Kessia", "pc", facts=[Fact("Is a tiefling.")])
     vault.create("Auggie", "pc")
     llm = FakeLLM(
         notes=[
@@ -131,7 +137,7 @@ def test_import_merges_into_existing_entries(setup):
     k = vault.get("Kessia")
     assert "Cassia" in k.aliases
     assert "Auggie" not in k.aliases  # already another entry's name
-    assert k.facts == ["Is a tiefling.", "Plays the lute. ([[Old notes]])"]
+    assert lines(k.facts) == ["Is a tiefling.", "Plays the lute. ([[Old notes]])"]
     assert job.updated == ["Kessia"]
     assert len(vault.entities()) == 3  # + Elara from Setup
 
@@ -318,7 +324,7 @@ def test_write_up_suggests_lasting_facts_only(setup, monkeypatch):
     ]
     llm = FakeLLM(found={"facts": facts})
     wait(make(llm).write_up(sid))
-    assert vault.get("Elara").suggested_facts == [
+    assert lines(vault.get("Elara").suggested_facts) == [
         "Elara owns a grey owl. ([[2026-10-08 The Desert Road]])",
         "Elara fears deep water. ([[2026-10-08 The Desert Road]])",
         "Elara reads Elvish. ([[2026-10-08 The Desert Road]])",
@@ -552,7 +558,7 @@ def test_look_for_facts_reads_transcripts_and_notes_and_skips_a_moment(setup, tm
     )
     job = make(llm).seek_facts("Elara")
     wait(job)
-    suggested = vault.get("Elara").suggested_facts
+    suggested = lines(vault.get("Elara").suggested_facts)
     assert "Elara serves Akadi. ([[2026-10-08_120000-aaaa]])" in suggested
     assert "Elara grew up in Dallon. ([[Old notes]])" in suggested
     assert not any("spell slot" in f for f in suggested)

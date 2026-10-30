@@ -1,6 +1,6 @@
 import type { AnswerSource, CampaignAnswer } from "../ask/types.ts"
 import type { AudioLevel, AudioQuality, MicInfo, QualityNumbers } from "../audio/types.ts"
-import type { Campaign, CampaignJob, Entity } from "../campaign/types.ts"
+import type { Campaign, CampaignJob, Entity, Fact, FactSuggestion } from "../campaign/types.ts"
 import type { CampaignInfo } from "../campaigns/types.ts"
 import type { CloneClip, CloneVoice, SpeechProfile } from "../clones/types.ts"
 import type { CloudAccount, CloudBackup, CloudStatus, CloudVault } from "../cloud/types.ts"
@@ -111,6 +111,22 @@ export function sessionRecord(r: Partial<SessionRecord> & { id: string }): Sessi
   }
 }
 
+export function fact(f: Partial<Fact> & { text: string }): Fact {
+  return {
+    id: f.text.toLowerCase().replace(/\W+/g, "-").slice(0, 10),
+    about: null,
+    said_by: null,
+    source: null,
+    confidence: "once",
+    history: [],
+    ...f,
+  }
+}
+
+export function factSuggestion(f: Partial<FactSuggestion> & { text: string }): FactSuggestion {
+  return { ...fact(f), kind: "new", replaces: null, ...f }
+}
+
 export function entity(e: Partial<Entity> & { name: string }): Entity {
   return {
     type: "npc",
@@ -124,6 +140,7 @@ export function entity(e: Partial<Entity> & { name: string }): Entity {
     suggested_facts: [],
     path: `People/${e.name}.md`,
     read_only: false,
+    sessions: 0,
     ...e,
   }
 }

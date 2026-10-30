@@ -1,22 +1,25 @@
 import type { CampaignAnswer } from "../ask/types.ts"
 
+import type { Schemas } from "../generated/index.ts"
+
 /* ---- Campaign memory (an Obsidian vault of notes) ---- */
-export type EntityType = "pc" | "npc" | "place" | "faction" | "item" | "creature" | "spell" | "term"
-export interface Entity {
-  name: string
-  type: EntityType
-  aliases: string[]
-  heard_as: string[] /* how speech-to-text misspells it; fixed in new transcripts */
-  heard_as_suggested: string[]
-  heard_as_rejected: string[]
-  status: "confirmed" | "suggested"
-  description: string
-  facts: string[] /* may contain Obsidian links: [[Target]] or [[Target|label]] */
-  suggested_facts: string[]
-  path: string | null /* vault-relative, e.g. "People/Elara.md" */
-  read_only: boolean
-  sessions?: number /* how many played sessions mention this name; missing on older payloads */
-}
+export type Entity = Schemas["EntityOut"]
+export type EntityType = Entity["type"]
+/** A fact in its note: wording, who said it, where, how sure, and older wordings (newest first). */
+export type Fact = Schemas["FactOut"]
+/** A fact waiting for review; `kind: "update"` says which existing fact (`replaces`, an id) it would replace. */
+export type FactSuggestion = Schemas["FactSuggestionOut"]
+export type FactSource = Schemas["FactSourceOut"]
+export type FactVersion = Schemas["FactVersionOut"]
+export type SaidBy = Schemas["SaidByOut"]
+/** The generated request types mark fields with server defaults as required; a client may leave them out. */
+type WithDefaults<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
+
+/** Body for adding a fact; `source.session_id` names a session that has a write-up page. */
+export type FactCreate = WithDefaults<Schemas["FactIn"], "confidence">
+export type EntityFactCreate = WithDefaults<Schemas["EntityFactIn"], "confidence" | "suggested">
+/** Body for editing a fact by id. A text change fixes a typo in place unless `as_update` is true. */
+export type FactEdit = WithDefaults<Schemas["FactEdit"], "as_update">
 
 export interface CampaignJob {
   id: string
@@ -67,20 +70,10 @@ export interface JobLive {
   fraction?: number /* 0-1, when the step can tell how far it is (notes: by session time; page: estimated) */
 }
 /** The campaign folder in Obsidian's vault registry: the vault's id and the folder inside it ("" = the vault). */
-export interface ObsidianVault {
-  id: string
-  folder: string
-}
-export interface Campaign {
-  vault: string /* absolute path of the vault folder */
-  obsidian: ObsidianVault | null /* null: Obsidian doesn't know the folder (not opened as a vault) */
-  types: EntityType[]
-  entities: Entity[]
-  facts: string[] /* campaign-wide */
+export type ObsidianVault = Schemas["ObsidianVaultOut"]
+export type Campaign = Omit<Schemas["CampaignOut"], "jobs" | "answers"> & {
   jobs: CampaignJob[]
   answers: CampaignAnswer[] /* the open campaign's, oldest first */
-  written_up: Record<string, string> /* session id -> vault-relative path of its session page */
-  ignored: string[] /* words never suggested again (vault note "Ignored words.md") */
 }
 
 export interface CampaignSuggestions {
@@ -100,8 +93,6 @@ export type EntityPatch = Partial<
     | "heard_as"
     | "heard_as_suggested"
     | "heard_as_rejected"
-    | "facts"
-    | "suggested_facts"
   >
 >
 
@@ -113,9 +104,5 @@ export interface EntityCreate {
   heard_as?: string[]
 }
 
-export interface EntityReview {
-  accept_spellings?: string[]
-  reject_spellings?: string[]
-  accept_facts?: string[]
-  reject_facts?: string[]
-}
+/** Accept or reject by id: `accept_facts` / `reject_facts` are suggested-fact ids. */
+export type EntityReview = Partial<Schemas["ReviewIn"]>

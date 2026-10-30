@@ -126,11 +126,11 @@ export function connectedEntries(
   const targets = (text: string) =>
     splitWikiLinks(text).flatMap((seg) => ("target" in seg ? [seg.target] : []))
 
-  for (const text of [entity.description, ...entity.facts])
+  for (const text of [entity.description, ...entity.facts.map((f) => f.text)])
     for (const target of targets(text)) add(findEntity(campaign.entities, target), text)
   for (const other of campaign.entities)
-    for (const fact of other.facts)
-      for (const target of targets(fact))
-        if (findEntity(campaign.entities, target) === entity) add(other, fact)
+    for (const { text } of other.facts)
+      for (const target of targets(text))
+        if (findEntity(campaign.entities, target) === entity) add(other, text)
   return [...found].map(([name, reason]) => ({ name, reason }))
 }

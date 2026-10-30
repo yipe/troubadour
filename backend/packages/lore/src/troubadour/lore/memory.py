@@ -31,6 +31,7 @@ from troubadour.core import config, providers, transcript
 
 from . import dnd_terms, writeup
 from .campaign import TYPES, Entity, Vault, add_unique, everyday, norm, safe_name, write_atomic
+from .facts import Fact, Source
 
 log = logging.getLogger("troubadour")
 
@@ -693,13 +694,15 @@ class Memory:
         job.message = f"{len(job.created)} new, {len(job.updated)} updated"
 
     def _merge_notes(self, job: Job, out: dict, note: str) -> None:
-        source = f" ([[{note}]])"
+        source = Source(note)
         items = out.get("entities") if isinstance(out.get("entities"), list) else []
         for item in items[:MAX_ITEMS]:
             if not isinstance(item, dict) or not (name := _name(item.get("name"))):
                 continue
             aliases = [a for a in (_name(a) for a in item.get("aliases") or [] if isinstance(a, str)) if a]
-            facts = [f + source for f in (_text(f) for f in item.get("facts") or [] if isinstance(f, str)) if f][:5]
+            facts = [
+                Fact(f, name, source=source) for f in (_text(f) for f in item.get("facts") or [] if isinstance(f, str)) if f
+            ][:5]
             description = _text(item.get("description"))
             existing = self.vault.find(name) or next((e for a in aliases if (e := self.vault.find(a))), None)
             # An alias that already names a *different* entry would make two notes claim one name.
@@ -729,7 +732,7 @@ class Memory:
                     job.updated.append(existing.name)
         for fact in (out.get("campaign_facts") or [])[:5]:
             if text := _text(fact):
-                self.vault.add_campaign_fact(text + source)
+                self.vault.add_campaign_fact(Fact(text, source=source))
 
     # ---------------------------------------------------------------- session write-up
 
@@ -747,7 +750,7 @@ class Memory:
         if not passages:
             job.message = f"Nothing mentions {entity.name}"
             return
-        known = "\n".join(f"- {f}" for f in [*entity.facts, *entity.suggested_facts]) or "- (none)"
+        known = "\n".join(f"- {f.text}" for f in [*entity.facts, *entity.suggested_facts]) or "- (none)"
         job.total = len(passages)
         self.emit(job)
         added = 0
@@ -767,7 +770,7 @@ class Memory:
                 if before is None:
                     return
                 prior = len(before.facts) + len(before.suggested_facts)
-                self.vault.add_fact(entity.name, f"{fact} ([[{label}]])", suggested=True)
+                self.vault.add_fact(entity.name, Fact(fact, entity.name, source=Source(label)), suggested=True)
                 if len(self.vault.get(entity.name).facts) + len(self.vault.get(entity.name).suggested_facts) > prior:
                     added += 1
                     job.suggested += 1
@@ -865,7 +868,7 @@ class Memory:
             if e is None or e.read_only or fleeting(text) or added >= MAX_SUGGESTED_FACTS:
                 continue
             before = len(e.suggested_facts) + len(e.facts)
-            e = self.vault.add_fact(e.name, f"{text} ([[{note_title}]])", suggested=True)
+            e = self.vault.add_fact(e.name, Fact(text, e.name, source=Source(note_title)), suggested=True)
             if len(e.suggested_facts) + len(e.facts) > before:
                 added += 1
                 job.suggested += 1

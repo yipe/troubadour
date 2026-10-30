@@ -25,9 +25,12 @@ An entity note:
 
     ## Facts
     - Runs the Rusty Flagon in [[Dallon]]. ([[2026-10-08 Session]])
+    - Owes Kessia a favour. ([[2026-10-15 Session#0:52:10|S3 0:52]] · Pip · Heard once)
 
     ## Suggested facts
     - Owes Kessia a favour. ([[2026-10-15 Session]])
+
+A fact's bullet format (source, speaker, confidence, history) is in facts.py.
 
 Troubadour owns the frontmatter keys above, the description and those two sections. Other
 frontmatter keys, a person's own tags, and other sections are kept as written. A note whose
@@ -40,11 +43,13 @@ import shutil
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import yaml
 from troubadour.core.fsutil import write_atomic
+
+from .facts import Confidence, Fact, Source, Version, fact_id, parse_bullets, render_bullets
 
 TYPES = {
     "pc": "People",
@@ -174,21 +179,27 @@ def unique(items) -> list[str]:
     return out
 
 
-_SOURCE = re.compile(r"\s*\(\[\[[^\]]*\]\]\)\s*$")  # a trailing "([[Session 12]])"
-
-
-def same_fact(a: str, b: str) -> bool:
+def same_fact(a: Fact, b: Fact) -> bool:
     """Equal or nearly so, ignoring where each came from."""
-    x, y = norm(_SOURCE.sub("", a)), norm(_SOURCE.sub("", b))
+    x, y = norm(a.text), norm(b.text)
     return x == y or difflib.SequenceMatcher(None, x, y).ratio() > 0.9
 
 
-def add_unique(existing: list[str], new: list[str]) -> list[str]:
+def add_unique(existing: list[Fact], new: list[Fact]) -> list[Fact]:
     out = list(existing)
     for fact in new:
-        if str(fact).strip() and not any(same_fact(fact, f) for f in out):
-            out.append(str(fact).strip())
+        if fact.text.strip() and not any(same_fact(fact, f) for f in out):
+            out.append(fact)
     return out
+
+
+@dataclass
+class SessionIndex:
+    """What facts need to know about sessions: which page is which session, and its number."""
+
+    ids_for: dict[str, str] = field(default_factory=dict)  # session page name -> session id
+    numbers: dict[str, int] = field(default_factory=dict)  # session id -> 1-based number
+    page_for: dict[str, str] = field(default_factory=dict)  # session id -> session page name
 
 
 @dataclass
@@ -201,8 +212,8 @@ class Entity:
     heard_as_rejected: list[str] = field(default_factory=list)  # suggestions turned down: never re-suggested
     status: str = "confirmed"
     description: str = ""
-    facts: list[str] = field(default_factory=list)
-    suggested_facts: list[str] = field(default_factory=list)
+    facts: list[Fact] = field(default_factory=list)
+    suggested_facts: list[Fact] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)  # a person's own tags; Troubadour adds troubadour/<type>
     extra_meta: dict = field(default_factory=dict)  # frontmatter keys Troubadour doesn't own
     extra_sections: list[tuple[str, str]] = field(default_factory=list)  # (heading, body), verbatim
@@ -211,25 +222,6 @@ class Entity:
 
     def names(self) -> list[str]:
         return [self.name, *self.aliases]
-
-    def to_json(self, root: Path | None = None) -> dict:
-        path = None
-        if self.path is not None:
-            path = str(self.path.relative_to(root)) if root else str(self.path)
-        return {
-            "name": self.name,
-            "type": self.type,
-            "aliases": self.aliases,
-            "heard_as": self.heard_as,
-            "heard_as_suggested": self.heard_as_suggested,
-            "heard_as_rejected": self.heard_as_rejected,
-            "status": self.status,
-            "description": self.description,
-            "facts": self.facts,
-            "suggested_facts": self.suggested_facts,
-            "path": path,
-            "read_only": self.read_only,
-        }
 
 
 def mention_counts(vault: "Vault", sessions_dir: Path) -> dict[str, int]:
@@ -353,9 +345,9 @@ def parse(name: str, text: str) -> Entity:
     e = Entity(name=name, description="\n".join(lines).strip())
     for heading, content in found:
         if heading.casefold() == FACTS.casefold():
-            e.facts = bullets(content)
+            e.facts = parse_bullets(content.splitlines(), name)
         elif heading.casefold() == SUGGESTED.casefold():
-            e.suggested_facts = bullets(content)
+            e.suggested_facts = parse_bullets(content.splitlines(), name)
         else:
             e.extra_sections.append((heading, content))
     if meta is None:
@@ -374,7 +366,7 @@ def parse(name: str, text: str) -> Entity:
     return e
 
 
-def render(e: Entity) -> str:
+def render(e: Entity, index: SessionIndex | None = None) -> str:
     meta: dict = {"type": e.type, "aliases": e.aliases, "heard_as": e.heard_as}
     if e.heard_as_suggested:
         meta["heard_as_suggested"] = e.heard_as_suggested
@@ -387,9 +379,10 @@ def render(e: Entity) -> str:
     out = [f"---\n{front}---", f"# {e.name}", ""]
     if e.description:
         out += [e.description, ""]
-    out += [f"## {FACTS}", *(f"- {f}" for f in e.facts), ""]
+    index = index or SessionIndex()
+    out += [f"## {FACTS}", *render_bullets(e.facts, index.numbers, index.page_for), ""]
     if e.suggested_facts:
-        out += [f"## {SUGGESTED}", *(f"- {f}" for f in e.suggested_facts), ""]
+        out += [f"## {SUGGESTED}", *render_bullets(e.suggested_facts, index.numbers, index.page_for), ""]
     for heading, content in e.extra_sections:
         out += [f"## {heading}", content, ""]
     return "\n".join(out).rstrip() + "\n"
@@ -398,15 +391,62 @@ def render(e: Entity) -> str:
 # ------------------------------------------------------------------ vault
 
 
+def _accepted(facts: list[Fact], suggestion: Fact) -> list[Fact]:
+    """`facts` with an accepted suggestion added. An update takes the old fact's place and keeps it as history."""
+    fact = replace(suggestion, replaces=None)
+    old_id = fact_id(suggestion.about, suggestion.replaces) if suggestion.replaces else None
+    at = next((i for i, f in enumerate(facts) if f.id == old_id), None)
+    if at is None:
+        return facts if any(same_fact(fact, f) for f in facts) else [*facts, fact]
+    old = facts[at]
+    fact.history = [Version(old.text, old.said_by, old.source, old.confidence), *old.history]
+    return [*facts[:at], fact, *facts[at + 1 :]]
+
+
+def edited(
+    facts: list[Fact],
+    fid: str,
+    text: str | None = None,
+    confidence: Confidence | None = None,
+    as_update: bool = False,
+    said_by: str | None = None,
+    source: Source | None = None,
+) -> list[Fact]:
+    """`facts` with one changed; None leaves a field alone. A text change fixes a typo in place, unless
+    `as_update`: then the old wording moves into the history (newest first). KeyError for an unknown id."""
+    at = next((i for i, f in enumerate(facts) if f.id == fid), None)
+    if at is None:
+        raise KeyError(fid)
+    old = facts[at]
+    fact = replace(old, confidence=confidence or old.confidence, said_by=old.said_by if said_by is None else said_by or None)
+    fact.source = source or old.source
+    if text is not None:
+        text = text.strip()
+        if not norm(text):
+            raise ValueError("A fact needs some text.")
+        if as_update and text != old.text:
+            fact.history = [Version(old.text, old.said_by, old.source, old.confidence), *old.history]
+        fact.text = text
+        if any(f.id == fact.id for i, f in enumerate(facts) if i != at):
+            raise ValueError("That is already a fact.")
+    return [*facts[:at], fact, *facts[at + 1 :]]
+
+
 class Vault:
     """Thread-safe access to the vault. Notes are re-read whenever their file changes."""
 
-    def __init__(self, root: Path | Callable[[], Path] | None = None):
+    def __init__(self, root: Path | Callable[[], Path] | None = None, sessions: Callable[[], SessionIndex] | None = None):
         # A folder; a function giving one (the open campaign's), looked up on every use; or None:
         # config.vault_dir(), also looked up on every use.
         self._root = root
+        # Looked up when a note is written, so a fact's link and "S12 1:38" label follow the session list.
+        # Reading never uses it: parsing keeps a link as written, and the API resolves ids on the way out.
+        self.sessions = sessions
         self.lock = threading.RLock()
         self._cache: dict[Path, tuple[tuple[int, int], Entity]] = {}
+
+    def index(self) -> SessionIndex:
+        return self.sessions() if self.sessions else SessionIndex()
 
     @property
     def root(self) -> Path:
@@ -483,7 +523,7 @@ class Vault:
             raise ValueError(f"{e.name}.md has frontmatter Troubadour can't read; fix it in Obsidian first.")
         path = self.root / TYPES[e.type] / f"{safe_name(e.name)}.md"
         old = e.path
-        write_atomic(path, render(e))
+        write_atomic(path, render(e, self.index()))
         if old is not None and old != path and old.exists():
             old.unlink()
             self._cache.pop(old, None)
@@ -535,10 +575,13 @@ class Vault:
                 setattr(e, key, unique(fields[key]))
         for key in ("facts", "suggested_facts"):
             if key in fields:
-                setattr(e, key, [str(f).strip() for f in fields[key] if str(f).strip()])
+                setattr(e, key, [replace(f, text=f.text.strip()) for f in fields[key] if f.text.strip()])
         if "description" in fields:
             e.description = str(fields["description"] or "").strip()
         e.aliases = [a for a in e.aliases if norm(a) != norm(e.name)]
+        # A fact's id includes who it is about, so a rename or a merge re-homes the facts it brings.
+        e.facts = [replace(f, about=e.name) for f in e.facts]
+        e.suggested_facts = [replace(f, about=e.name) for f in e.suggested_facts]
         accepted = {norm(h) for h in e.heard_as}  # an accepted spelling isn't waiting for review
         decided = accepted | {norm(h) for h in e.heard_as_rejected}
         e.heard_as_suggested = [h for h in e.heard_as_suggested if norm(h) not in decided]
@@ -585,26 +628,51 @@ class Vault:
     ) -> Entity:
         """Apply review decisions as changes, not replacements, so quick clicks can't undo each
         other: accepted spellings join heard_as, rejected ones are remembered; accepted facts
-        move from suggested to facts, rejected ones are dropped."""
+        (by id) move from suggested to facts, rejected ones are dropped. An accepted update takes the
+        place of the fact it replaces, which moves into its history. An id that is no longer
+        suggested is ignored: the decision was already made."""
         with self.lock:
             e = self.get(name)
-            done = {norm(f) for f in (*accept_facts, *reject_facts)}
+            accept, reject = set(accept_facts), set(reject_facts)
+            facts = list(e.facts)
+            for s in e.suggested_facts:
+                if s.id in accept:
+                    facts = _accepted(facts, s)
             return self.update(
                 e.name,
                 heard_as=[*e.heard_as, *accept_spellings],
                 heard_as_rejected=[*e.heard_as_rejected, *reject_spellings],
                 heard_as_suggested=e.heard_as_suggested,  # _apply drops the decided ones
-                facts=add_unique(e.facts, list(accept_facts)),
-                suggested_facts=[f for f in e.suggested_facts if norm(f) not in done],
+                facts=facts,
+                suggested_facts=[s for s in e.suggested_facts if s.id not in accept | reject],
             )
 
-    def add_fact(self, name: str, text: str, suggested: bool = False) -> Entity:
+    def add_fact(self, name: str, fact: Fact, suggested: bool = False) -> Entity:
         with self.lock:
             e = self.get(name)
-            if any(same_fact(text, f) for f in [*e.facts, *e.suggested_facts]):
+            if any(same_fact(fact, f) for f in [*e.facts, *e.suggested_facts]):
                 return e
             key = "suggested_facts" if suggested else "facts"
-            return self.update(e.name, **{key: [*getattr(e, key), text]})
+            return self.update(e.name, **{key: [*getattr(e, key), fact]})
+
+    def edit_fact(self, name: str, fid: str, **changes) -> Entity:
+        """Change one fact (see `edited`); KeyError if it is not in this note's facts or suggestions."""
+        with self.lock:
+            e = self.get(name)
+            for key in ("facts", "suggested_facts"):
+                current = getattr(e, key)
+                if any(f.id == fid for f in current):
+                    return self.update(e.name, **{key: edited(current, fid, **changes)})
+            raise KeyError(fid)
+
+    def delete_fact(self, name: str, fid: str) -> Entity:
+        with self.lock:
+            e = self.get(name)
+            return self.update(
+                e.name,
+                facts=[f for f in e.facts if f.id != fid],
+                suggested_facts=[f for f in e.suggested_facts if f.id != fid],
+            )
 
     # ---------------------------------------------------------------- campaign facts, notes
 
@@ -612,28 +680,37 @@ class Vault:
     def facts_path(self) -> Path:
         return self.root / "Facts.md"
 
-    def campaign_facts(self) -> list[str]:
+    def campaign_facts(self) -> list[Fact]:
         with self.lock:
             try:
                 _, body = split_frontmatter(self.facts_path.read_text(encoding="utf-8"))
             except OSError:
                 return []
             _, found = sections(body)
-            return next((bullets(c) for h, c in found if h.casefold() == FACTS.casefold()), [])
+            return next((parse_bullets(c.splitlines(), None) for h, c in found if h.casefold() == FACTS.casefold()), [])
 
-    def set_campaign_facts(self, facts: list[str]) -> list[str]:
+    def set_campaign_facts(self, facts: list[Fact]) -> list[Fact]:
         with self.lock:
-            facts = [str(f).strip() for f in facts if str(f).strip()]
+            facts = [replace(f, text=f.text.strip(), about=None) for f in facts if f.text.strip()]
+            index = self.index()
             write_atomic(
                 self.facts_path,
                 "---\ntags: [troubadour/facts]\n---\n# Campaign facts\n\nThings that hold across the whole campaign.\n\n"
-                f"## {FACTS}\n" + "".join(f"- {f}\n" for f in facts),
+                f"## {FACTS}\n" + "".join(f"{line}\n" for line in render_bullets(facts, index.numbers, index.page_for)),
             )
             return facts
 
-    def add_campaign_fact(self, text: str) -> list[str]:
+    def add_campaign_fact(self, fact: Fact) -> list[Fact]:
         with self.lock:
-            return self.set_campaign_facts(add_unique(self.campaign_facts(), [text]))
+            return self.set_campaign_facts(add_unique(self.campaign_facts(), [fact]))
+
+    def edit_campaign_fact(self, fid: str, **changes) -> list[Fact]:
+        with self.lock:
+            return self.set_campaign_facts(edited(self.campaign_facts(), fid, **changes))
+
+    def delete_campaign_fact(self, fid: str) -> list[Fact]:
+        with self.lock:
+            return self.set_campaign_facts([f for f in self.campaign_facts() if f.id != fid])
 
     @property
     def ignored_path(self) -> Path:
