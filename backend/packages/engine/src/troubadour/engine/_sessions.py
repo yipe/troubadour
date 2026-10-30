@@ -177,6 +177,7 @@ class SessionsMixin:
             s.setdefault("reviewed_at", None)
             if not isinstance(s.get("talk"), dict):
                 s["talk"] = self._talk_of(meta.parent)
+            s["scenes"] = self._scenes_of(meta.parent)
             s["audio"] = (meta.parent / "audio.wav").is_file()
             s["restorable"] = (meta.parent / "transcript.orig.json").is_file()  # improved; original kept
             try:  # the verdict, if the recording has been measured
@@ -190,6 +191,18 @@ class SessionsMixin:
                 s["replayable"] = False
             out.append(s)
         return sorted(out, key=lambda s: s.get("started_at", 0), reverse=True)
+
+    @staticmethod
+    def _scenes_of(folder: Path) -> list[dict] | None:
+        """scenes.json (the write-up's [{t, title, place}]) or None: not written up, or an unreadable file."""
+        try:
+            raw = json.loads((folder / "scenes.json").read_text())
+            return [
+                {"t": float(x["t"]), "title": str(x["title"]), "place": x["place"] if isinstance(x["place"], str) else None}
+                for x in raw
+            ]
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
 
     def _talk_of(self, folder: Path) -> dict[str, float]:
         """Talk time from transcript.json, cached until the file changes. Never written back."""

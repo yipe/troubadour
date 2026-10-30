@@ -28,6 +28,14 @@ class ReviewedOut(BaseModel):
     reviewed_at: float | None
 
 
+class Scene(BaseModel):
+    """A stretch of the session the write-up named, from its beats."""
+
+    t: float  # seconds into the session where it starts
+    title: str
+    place: str | None  # a Place in the campaign glossary
+
+
 class SavedSession(BaseModel):
     """One saved session's summary."""
 
@@ -48,6 +56,7 @@ class SavedSession(BaseModel):
     present_player_ids: list[str] | None  # None: saved before this was recorded
     reviewed_at: float | None
     talk: dict[str, float]  # seconds per player id; unnamed voices under "voice:<id>"
+    scenes: list[Scene] | None  # None: not written up (or the write-up's scenes call failed)
 
 
 def _summaries(rows: list[dict]) -> list[dict]:

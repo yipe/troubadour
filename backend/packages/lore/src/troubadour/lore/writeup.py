@@ -15,11 +15,13 @@ errors. Model output is untrusted: types and lengths are checked, timestamps mus
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .campaign import norm
+from .facts import Confidence, Fact
 
 TEXT_MAX, NAME_MAX = 600, 80
 LAST_TIME_MAX = 6000  # chars; the prompt asks for 350-550 words
@@ -271,23 +273,146 @@ def _clock_seconds(at: str) -> float:
     return float(sum(p * 60**i for i, p in enumerate(reversed(parts))))
 
 
-FACTS_SCHEMA = _obj({"facts": {"type": "array", "items": _obj({"about": STR, "text": STR})}})
+CONFIDENCES: tuple[Confidence, ...] = ("gm", "theory", "once")
+KNOWN_MAX = 40  # known facts shown to the facts step: more would crowd out the notes
 
-FACTS_SYSTEM = """You keep the glossary of a Dungeons & Dragons campaign. You get a session's notes.
+FACTS_SCHEMA = _obj(
+    {
+        "facts": {
+            "type": "array",
+            "items": _obj(
+                {
+                    "about": STR,
+                    "text": STR,
+                    "confidence": {"type": "string", "enum": list(CONFIDENCES)},
+                    "replaces": {"type": "integer"},
+                }
+            ),
+        }
+    }
+)
+
+FACTS_SYSTEM = """You keep the glossary of a Dungeons & Dragons campaign. You get a session's notes, and the facts
+the glossary already holds about the names in them (numbered).
 facts: up to 15 lasting things the notes show about a named person, creature, group, place or item: still true
 next session, each a full sentence naming its subject ("Mudge the ogre now guards the Greyfen bridge.");
 about = that name as the notes write it. Never passing states (hit points, where someone is standing, what they
-are doing right now), rules, or trivia ("is a player character"). Answer with JSON only."""
+are doing right now), rules, or trivia ("is a player character").
+confidence: gm = the GM narrated or confirmed it; theory = a player's guess or theory; once = said once,
+unconfirmed.
+replaces: the number of a known fact this one changes or overturns (a debt paid, an ally turned enemy); -1 when
+it is new, or only repeats a known fact (then leave it out).
+Answer with JSON only."""
 
 
-def facts(llm, notes: Notes, progress=None) -> list[tuple[str, str]]:
-    """(about, sentence) pairs from the notes alone: cheap, and nothing the reading didn't already find."""
-    raw = llm.json(FACTS_SYSTEM, notes.text(), FACTS_SCHEMA, 2000, progress=progress)
-    return [
-        (about, text)
-        for f in raw.get("facts") or []
-        if isinstance(f, dict) and (about := clean(f.get("about"), NAME_MAX)) and (text := clean(f.get("text")))
-    ][:LIST_MAX]
+@dataclass
+class Suggestion:
+    about: str
+    text: str
+    confidence: Confidence = "once"
+    replaces: str | None = None  # the text of the known fact it changes
+
+
+def facts(llm, notes: Notes, known: list[Fact] | None = None, progress=None) -> list[Suggestion]:
+    """Suggested facts from the notes alone: cheap, and nothing the reading didn't already find. `known` are the
+    facts the vault already holds about names in the notes; the model may say a new fact changes one."""
+    known = (known or [])[:KNOWN_MAX]
+    block = "\n".join(f"{i}. [{f.about}] {f.text}" for i, f in enumerate(known, start=1)) or "(none)"
+    raw = llm.json(FACTS_SYSTEM, f"Known facts:\n{block}\n\nNotes:\n{notes.text()}", FACTS_SCHEMA, 2000, progress=progress)
+    out = []
+    for f in raw.get("facts") or []:
+        if not isinstance(f, dict) or not (about := clean(f.get("about"), NAME_MAX)) or not (text := clean(f.get("text"))):
+            continue
+        confidence: Confidence = "gm" if f.get("confidence") == "gm" else "theory" if f.get("confidence") == "theory" else "once"
+        n = f.get("replaces")
+        # bool is an int in Python; an out-of-range or non-integer number means "new".
+        old = known[n - 1].text if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= len(known) else None
+        out.append(Suggestion(about, text, confidence, old))
+    return out[:LIST_MAX]
+
+
+# ------------------------------------------------------------------ where a fact was said (no model)
+
+SOURCE_MIN = 0.35  # share of the fact's IDF weight a line must carry; see source_line
+NAME_BONUS = 0.1
+
+
+def source_line(fact_text: str, about: str, aliases: list[str], lines: list[dict]) -> dict | None:
+    """The transcript line a fact most likely came from, or None.
+
+    A line scores the share of the fact's words (IDF-weighted over this session's lines, `ask.tokens`) it
+    contains, plus NAME_BONUS when it names `about` or an alias. Ties go to the earlier line. A best score under
+    SOURCE_MIN gives None: no line is better than a wrong one. 0.35 comes from the fixtures in
+    test_writeup_sources.py: a real source shares at least about half the fact's weight, an unrelated line that
+    only repeats the subject's name scores 0.1-0.25."""
+    from .ask import tokens  # ask imports memory, which imports this module: a top-level import is a cycle
+
+    wanted = set(tokens(fact_text))
+    if not wanted or not lines:
+        return None
+    line_tokens = [set(tokens(m.get("text", ""))) for m in lines]
+    idf = {w: math.log(1 + len(lines) / (1 + sum(w in t for t in line_tokens))) for w in wanted}
+    total = sum(idf.values())
+    names = [n for n in (about, *aliases) if norm(n)]
+    best, best_score = None, 0.0
+    for m, have in zip(lines, line_tokens, strict=True):
+        score = sum(idf[w] for w in wanted & have) / total
+        text = norm(m.get("text", ""))
+        if score and any(re.search(rf"\b{re.escape(norm(n))}\b", text) for n in names):
+            score += NAME_BONUS
+        if score > best_score:  # strictly: the earlier line wins a tie
+            best, best_score = m, score
+    return best if best_score >= SOURCE_MIN else None
+
+
+def said_by(line: dict) -> str | None:
+    """Who spoke a line: the character when spoken in character, else the player; None for an unnamed voice."""
+    return line.get("character") or (line.get("speaker") if line.get("player_id") else None) or None
+
+
+# ------------------------------------------------------------------ scenes
+
+SCENES_MIN, SCENES_MAX, TITLE_WORDS = 2, 8, 8
+SCENES_SCHEMA = _obj({"scenes": {"type": "array", "items": _obj({"start": {"type": "integer"}, "title": STR, "place": STR})}})
+SCENES_SYSTEM = """You split a Dungeons & Dragons session into scenes, from its numbered beats.
+scenes: 3 to 8, in order. start = the number of the beat where the scene begins (the first scene starts at beat
+1, every start is later than the one before); title = at most 8 words naming what the scene is about, no
+timestamps; place = the place where it happens, only if it is one of the known places, else an empty string.
+Answer with JSON only."""
+
+
+def scenes(llm, notes: Notes, places: dict[str, str], progress=None) -> list[dict] | None:
+    """[{t, title, place}] from the beats, or None when the reply has too few usable scenes. `places` maps
+    norm(name or alias) to the Place's name. Everything the model says is checked: starts must be beat numbers
+    in strictly increasing order (a start that goes back is dropped), the first scene is moved to beat 1, titles
+    are cleaned and cut to 8 words, an unknown place becomes null, and a scene needs a beat that has a real
+    timestamp (beats whose time the transcript doesn't have can't start one)."""
+    if not notes.beats:
+        return None
+    listing = "\n".join(f"{i}. [{b.at or '?'}] {b.text}" for i, b in enumerate(notes.beats, start=1))
+    known = ", ".join(sorted(set(places.values()))) or "(none)"
+    raw = llm.json(SCENES_SYSTEM, f"Known places: {known}\n\nBeats:\n{listing}", SCENES_SCHEMA, 1000, progress=progress)
+    out: list[dict] = []
+    last_start, last_t = 0, -1.0
+    for s in raw.get("scenes") or []:
+        if not isinstance(s, dict) or not isinstance(s.get("start"), int) or isinstance(s.get("start"), bool):
+            continue
+        start = s["start"]
+        title = " ".join(clean(s.get("title"), 120).split()[:TITLE_WORDS])
+        if not out:
+            start = 1  # the first scene always opens the session
+        beat = notes.beats[start - 1] if 1 <= start <= len(notes.beats) else None
+        if not title or beat is None or start <= last_start:
+            continue
+        t = _clock_seconds(beat.at) if beat.at else 0.0 if start == 1 else None
+        if t is None or t <= last_t:
+            continue
+        place = places.get(norm(clean(s.get("place"), NAME_MAX)))
+        out.append({"t": t, "title": title, "place": place})
+        last_start, last_t = start, t
+        if len(out) == SCENES_MAX:
+            break
+    return out if len(out) >= SCENES_MIN else None
 
 
 # ------------------------------------------------------------------ while it runs (no extra model calls)

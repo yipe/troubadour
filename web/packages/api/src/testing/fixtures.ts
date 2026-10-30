@@ -90,6 +90,7 @@ export function savedSession(s: Partial<SavedSession> & { id: string }): SavedSe
     present_player_ids: null,
     reviewed_at: null,
     talk: {},
+    scenes: null,
     ...s,
   }
 }

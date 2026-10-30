@@ -4,6 +4,8 @@ import type { Fix } from "../session/types.ts"
 
 /** One saved session's summary. `title` is the write-up's, else the working title; `n` is its session number. */
 export type SavedSession = Schemas["SavedSession"]
+/** A stretch of a written-up session: `t` is seconds into the session where it starts. */
+export type Scene = Schemas["Scene"]
 /** What a start sets or the server fills in after the fact; absent from records saved by older versions. */
 type LaterFields = "title" | "present_player_ids" | "reviewed_at" | "talk" | "merged_from"
 export type ReviewedResult = Schemas["ReviewedOut"]
@@ -69,7 +71,7 @@ export interface SessionRecord {
   version: number
   session: Omit<
     SavedSession,
-    "audio" | "replayable" | "restorable" | "quality" | "n" | "summary" | LaterFields
+    "audio" | "replayable" | "restorable" | "quality" | "n" | "summary" | "scenes" | LaterFields
   > &
     Partial<Pick<SavedSession, LaterFields>> & {
       improved?: ImprovedInfo

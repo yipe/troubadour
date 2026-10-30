@@ -143,6 +143,10 @@ DESIGN_FACTS = [
     ("Diamond of Ysolde", 12, "1:40:31", "The Diamond of Ysolde is hidden in the bell’s clapper.", True, "Velis Anwe", "theory"),
     ("Drowned Abbey", 12, "1:38:02", "The tide turns at the second bell.", False, "Orsa Vell", "gm"),
     ("Captain Orsa Vell", 12, "1:37:20", "Orsa Vell won’t set foot in the abbey.", False, "Alex", "gm"),
+    # S12 suggestions from the write-up, each with the line it came from.
+    ("Captain Orsa Vell", 12, "1:39:30", "Orsa Vell says the diamond lies beneath the tide’s tongue.", True, "Alex", "gm"),
+    ("Drowned Abbey", 12, "1:36:40", "A bell rings once somewhere below the abbey doors.", True, "Alex", "gm"),
+    ("Choir voice", 12, "1:42:05", "Someone is singing beneath the abbey floor.", True, None, "once"),
     ("The Tidecallers", 11, "2:04:47", "The Tidecallers want the abbey sealed for good.", False, "Alex", "gm"),
     ("Diamond of Ysolde", 11, "1:12:30", "The diamond is somewhere in the abbey.", True, "Pip Tallowmere", "theory"),
     ("Captain Orsa Vell", 9, "1:30:05", "Orsa Vell smuggles for the Tidecallers.", True, "Pip Tallowmere", "theory"),
@@ -163,6 +167,20 @@ DESIGN_FACTS = [
 # A fact that changed: the S10 debt was paid in S12, so the old wording sits in the new fact's history.
 PAID_BACK = ("Captain Orsa Vell", (12, "1:42:58", "Orsa Vell paid Pip back. They’re square.", "Alex", "gm"))
 OWED = (10, "0:52:10", "Orsa Vell owes Pip 20 gold.", "Pip Tallowmere", "once")
+
+# A suggestion that changes a fact the vault already holds: (about, session number, time, new text, the old
+# text it replaces, said by, confidence).
+UPDATE_SUGGESTIONS = [
+    (
+        "The Tidecallers",
+        12,
+        "1:41:55",
+        "The Tidecallers have raised their price for the diamond to 6,000 gp.",
+        "The Tidecallers will pay 4,000 gp for the diamond.",
+        "Alex",
+        "gm",
+    ),
+]
 
 # Old-format bullets, kept so both formats load: (about, session number, text, suggested). With a number the
 # bullet is the bare "([[page]])" form; without one it has no trailer at all.
@@ -330,6 +348,9 @@ def seed(ctx: SeedContext) -> None:
     n_old, at_old, text_old, by_old, conf_old = OWED
     history = [Version(text_old, by_old, _source(by_n[n_old], at_old), conf_old)]  # type: ignore[arg-type]
     vault.add_fact(about, Fact(text, about, said_by, _source(by_n[n], at), confidence, history))  # type: ignore[arg-type]
+    for about, n, at, text, old, said_by, confidence in UPDATE_SUGGESTIONS:
+        fact = Fact(text, about, said_by, _source(by_n[n], at), confidence, replaces=old)  # type: ignore[arg-type]
+        vault.add_fact(about, fact, suggested=True)
     for about, n, text, suggested in EXTRA_FACTS:
         source = Source(by_n[n].page_title) if n else None
         vault.add_fact(about, Fact(text, about, source=source), suggested=suggested)
