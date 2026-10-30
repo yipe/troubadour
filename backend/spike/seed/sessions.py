@@ -193,6 +193,35 @@ def _messages(n: int, duration: float, r) -> list[dict]:
     return messages
 
 
+# S12's scenes (start in seconds, title, place). The times line up with S12_LINES.
+S12_SCENES = [
+    (0, "Table talk", None),
+    (1260, "Haggling with Orsa on the Gull’s Debt", "Gull’s Debt"),
+    (3300, "Saltreach docks at low tide", "Saltreach"),
+    (5774, "Entering the abbey", "Drowned Abbey"),
+    (6031, "The bell chamber", "Drowned Abbey"),
+]
+# Every other written-up session: a few scenes at fixed shares of its length.
+SCENE_TITLES = [
+    ("Table talk", None),
+    ("Trouble on the quay", "Low Water Quay"),
+    ("Deals at the market", "Brine Market"),
+    ("Back in Saltreach", "Saltreach"),
+]
+
+
+def _scenes(n: int, duration: float) -> list[dict] | None:
+    """scenes.json as the write-up stores it. S7 was never written up, so it has none."""
+    if n == 7:
+        return None
+    if n == 12:
+        return [{"t": float(t), "title": title, "place": place} for t, title, place in S12_SCENES]
+    return [
+        {"t": float(round(duration * i / len(SCENE_TITLES))), "title": title, "place": place}
+        for i, (title, place) in enumerate(SCENE_TITLES)
+    ]
+
+
 def _present(n: int, ctx: SeedContext) -> list[str]:
     """Who sat at the table: everyone, except one player now and then (never the GM, who runs it)."""
     r = rng("present", n)
@@ -258,4 +287,7 @@ def seed(ctx: SeedContext) -> None:
         write_atomic(folder / "transcript.json", json.dumps(record, ensure_ascii=False, indent=1))
         write_atomic(folder / "transcript.md", transcript.markdown(record))
         write_atomic(folder / "meta.json", json.dumps(record["session"]))
+        scenes = _scenes(n, duration)
+        if scenes:
+            write_atomic(folder / "scenes.json", json.dumps(scenes, ensure_ascii=False))
         ctx.sessions.append(SessionSeed(n, sid, title, started_at, duration, record))

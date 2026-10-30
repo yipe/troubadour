@@ -44,6 +44,8 @@ class FakeLLM:
             return self.page
         if system is writeup.FACTS_SYSTEM:
             return self.found
+        if system is writeup.SCENES_SYSTEM:
+            return {"scenes": []}  # test_writeup_sources.py covers scenes
         raise AssertionError(f"unexpected prompt: {system[:60]}")
 
 
@@ -246,7 +248,7 @@ def test_write_up_reads_the_session_then_writes_the_page_from_the_notes(setup):
     assert vault.get("Dallon").type == "place"
     assert vault.find("the party") is None
     assert job.created == ["Dallon"]
-    read, write, _ = llm.calls
+    read, write, *_ = llm.calls
     assert "Transcript:\n00:00 Elara (played by Theo): Dilara, three." in read
     assert "Transcript" not in write  # the page comes from the notes, never the transcript
     assert "Mudge" in write  # the style example
@@ -254,9 +256,9 @@ def test_write_up_reads_the_session_then_writes_the_page_from_the_notes(setup):
     assert llm.thought[writeup.READ_SYSTEM[:40]] is True
     assert llm.thought[writeup.WRITE_SYSTEM[:40]] is False
     assert all(llm.progress)  # every call streams its progress to the job
-    assert [s["state"] for s in job.steps] == ["done"] * 4
+    assert [s["state"] for s in job.steps] == ["done"] * 5
     assert job.snippets[0] == {"kind": "stat", "at": "", "text": "10:00 of play, 3 lines, 1 at the table"}
-    assert job.done == job.total == 4
+    assert job.done == job.total == 5
     assert job.live is None
 
 
@@ -329,7 +331,7 @@ def test_write_up_suggests_lasting_facts_only(setup, monkeypatch):
         "Elara fears deep water. ([[2026-10-08 The Desert Road]])",
         "Elara reads Elvish. ([[2026-10-08 The Desert Road]])",
     ]
-    assert "Beats:\n- [00:05] The party found a cave near Dallon." in llm.calls[2]  # facts come from the notes
+    assert "Beats:\n- [00:05] The party found a cave near Dallon." in llm.calls[-1]  # facts come from the notes
 
 
 def test_a_rewrite_keeps_the_page_name(setup):

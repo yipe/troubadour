@@ -800,7 +800,7 @@ class Memory:
         if not lines:
             raise ValueError("That session has no lines.")
         stamps = {line.split(" ", 1)[0] for line in lines}
-        job.plan("Read the whole session", "Write the page", "Suggest names, facts and spellings", "Save the page")
+        job.plan("Read the whole session", "Write the page", "Scenes", "Suggest names, facts and spellings", "Save the page")
         job.stats(writeup.table_stats(record, [n for e in self.vault.entities() for n in (e.name, *e.aliases)]))
         job.step(0, f"Reading {len(lines)} lines…")
         notes = writeup.read(self.llm, lines, cast, glossary_brief(self.vault), job.model_progress)
@@ -809,6 +809,8 @@ class Memory:
         job.step(1, f"Noted {len(notes.beats)} beats; writing the page…")
         page = writeup.write(self.llm, notes, stamps, job.model_progress)
         job.step(2)
+        self._write_scenes(job, record["session"]["id"], notes)
+        job.step(3)
         date = time.strftime("%Y-%m-%d", time.localtime(s["started_at"]))
         sid = s["id"]
         existing = self._session_note(sid)
@@ -817,8 +819,9 @@ class Memory:
         # Suggestions first, so the session page can link the new names.
         heard_text = norm("\n".join(lines))
         self._suggest_names(job, notes, heard_text)
-        self._suggest_facts(job, writeup.facts(self.llm, notes, job.model_progress), note_title)
-        job.step(3)
+        found = writeup.facts(self.llm, notes, self._known_facts(notes), job.model_progress)
+        self._suggest_facts(job, found, note_title, sid, record["messages"])
+        job.step(4)
         self._suggest_spellings(job, notes.spellings, heard_text)
 
         tdir = self.vault.root / "Sessions" / "Transcripts"
@@ -861,14 +864,45 @@ class Memory:
             job.suggested += 1
         self._suggest_spellings(job, spellings, heard_text)
 
-    def _suggest_facts(self, job: Job, found: list[tuple[str, str]], note_title: str) -> None:
+    def _known_facts(self, notes: writeup.Notes) -> list[Fact]:
+        """The facts already in the vault about names the notes mention (for the facts step to say "this changes
+        that one")."""
+        text = norm(notes.text())
+        out: list[Fact] = []
+        for e in self.vault.entities():
+            if any(re.search(rf"\b{re.escape(n)}\b", text) for n in map(norm, e.names()) if n):
+                out += e.facts
+        return out[: writeup.KNOWN_MAX]
+
+    def _write_scenes(self, job: Job, sid: str, notes: writeup.Notes) -> None:
+        """sessions/<id>/scenes.json from the beats. Optional: if the call fails or its answer is unusable,
+        nothing is stored (a stale file from an earlier run goes too, it describes other beats) and the
+        write-up carries on."""
+        path = self.sessions_dir() / sid / "scenes.json"
+        places = {norm(n): e.name for e in self.vault.entities() if e.type == "place" for n in e.names() if norm(n)}
+        try:
+            found = writeup.scenes(self.llm, notes, places, job.model_progress)
+        except Exception as e:  # the model is down, out of tokens, or sent junk: scenes are not worth the write-up
+            log.warning("scenes for %s failed: %s", sid, e)
+            found = None
+        if found:
+            write_atomic(path, json.dumps(found, ensure_ascii=False))
+        else:
+            path.unlink(missing_ok=True)
+
+    def _suggest_facts(self, job: Job, found: list[writeup.Suggestion], note_title: str, sid: str, messages: list[dict]) -> None:
         added = 0
-        for about, text in found:
-            e = self.vault.find(about)
-            if e is None or e.read_only or fleeting(text) or added >= MAX_SUGGESTED_FACTS:
+        for item in found:
+            e = self.vault.find(item.about)
+            if e is None or e.read_only or fleeting(item.text) or added >= MAX_SUGGESTED_FACTS:
                 continue
+            # The old wording must really be one of this entry's facts: the model only saw a numbered list.
+            old = item.replaces if any(f.text == item.replaces for f in e.facts) else None
+            line = writeup.source_line(item.text, e.name, e.aliases, messages)
+            source = Source(note_title, sid, line["t_start"] if line else None)
+            fact = Fact(item.text, e.name, writeup.said_by(line) if line else None, source, item.confidence, replaces=old)
             before = len(e.suggested_facts) + len(e.facts)
-            e = self.vault.add_fact(e.name, Fact(text, e.name, source=Source(note_title)), suggested=True)
+            e = self.vault.add_fact(e.name, fact, suggested=True)
             if len(e.suggested_facts) + len(e.facts) > before:
                 added += 1
                 job.suggested += 1
