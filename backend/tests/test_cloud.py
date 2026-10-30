@@ -820,6 +820,19 @@ def test_api_restoring_a_campaign_from_another_mac_adds_it_to_the_picker(api, se
     assert (config.DATA_DIR / "campaigns" / "c0123456789" / "Facts.md").read_text() == "The gate opens at dawn.\n"
 
 
+def test_api_bring_to_this_mac_refuses_a_campaign_this_mac_already_has(api, service):
+    vault = _backed_up_vault(api, service)
+    deps.engine.adopt_campaign("c0123456789", "The Sunken Gate")  # already here, not the open one
+    local = config.DATA_DIR / "campaigns" / "c0123456789"
+    local.mkdir(parents=True, exist_ok=True)
+    (local / "Facts.md").write_text("Newer notes on this Mac.\n")
+    vault["campaign_id"], vault["name"] = "c0123456789", "The Sunken Gate"
+    job = wait_job(api.post("/api/cloud/restore", json={"vault_id": vault["id"]}).json()["id"])
+    assert job["state"] == "error"
+    assert "already on this Mac" in job["message"]
+    assert (local / "Facts.md").read_text() == "Newer notes on this Mac.\n"
+
+
 def test_api_restore_refuses_a_campaign_id_that_could_name_another_folder(api, service):
     vault = _backed_up_vault(api, service)
     vault["campaign_id"] = "../escape"

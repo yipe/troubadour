@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useCampaigns } from "@troubadour/api/campaigns"
 import {
   useCloud,
   useCloudAccount,
@@ -28,6 +29,9 @@ export function Sidebar() {
   const [bring, setBring] = useState<CloudVault | null>(null)
   const thisVault = vaults?.find((v) => v.campaign_id === status.campaign)
   const others = vaults?.filter((v) => v.campaign_id !== status.campaign && v.head_snapshot) ?? []
+  // A campaign this Mac already has is never offered for "Bring to this Mac": that would replace newer
+  // local notes with the cloud copy. It is restored from its own Cloud settings once opened.
+  const local = new Set(useCampaigns().data?.campaigns.map((c) => c.id) ?? [])
 
   return (
     <aside className="flex min-h-0 flex-col gap-4 pt-1">
@@ -45,9 +49,13 @@ export function Sidebar() {
                   In your cloud since {dateShort(Date.parse(v.created_at) / 1000)}
                 </div>
               </div>
-              <Button size="sm" variant="secondary" onClick={() => setBring(v)}>
-                Bring to this Mac
-              </Button>
+              {local.has(v.campaign_id) ? (
+                <span className="text-12 text-ink-subtle">On this Mac</span>
+              ) : (
+                <Button size="sm" variant="secondary" onClick={() => setBring(v)}>
+                  Bring to this Mac
+                </Button>
+              )}
             </div>
           ))
         )}

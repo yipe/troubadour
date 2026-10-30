@@ -23,7 +23,7 @@ const connected = cloudStatus({
   last_backup: cloudBackup({ at: NOW - 240, files: 1212 }),
 })
 
-function setup(status = connected) {
+function setup(status = connected, localCampaigns: string[] = ["main"]) {
   const m = mockFetch((call) => {
     switch (call.url) {
       case "/api/cloud/history":
@@ -50,7 +50,15 @@ function setup(status = connected) {
         return {}
     }
   })
-  renderWithProviders(<Component />, { queryData: [[keys.cloud(), status]] })
+  renderWithProviders(<Component />, {
+    queryData: [
+      [keys.cloud(), status],
+      [
+        keys.campaigns(),
+        { campaign: "main", campaigns: localCampaigns.map((id) => ({ id, name: id, table_name: "" })) },
+      ],
+    ],
+  })
   return m
 }
 
@@ -90,6 +98,13 @@ it("brings another campaign to this Mac after confirming", async () => {
     within(await screen.findByRole("dialog")).getByRole("button", { name: "Bring to this Mac" }),
   )
   await waitFor(() => expect(bodyOf(m.writes().at(-1)!)).toEqual({ vault_id: "v-lantern" }))
+})
+
+it("never offers to bring a campaign this Mac already has", async () => {
+  setup(connected, ["main", "lantern"])
+  expect(await screen.findByText("Lantern Road")).toBeInTheDocument()
+  expect(screen.getByText("On this Mac")).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Bring to this Mac" })).toBeNull()
 })
 
 it("asks before disconnecting", async () => {
