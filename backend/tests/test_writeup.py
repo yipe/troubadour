@@ -123,3 +123,19 @@ def test_table_stats_count_what_code_can():
         "Loudest moment, 00:40: Theo: “Nat 1. No way, that is terrible!”",
     ]
     assert writeup.table_stats({"messages": []}, []) == []
+
+
+def test_progress_carries_how_far_the_notes_and_the_page_are():
+    heard = []
+
+    class LLM:
+        def json(self, system, user, schema, max_tokens=4000, think=False, progress=None):
+            progress({"phase": "writing", "text": '{"beats": [{"at": "0:30", "text": "a"}, {"at": "1:00", "text": "b"}'})
+            progress({"phase": "writing", "text": "x" * 2500})
+            return {}
+
+    writeup.read(LLM(), ["00:00 GM: hi", "1:30 GM: bye"], "", "", heard.append)
+    assert [h.get("fraction") for h in heard] == [round(60 / 90, 3)] * 2  # the furthest finished beat: 1:00 of 1:30
+    heard.clear()
+    writeup.write(LLM(), writeup.Notes(), set(), heard.append)
+    assert [h["fraction"] for h in heard][-1] == 0.5  # 2,500 of ~5,000 chars

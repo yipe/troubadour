@@ -116,7 +116,9 @@ describe("History viewer: write up for campaign", () => {
     ])
     expect(list).toHaveTextContent(/Reading the transcript… 4m 0[5-7]s/)
 
-    steps({ phase: "writing", tokens: 1234, tok_s: 27.5, started: 0 }, 1)
+    expect(screen.queryByRole("progressbar")).toBeNull() // reading the transcript: no way to tell how far
+    steps({ phase: "writing", tokens: 1234, tok_s: 27.5, started: 0, fraction: 0.4 }, 1)
+    expect(screen.getByRole("progressbar")).toHaveAccessibleName("Write the page: 40%")
     expect([...list.querySelectorAll("li")].map((li) => li.dataset.state)).toEqual([
       "done",
       "running",

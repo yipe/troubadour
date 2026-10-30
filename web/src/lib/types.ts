@@ -281,6 +281,7 @@ export interface JobLive {
   tokens: number /* estimated from the streamed text */
   tok_s: number
   started: number /* epoch seconds */
+  fraction?: number /* 0-1, when the step can tell how far it is (notes: by session time; page: estimated) */
 }
 /** A player's built voice clone (GET /api/clones): their table voice, with `characters` beside it. */
 export interface CloneVoice {

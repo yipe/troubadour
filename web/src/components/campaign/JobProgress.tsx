@@ -129,8 +129,7 @@ function elapsed(seconds: number): string {
 
 /** What a streaming model call is doing, e.g. "Writing… ~1,234 tokens · 27 tok/s". */
 function liveText(live: JobLive, now: number): string {
-  if (live.phase === "reading")
-    return `Reading the transcript… ${elapsed(now - live.started)}`
+  if (live.phase === "reading") return `Reading the transcript… ${elapsed(now - live.started)}`
   const what = live.phase === "thinking" ? "Thinking" : "Writing"
   return `${what}… ~${live.tokens.toLocaleString("en-US")} tokens · ${live.tok_s} tok/s`
 }
@@ -165,6 +164,13 @@ export function JobSteps({ job: j }: { job: CampaignJob | undefined }) {
             <span className="pl-5.5 text-xs text-muted-foreground tabular-nums">
               {j.live ? liveText(j.live, now) : j.message}
             </span>
+          )}
+          {s.state === "running" && j.live?.fraction !== undefined && (
+            <Progress
+              aria-label={`${s.label}: ${Math.round(j.live.fraction * 100)}%`}
+              value={j.live.fraction * 100}
+              className="mt-1 ml-5.5 h-1 w-48"
+            />
           )}
         </li>
       ))}

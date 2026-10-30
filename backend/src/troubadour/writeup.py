@@ -233,17 +233,42 @@ def read(llm, lines: list[str], cast: str, glossary: str, progress=None) -> Note
     streaming call's progress (Job.model_progress)."""
     user = f"Who is at the table:\n{cast}\n\nGlossary:\n{glossary}\n\nTranscript:\n" + "\n".join(lines)
 
+    end = _clock_seconds(lines[-1].split(" ", 1)[0]) if lines else 0.0
+    reached = [0.0]  # the furthest beat so far (the bar never goes back)
+
     def heard(info: dict) -> None:
-        if progress is not None:
-            progress({**info, "snippets": snippets(info.get("text", ""))})
+        if progress is None:
+            return
+        found = snippets(info.get("text", ""))
+        # The beats come in session order: the last one's time says how far through the session the notes are.
+        reached[0] = max([reached[0], *(_clock_seconds(s["at"]) for s in found if s["kind"] == "beat")])
+        fraction = {"fraction": round(min(1.0, reached[0] / end), 3)} if end and reached[0] else {}
+        progress({**info, **fraction, "snippets": found})
 
     raw = llm.json(READ_SYSTEM, user, NOTES_SCHEMA, READ_TOKENS, think=True, progress=heard)
     return parse_notes(raw, {line.split(" ", 1)[0] for line in lines})
 
 
+WRITE_EXPECTED_CHARS = 5000  # a page reply is usually ~4-6k chars: the write step's bar is an estimate
+
+
 def write(llm, notes: Notes, stamps: set[str], progress=None) -> Page:
     user = f"{EXAMPLE_INTRO}{EXAMPLE}\n\n---\n\nThe note-taker's notes for this session:\n{notes.text()}"
-    return parse_page(llm.json(WRITE_SYSTEM, user, PAGE_SCHEMA, WRITE_TOKENS, progress=progress), stamps)
+
+    def heard(info: dict) -> None:
+        if progress is not None:
+            written = len(info.get("text", ""))
+            progress({**info, "fraction": round(min(0.95, written / WRITE_EXPECTED_CHARS), 3)} if written else info)
+
+    return parse_page(llm.json(WRITE_SYSTEM, user, PAGE_SCHEMA, WRITE_TOKENS, progress=heard), stamps)
+
+
+def _clock_seconds(at: str) -> float:
+    try:
+        parts = [int(p) for p in at.strip("[] ").split(":")]
+    except ValueError:
+        return 0.0
+    return float(sum(p * 60**i for i, p in enumerate(reversed(parts))))
 
 
 FACTS_SCHEMA = _obj({"facts": {"type": "array", "items": _obj({"about": STR, "text": STR})}})
