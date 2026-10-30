@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from troubadour.lore import pages, timeline
 from troubadour.lore.campaign import Vault
 from troubadour.server import deps
@@ -34,6 +34,21 @@ class TimelineOut(BaseModel):
     sessions: list[TimelineSession]  # newest first
 
 
+MAX_SESSIONS = 2000
+MAX_ENTRIES = 20000
+
+
+class AppearanceSession(BaseModel):
+    id: str
+    n: int
+
+
+class AppearancesOut(BaseModel):
+    sessions: list[AppearanceSession] = Field(max_length=MAX_SESSIONS)  # oldest first
+    # entry name -> mentions per session, same order as `sessions`; an entry never named is absent
+    counts: dict[str, list[int]] = Field(max_length=MAX_ENTRIES)
+
+
 def session_context() -> tuple[Vault, list[dict], dict[str, int]]:
     """The vault, the open campaign's saved sessions and their numbers (shared with the entity endpoint)."""
     rows = deps.engine.list_sessions()
@@ -49,3 +64,10 @@ def get_timeline():
     ids_for = {Path(rel).stem: sid for sid, rel in written.items()}
     sessions = timeline.timeline(vault, deps.engine.sessions_dir(), rows, numbers, titles, ids_for)
     return {"sessions": sessions}
+
+
+@router.get("/api/campaign/appearances", response_model=AppearancesOut)
+def get_appearances():
+    """Mentions of every entry in every session, for the Codex list. Reuses the timeline's cached scan."""
+    vault, rows, numbers = session_context()
+    return timeline.all_appearances(vault, deps.engine.sessions_dir(), rows, numbers)

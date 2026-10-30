@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Link } from "react-router"
 import type { Entity, EntityType } from "@troubadour/api/campaign"
+import { useAppearances } from "@troubadour/api/timeline"
 import { cn } from "@troubadour/ui/cn"
 import { NavItem } from "@troubadour/ui/nav-item"
 import { PillGroup } from "@troubadour/ui/pill-group"
@@ -8,6 +9,7 @@ import { SearchInput } from "@troubadour/ui/search-input"
 import { TypeBadge } from "../../components/entity/TypeBadge.tsx"
 import { matchesSearch, needsReview, TYPE_PLURAL } from "../../lib/entities.ts"
 import { paths } from "../../paths.ts"
+import { MentionBits } from "./MentionBits.tsx"
 
 const FILTER_TYPES: EntityType[] = ["npc", "place", "item", "faction", "pc"]
 
@@ -22,6 +24,7 @@ export function EntryRail({ entities, selected }: { entities: Entity[]; selected
   const [query, setQuery] = useState("")
   const [type, setType] = useState("all")
   const [reviewOnly, setReviewOnly] = useState(false)
+  const { data: appearances } = useAppearances()
   const reviewCount = entities.filter(needsReview).length
   const shown = filterEntities(entities, query, type, reviewOnly)
   return (
@@ -63,7 +66,12 @@ export function EntryRail({ entities, selected }: { entities: Entity[]; selected
             key={e.name}
             render={<Link to={paths.codex(e.name)} />}
             selected={e.name === selected}
-            sub={e.aliases[0] ?? (e.status === "suggested" ? "Suggested" : undefined)}
+            sub={
+              <>
+                {e.aliases[0] ?? (e.status === "suggested" ? "Suggested" : null)}
+                <MentionBits data={appearances} name={e.name} item={e.type === "item"} />
+              </>
+            }
             count={
               <span className="font-sans">
                 <TypeBadge type={e.type} />

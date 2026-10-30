@@ -6,6 +6,7 @@ from troubadour.server.app import app
 EXPECTED = [
     ("PUT", "/api/audio/monitor"),
     ("GET", "/api/campaign"),
+    ("GET", "/api/campaign/appearances"),
     ("POST", "/api/campaign/ask"),
     ("POST", "/api/campaign/entities"),
     ("DELETE", "/api/campaign/entities/{name}"),
