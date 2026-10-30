@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { putJob } from "../query/cache.ts"
 import { keys } from "../query/keys.ts"
 import {
+  deleteSession,
   estimateInCharacter,
   fixSpellings,
   improveSession,
@@ -12,6 +13,8 @@ import {
   sessionQuality,
   sessionRecord,
   sessions,
+  undeleteSession,
+  unmergeSession,
 } from "./endpoints.ts"
 
 /** The open campaign's saved sessions, newest first. The bridge refetches when a live session ends. */
@@ -41,6 +44,41 @@ export function useMergeSessions() {
   return useMutation({
     mutationFn: (ids: [string, string]) => mergeSessions(ids),
     onSuccess: () => client.invalidateQueries({ queryKey: keys.sessions() }),
+  })
+}
+
+/** Undo the last merge into a session. */
+export function useUnmergeSession() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => unmergeSession(id),
+    onSuccess: (_r, id) =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: keys.sessions() }),
+        client.invalidateQueries({ queryKey: keys.record(id) }),
+      ]),
+  })
+}
+
+/** Delete saved sessions (to the server's trash), one request each. */
+export function useDeleteSessions() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) await deleteSession(id)
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: keys.sessions() }),
+  })
+}
+
+/** Bring deleted sessions back. */
+export function useUndeleteSessions() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) await undeleteSession(id)
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: keys.sessions() }),
   })
 }
 

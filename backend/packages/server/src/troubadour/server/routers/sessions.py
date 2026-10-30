@@ -3,7 +3,7 @@
 import json
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from troubadour.core import settings, transcript
@@ -13,6 +13,8 @@ from troubadour.server import deps
 from troubadour.server.routers.session import FileDesc, MicDesc, ReplayDesc
 
 router = APIRouter()
+
+SESSION_PATTERN = r"^\d{4}-\d{2}-\d{2}_\d{6}-[0-9a-f]{4}$"
 
 
 class SessionMergeIn(BaseModel):
@@ -83,11 +85,46 @@ def sessions():
     return _summaries(deps.engine.list_sessions())
 
 
+def _listed(sid: str) -> dict:
+    """One saved session's summary; 409 if it exists but isn't in the open campaign's list."""
+    row = next((s for s in _summaries(deps.engine.list_sessions()) if s["id"] == sid), None)
+    if row is None:
+        raise HTTPException(409, "That session isn't in the open campaign.")
+    return row
+
+
+def _conflict(fn, *args):
+    """deps._call, with 'nothing to undo' and 'that slot is taken' as 409."""
+    try:
+        return deps._call(fn, *args)
+    except (FileNotFoundError, FileExistsError) as e:
+        raise HTTPException(409, f"Can't do that: {e}") from None
+
+
 @router.post("/api/sessions/merge", response_model=SavedSession)
 def merge_sessions(body: SessionMergeIn):
-    """Append the later of two saved sessions onto the earlier one. The later folder is removed."""
+    """Append the later of two saved sessions onto the earlier one. The later folder goes to
+    sessions/.trash; `POST /api/sessions/{sid}/unmerge` undoes it."""
     kept = deps._call(deps.engine.merge_sessions, body.ids)
-    return next(s for s in _summaries(deps.engine.list_sessions()) if s["id"] == kept["id"])
+    return _listed(kept["id"])
+
+
+@router.post("/api/sessions/{sid}/unmerge", response_model=SavedSession)
+def unmerge_session(sid: Annotated[str, Path(pattern=SESSION_PATTERN)]):
+    """Undo the last merge into this session: its old transcript and recording come back, and so does the later session."""
+    return _listed(_conflict(deps.engine.unmerge_session, sid)["id"])
+
+
+@router.delete("/api/sessions/{sid}", status_code=204)
+def delete_session(sid: Annotated[str, Path(pattern=SESSION_PATTERN)]):
+    """Move a saved session to sessions/.trash (the write-up note in the vault stays)."""
+    deps._call(deps.engine.delete_session, sid)
+
+
+@router.post("/api/sessions/{sid}/undelete", response_model=SavedSession)
+def undelete_session(sid: Annotated[str, Path(pattern=SESSION_PATTERN)]):
+    """Bring a deleted session back, if its id is free."""
+    return _listed(_conflict(deps.engine.undelete_session, sid)["id"])
 
 
 @router.post("/api/sessions/{sid}/reviewed", response_model=ReviewedOut)

@@ -9,6 +9,17 @@ export const sessions = () => req<SavedSession[]>("GET", "/api/sessions")
 export const mergeSessions = (ids: [string, string]) =>
   req<SavedSession>("POST", "/api/sessions/merge", { ids })
 
+/** Undo the last merge into this session: its old transcript and recording, and the later session, come back. */
+export const unmergeSession = (id: string) =>
+  req<SavedSession>("POST", `/api/sessions/${segment(id)}/unmerge`)
+
+/** Move a session (recording and transcript) to the server's trash. The vault's write-up stays. */
+export const deleteSession = (id: string) => req<void>("DELETE", `/api/sessions/${segment(id)}`)
+
+/** Bring a deleted session back. */
+export const undeleteSession = (id: string) =>
+  req<SavedSession>("POST", `/api/sessions/${segment(id)}/undelete`)
+
 /** Set (or clear) the "reviewed" mark on a saved session. */
 export const markReviewed = (id: string, reviewed: boolean) =>
   req<ReviewedResult>("POST", `/api/sessions/${segment(id)}/reviewed`, { reviewed })

@@ -1,9 +1,10 @@
 import { useState } from "react"
 import { useNavigate } from "react-router"
-import { useMergeSessions, useSessions, type SavedSession } from "@troubadour/api/sessions"
+import { useMergeSessions, useSessions, useUnmergeSession, type SavedSession } from "@troubadour/api/sessions"
 import { Button } from "@troubadour/ui/button"
 import { cn } from "@troubadour/ui/cn"
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@troubadour/ui/dialog"
+import { notify } from "@troubadour/ui/toast"
 import { dateLong, duration, timeRange } from "../../../lib/format.ts"
 import { paths } from "../../../paths.ts"
 import { sessionTitle } from "../stats.ts"
@@ -11,16 +12,19 @@ import { inOrder, mergeCandidates } from "./merge.ts"
 
 export type MergeDialogProps = {
   session: SavedSession
+  /** The session to have picked when the dialog opens (merge from a list row). */
+  preselect?: string
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }
 
 /** Append the later of two sessions onto the earlier one, then open the one that remains. */
-export function MergeDialog({ session, open, onOpenChange }: MergeDialogProps) {
+export function MergeDialog({ session, preselect, open, onOpenChange }: MergeDialogProps) {
   const sessions = useSessions().data
   const merge = useMergeSessions()
+  const unmerge = useUnmergeSession()
   const navigate = useNavigate()
-  const [pickedId, setPickedId] = useState<string | null>(null)
+  const [pickedId, setPickedId] = useState<string | null>(preselect ?? null)
   const [confirming, setConfirming] = useState(false)
 
   const candidates = mergeCandidates(sessions ?? [], session)
@@ -30,7 +34,7 @@ export function MergeDialog({ session, open, onOpenChange }: MergeDialogProps) {
   function change(next: boolean) {
     if (merge.isPending) return
     if (!next) {
-      setPickedId(null)
+      setPickedId(preselect ?? null)
       setConfirming(false)
       merge.reset()
     }
@@ -42,6 +46,10 @@ export function MergeDialog({ session, open, onOpenChange }: MergeDialogProps) {
     merge.mutate([earlier.id, later.id], {
       onSuccess: (kept) => {
         change(false)
+        notify("Sessions merged", {
+          undo: () => unmerge.mutate(kept.id, { onError: (e) => notify(e.message, { tone: "danger" }) }),
+          duration: 8000,
+        })
         void navigate(paths.session(kept.id))
       },
     })
@@ -99,8 +107,8 @@ export function MergeDialog({ session, open, onOpenChange }: MergeDialogProps) {
           )}
           {confirming && earlier && later && (
             <p className="mt-1 text-13 text-ink-muted">
-              {sessionTitle(later)} is appended onto {sessionTitle(earlier)}, and the later session is
-              removed. This can't be undone.
+              {sessionTitle(later)} is appended onto {sessionTitle(earlier)}, and the later session is moved
+              to the trash. You can undo this right after.
             </p>
           )}
           {merge.error && (
