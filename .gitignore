@@ -50,3 +50,8 @@ pnpm-debug.log*
 *.swo
 *.sw?
 site/.vercel
+
+# --- Design handoff runtime (large, generated; only needed to open the .dc.html files) ---------
+docs/design/troubadour-redesign/_ds/
+docs/design/troubadour-redesign/support.js
+/Troubadour UI Redesign.zip

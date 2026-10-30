@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Campaign timeline C (vertical)" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="timeline" hint-size="1440px,56px"></dc-import>
+  <main style="flex:1;padding:20px 40px 0;display:flex;flex-direction:column;gap:12px;min-height:0;box-sizing:border-box">
+    <div style="display:flex;align-items:flex-end;gap:16px">
+      <div style="flex:1">
+        <x-import component-from-global-scope="YipeUi.PageHeading" hint-size="300px,40px">The story so far</x-import>
+        <div style="color:var(--color-fg-subtle);font-size:13px">12 sessions · newest first · scrolls as the campaign grows</div>
+      </div>
+      <div style="display:flex;gap:16px;font-size:12px;color:var(--color-fg-subtle);flex-wrap:wrap">
+        <sc-for list="{{ legend }}" as="p" hint-placeholder-count="5"><span style="display:flex;gap:6px;align-items:center"><span style="width:9px;height:9px;border-radius:2px;background:{{ p.c }}"></span>{{ p.n }}</span></sc-for>
+      </div>
+    </div>
+    <div style="flex:1;min-height:0;border:1px solid var(--color-border-default);border-bottom:none;border-radius:8px 8px 0 0;background:var(--color-bg-surface);display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:grid;grid-template-columns:200px 300px 280px minmax(0,1fr) 90px;flex:none;background:var(--color-bg-subtle);border-bottom:1px solid var(--color-border-default);font-family:Georgia,'Iowan Old Style',serif;font-weight:700;color:var(--color-fg-muted)">
+        <span style="padding:10px 16px">Session</span><span style="padding:10px 16px;border-left:1px solid var(--color-border-subtle)">Where</span><span style="padding:10px 16px;border-left:1px solid var(--color-border-subtle)">Who talked</span><span style="padding:10px 16px;border-left:1px solid var(--color-border-subtle)">New faces</span><span style="padding:10px 16px;border-left:1px solid var(--color-border-subtle);text-align:right">Facts</span>
+      </div>
+      <sc-for list="{{ rows }}" as="s" hint-placeholder-count="12">
+        <div style="display:grid;grid-template-columns:200px 300px 280px minmax(0,1fr) 90px;height:60px;flex:none;border-bottom:1px solid var(--color-border-default);background:{{ s.bg }}">
+          <div style="padding:0 16px;display:flex;flex-direction:column;justify-content:center;line-height:1.25;min-width:0">
+            <div style="display:flex;gap:8px;align-items:baseline;white-space:nowrap"><span style="font-family:Georgia,'Iowan Old Style',serif;font-weight:700">S{{ s.n }}</span><span style="font-size:12px;color:var(--color-fg-subtle)">{{ s.date }}</span></div>
+            <div style="font-size:13px;color:{{ s.tc }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.title }}</div>
+          </div>
+          <div style="position:relative;border-left:1px solid var(--color-border-subtle)">
+            <span style="position:absolute;left:{{ s.x }};width:3px;margin-left:-1px;top:{{ s.vt }};bottom:{{ s.vb }};background:var(--color-border-strong)"></span>
+            <sc-if value="{{ s.hop }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;bottom:-1px;height:3px;left:{{ s.hl }};width:{{ s.hw }};background:var(--color-border-strong)"></span></sc-if>
+            <span style="position:absolute;left:{{ s.x }};top:50%;width:12px;height:12px;border-radius:50%;transform:translate(-50%,-50%);background:{{ s.dot }};box-shadow:0 0 0 3px {{ s.dotRing }}"></span>
+            <sc-if value="{{ s.label }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:calc({{ s.x }} + 14px);top:50%;transform:translateY(-50%);font-size:12px;font-weight:600;white-space:nowrap;color:{{ s.lc }}">{{ s.place }}</span></sc-if>
+          </div>
+          <div style="padding:0 16px;border-left:1px solid var(--color-border-subtle);display:flex;flex-direction:column;justify-content:center;gap:5px">
+            <div style="display:flex;height:10px;border-radius:3px;overflow:hidden;gap:1px"><sc-for list="{{ s.talk }}" as="t" hint-placeholder-count="5"><span style="width:{{ t.w }};background:{{ t.c }}"></span></sc-for></div>
+            <div style="font-size:11px;color:var(--color-fg-subtle)">{{ s.top }} · {{ s.len }}</div>
+          </div>
+          <div style="padding:0 16px;border-left:1px solid var(--color-border-subtle);display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0">
+            <sc-for list="{{ s.faces }}" as="f" hint-placeholder-count="2"><span style="font-size:12px;padding:2px 8px;border-radius:4px;background:var(--color-subtle-badge-bg);color:{{ f.c }};white-space:nowrap">{{ f.n }}</span></sc-for>
+          </div>
+          <div style="padding:0 16px;border-left:1px solid var(--color-border-subtle);display:flex;gap:8px;align-items:center;justify-content:flex-end">
+            <span style="height:6px;border-radius:3px;width:{{ s.fw }};background:var(--color-accent-emphasis)"></span><span style="font-size:13px;color:var(--color-fg-muted);font-variant-numeric:tabular-nums;width:20px;text-align:right">{{ s.facts }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </main>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  renderVals() {
+    const C = { gm: "var(--color-class-paladin)", pip: "var(--color-class-bard)", ve: "var(--color-class-wizard)", br: "var(--color-class-barbarian)", th: "var(--color-class-druid)" };
+    const legend = [["Alex (GM)", C.gm], ["Pip", C.pip], ["Velis", C.ve], ["Brann", C.br], ["Thessaly", C.th]].map(([n, c]) => ({ n, c }));
+    const lane = { "Saltreach": 8, "Marrow Street": 22, "Merrow’s chapel": 36, "Saltreach docks": 14, "Gull’s Debt": 30, "Drowned Abbey": 44 };
+    const S = [
+      [1, "Sep 3", "Saltreach", "The party meets at the Lantern", [46, 16, 14, 12, 12], ["Saltreach"], 9, "2:50"],
+      [2, "Sep 10", "Saltreach", "A job from the temple", [50, 14, 12, 14, 10], ["Sister Merrow"], 12, "3:05"],
+      [3, "Sep 17", "Saltreach", "The Eclipse Heist", [44, 20, 12, 14, 10], ["Diamond of Ysolde"], 21, "3:40"],
+      [4, "Sep 24", "Marrow Street", "Chasing the thief", [48, 18, 10, 16, 8], ["Marrow Street", "Fenn the Rat"], 14, "3:10"],
+      [5, "Oct 1", "Merrow’s chapel", "Sister Merrow’s confession", [52, 12, 16, 8, 12], ["The Tidecallers"], 18, "2:44"],
+      [6, "Oct 3", "Saltreach docks", "Oaths at Low Water", [40, 14, 12, 24, 10], ["The drowned god"], 11, "3:30"],
+      [7, "Oct 5", "Saltreach docks", "A short one", [58, 12, 10, 10, 10], [], 4, "1:12"],
+      [8, "Oct 8", "Saltreach docks", "The Tidecaller Offer", [47, 15, 17, 9, 12], ["Captain Orsa Vell"], 16, "3:05"],
+      [9, "Oct 10", "Saltreach docks", "Smoke on the Docks", [45, 19, 13, 13, 10], ["Gull’s Debt"], 13, "3:21"],
+      [10, "Oct 12", "Gull’s Debt", "Debts and Riddles", [49, 21, 12, 8, 10], ["The Abbot"], 15, "2:58"],
+      [11, "Oct 15", "Gull’s Debt", "Bells of Saltreach", [44, 17, 18, 11, 10], [], 17, "3:40"],
+      [12, "Oct 22", "Drowned Abbey", "The Drowned Abbey", [46, 17, 15, 12, 10], ["Drowned Abbey", "Choir voice"], 9, "3:12"]
+    ];
+    const keys = ["gm", "pip", "ve", "br", "th"], names = ["Alex", "Pip", "Velis", "Brann", "Thessaly"];
+    const toX = p => (lane[p] * 1.2) + "%";
+    const ordered = S.slice().reverse();
+    const rows = ordered.map((r, i) => {
+      const [n, date, place, title, talk, faces, facts, len] = r;
+      const older = ordered[i + 1], newer = ordered[i - 1];
+      const now = i === 0;
+      const topI = talk.slice(1).indexOf(Math.max(...talk.slice(1))) + 1;
+      const moved = older && older[2] !== place;
+      const a = older ? lane[older[2]] * 1.2 : 0, b = lane[place] * 1.2;
+      return {
+        n, date, title, place, len,
+        bg: now ? "var(--color-accent-subtle)" : "transparent", tc: now ? "var(--color-fg-default)" : "var(--color-fg-muted)",
+        x: toX(place), vt: newer ? "0" : "50%", vb: older ? "0" : "50%",
+        hop: !!moved, hl: Math.min(a, b) + "%", hw: Math.abs(a - b) + "%",
+        label: !older || moved || now, lc: now ? "var(--color-accent-fg)" : "var(--color-fg-muted)",
+        dot: now ? "var(--color-accent-emphasis)" : (!older || moved) ? "var(--color-accent-fg)" : "var(--color-border-strong)",
+        dotRing: now ? "color-mix(in oklch, var(--color-accent-subtle) 100%, var(--color-bg-surface))" : "var(--color-bg-surface)",
+        talk: talk.map((p, j) => ({ w: p + "%", c: C[keys[j]] })),
+        top: "Top player: " + names[topI] + " " + talk[topI] + "%",
+        faces: faces.map(f => ({ n: f, c: f.includes("Diamond") ? "var(--color-rarity-legendary)" : "var(--color-subtle-badge-fg)" })),
+        facts, fw: (facts * 2.5) + "px"
+      };
+    });
+    return { legend, rows };
+  }
+}
+</script>
+</body>
+</html>

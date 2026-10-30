@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <script src="data.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Facts B (timeline)" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="facts" hint-size="1440px,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:280px;flex:none;border-right:1px solid var(--color-border-default);padding:22px 18px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
+      <x-import component-from-global-scope="YipeUi.PageHeading" hint-size="200px,40px">Facts timeline</x-import>
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle)">Follow a thread</div>
+      <sc-for list="{{ threads }}" as="t" hint-placeholder-count="5">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;background:{{ t.bg }};box-shadow:{{ t.ring }}">
+          <span style="flex:1;font-weight:600;color:{{ t.c }}">{{ t.n }}</span><span style="font-size:12px;color:var(--color-fg-subtle)">{{ t.k }}</span>
+        </div>
+      </sc-for>
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle);margin-top:8px">Show</div>
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+        <span style="display:flex;gap:8px;align-items:center"><span style="width:14px;height:14px;border-radius:3px;background:var(--color-accent-emphasis)"></span>GM stated</span>
+        <span style="display:flex;gap:8px;align-items:center"><span style="width:14px;height:14px;border-radius:3px;background:var(--color-accent-emphasis)"></span>Party theories</span>
+        <span style="display:flex;gap:8px;align-items:center"><span style="width:14px;height:14px;border-radius:3px;border:1.5px solid var(--color-border-strong);box-sizing:border-box"></span>Heard once</span>
+      </div>
+    </aside>
+    <main style="flex:1;overflow:hidden;padding:24px 48px;display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px">
+        <span style="font-family:Georgia,'Iowan Old Style',serif;font-size:26px;font-weight:700;color:var(--color-rarity-legendary)">Diamond of Ysolde</span>
+        <span style="color:var(--color-fg-subtle)">6 facts across 5 sessions · what the table knew, and when</span>
+      </div>
+      <sc-for list="{{ items }}" as="f" hint-placeholder-count="6">
+        <div style="display:grid;grid-template-columns:170px 28px minmax(0,1fr);gap:0 16px">
+          <div style="text-align:right;padding-top:12px;line-height:1.25"><div style="font-weight:700">Session {{ f.s }}</div><div style="font-size:12px;color:var(--color-fg-subtle)">{{ f.sess }}</div></div>
+          <div style="display:flex;flex-direction:column;align-items:center">
+            <span style="width:2px;height:16px;background:{{ f.topLine }}"></span>
+            <span style="width:14px;height:14px;border-radius:50%;flex:none;background:{{ f.dot }};box-shadow:0 0 0 2px {{ f.dotRing }}"></span>
+            <span style="width:2px;flex:1;background:var(--color-border-strong)"></span>
+          </div>
+          <div style="padding:6px 0 14px">
+            <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;padding:12px 16px;display:flex;flex-direction:column;gap:8px;opacity:{{ f.op }}">
+              <div style="font-size:16px;text-wrap:pretty;text-decoration:{{ f.td }}">{{ f.t }}</div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-fg-subtle)">
+                <span style="width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;background:color-mix(in oklch, {{ f.c }} 22%, var(--color-bg-surface));color:{{ f.c }};box-shadow:inset 0 0 0 1.5px {{ f.c }}">{{ f.i }}</span>{{ f.who }}
+                <a href="#" style="text-decoration:none;font-family:ui-monospace,Menlo,monospace">▶ {{ f.at }}</a>
+                <span style="padding:1px 7px;border-radius:4px;font-weight:600;background:{{ f.cbg }};color:{{ f.cfg }}">{{ f.conf }}</span>
+                <span style="margin-left:auto;color:var(--color-warning-fg)">{{ f.note }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </main>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  componentDidMount() { if (!window.TB) { const i = setInterval(() => { if (window.TB) { clearInterval(i); this.forceUpdate(); } }, 50); } }
+  renderVals() {
+    const TB = window.TB;
+    const threads = [["Diamond of Ysolde", "6", 1, "var(--color-rarity-legendary)"], ["Captain Orsa Vell", "9"], ["The Tidecallers", "7"], ["Drowned Abbey", "4"], ["The Abbot", "2"], ["Everything", "389"]].map(([n, k, on, c]) => ({ n, k, c: c || "var(--color-fg-default)", bg: on ? "var(--color-bg-surface)" : "transparent", ring: on ? "inset 0 0 0 1px var(--color-accent-emphasis)" : "none" }));
+    const items = TB ? TB.facts.filter(f => f.about === "Diamond of Ysolde" || f.t.includes("diamond")).map((f, n) => {
+      const superseded = f.s === 11;
+      return Object.assign({}, f, {
+        topLine: n === 0 ? "transparent" : "var(--color-border-strong)",
+        dot: f.ck === "gm" ? "var(--color-accent-emphasis)" : f.ck === "theory" ? "var(--color-warning-fg)" : "var(--color-bg-elevated)",
+        dotRing: "var(--color-bg-canvas)",
+        op: superseded ? 0.6 : 1, td: "none",
+        note: superseded ? "Narrowed down in session 12" : ""
+      });
+    }) : [];
+    return { threads, items };
+  }
+}
+</script>
+</body>
+</html>

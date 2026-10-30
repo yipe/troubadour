@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Home" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="home" cloud="{{ cloud }}" hint-size="1440px,56px"></dc-import>
+  <main style="flex:1;padding:28px 40px;display:flex;flex-direction:column;gap:22px;box-sizing:border-box">
+    <div style="display:flex;align-items:flex-end;gap:16px">
+      <div style="flex:1">
+        <x-import component-from-global-scope="YipeUi.PageHeading" hint-size="400px,40px">The Sunken Crown</x-import>
+        <div style="display:flex;gap:14px;color:var(--color-fg-subtle);font-size:13px;margin-top:4px">
+          <span>12 sessions</span><span>·</span><span>38 h 40 m recorded</span><span>·</span><span>214 entries, 389 facts</span><span>·</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">~/Obsidian/Sunken Crown</span>
+        </div>
+      </div>
+      <button style="display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:6px;border:1px solid var(--color-border-default);background:var(--color-bg-surface);color:var(--color-fg-default);font:inherit;font-weight:600;cursor:pointer;white-space:nowrap">
+        <dc-import name="Icon" n="message-circle-question" s="16" hint-size="16px,16px"></dc-import>Ask the campaign
+      </button>
+      <button style="display:flex;align-items:center;gap:8px;height:38px;padding:0 16px;border-radius:6px;border:none;background:var(--color-accent-emphasis);color:var(--color-fg-on-accent);font:inherit;font-weight:600;cursor:pointer;white-space:nowrap">
+        <dc-import name="Icon" n="mic" s="16" hint-size="16px,16px"></dc-import>Prepare session 13
+      </button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr) minmax(0,1fr);gap:18px;flex:1;min-height:0">
+      <section style="display:flex;flex-direction:column;gap:18px;min-height:0">
+        <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;padding:18px 20px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:12px;font-weight:700;letter-spacing:0.08em;color:var(--color-fg-subtle);text-transform:uppercase">Last session</span>
+            <x-import component-from-global-scope="YipeUi.BasicBadge" hint-size="80px,22px">Session 12</x-import>
+            <span style="margin-left:auto;color:var(--color-fg-subtle);font-size:13px;white-space:nowrap">Thu Oct 22 · 3 h 12 m</span>
+          </div>
+          <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:24px;font-weight:700">The Drowned Abbey</div>
+          <p style="margin:0;color:var(--color-fg-muted);text-wrap:pretty">The party reached the abbey at low tide. Captain Orsa Vell warned them the tide turns at the second bell. Velis pieced together that “the tide’s tongue” is the bell clapper, and Thessaly’s Detect Magic found necromancy beneath the bell’s shadow. Brann went in first.</p>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;gap:2px">
+              <sc-for list="{{ share }}" as="s" hint-placeholder-count="5"><span style="width:{{ s.w }};background:{{ s.c }}"></span></sc-for>
+            </div>
+            <div style="display:flex;gap:14px;font-size:12px;color:var(--color-fg-subtle)">
+              <sc-for list="{{ share }}" as="s" hint-placeholder-count="5"><span style="display:flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:2px;background:{{ s.c }}"></span>{{ s.name }} {{ s.w }}</span></sc-for>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:2px">
+            <button style="height:32px;padding:0 12px;border-radius:6px;border:1px solid var(--color-border-default);background:transparent;color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><dc-import name="Icon" n="scroll-text" s="14" hint-size="14px,14px"></dc-import>Open transcript</button>
+            <button style="height:32px;padding:0 12px;border-radius:6px;border:1px solid var(--color-border-default);background:transparent;color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><dc-import name="Icon" n="megaphone" s="14" hint-size="14px,14px"></dc-import>Previously on… recap</button>
+          </div>
+        </div>
+
+        <div style="background:var(--color-warning-subtle);border:1px solid color-mix(in oklch, var(--color-warning-fg) 40%, transparent);border-radius:8px;padding:16px 20px;display:flex;align-items:center;gap:16px">
+          <div style="width:40px;height:40px;border-radius:8px;background:var(--color-warning-bg);color:var(--color-warning-fg);display:flex;align-items:center;justify-content:center"><dc-import name="Icon" n="inbox" s="20" hint-size="20px,20px"></dc-import></div>
+          <div style="flex:1">
+            <div style="font-weight:600">Session 12 is waiting for review</div>
+            <div style="color:var(--color-fg-muted);font-size:13px">6 facts · 5 spellings · 3 new entries, found by the local model</div>
+          </div>
+          <button style="height:34px;padding:0 14px;border-radius:6px;border:none;background:var(--color-warning-fg);color:#000;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap">Start review</button>
+        </div>
+      </section>
+
+      <section style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;display:flex;flex-direction:column;min-height:0">
+        <div style="display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--color-border-default)">
+          <span style="font-weight:700">The table</span>
+          <span style="margin-left:auto;font-size:12px;color:var(--color-fg-subtle)">5 players · voices trained 4/5</span>
+        </div>
+        <sc-for list="{{ party }}" as="p" hint-placeholder-count="5">
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 18px;border-bottom:1px solid var(--color-border-subtle)">
+            <div style="width:36px;height:36px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;background:color-mix(in oklch, {{ p.c }} 22%, var(--color-bg-surface));color:{{ p.c }};box-shadow:inset 0 0 0 1.5px {{ p.c }}">{{ p.i }}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;color:{{ p.c }}">{{ p.ch }}</div>
+              <div style="font-size:12px;color:var(--color-fg-subtle)">{{ p.name }} · {{ p.cls }}</div>
+            </div>
+            <span style="font-size:12px;color:{{ p.vc }};display:flex;align-items:center;gap:5px">{{ p.voice }}</span>
+          </div>
+        </sc-for>
+        <div style="padding:12px 18px;font-size:13px;color:var(--color-fg-subtle);display:flex;gap:6px;align-items:center"><dc-import name="Icon" n="user-plus" s="14" hint-size="14px,14px"></dc-import>Add a player or a guest</div>
+      </section>
+
+      <section style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;display:flex;flex-direction:column;min-height:0">
+        <div style="display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--color-border-default)">
+          <span style="font-weight:700">Newest facts</span>
+          <a href="#" style="margin-left:auto;font-size:12px;text-decoration:none">All facts →</a>
+        </div>
+        <sc-for list="{{ facts }}" as="f" hint-placeholder-count="5">
+          <div style="padding:12px 18px;border-bottom:1px solid var(--color-border-subtle);display:flex;flex-direction:column;gap:6px">
+            <div style="text-wrap:pretty">{{ f.t }}</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-fg-subtle)">
+              <span style="width:8px;height:8px;border-radius:50%;background:{{ f.c }}"></span>{{ f.who }}<span>·</span><span>S{{ f.s }} {{ f.at }}</span>
+              <span style="margin-left:auto;padding:1px 7px;border-radius:4px;font-weight:600;background:{{ f.cbg }};color:{{ f.cfg }}">{{ f.conf }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </section>
+    </div>
+  </main>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  renderVals() {
+    const C = { gm: "var(--color-class-paladin)", pip: "var(--color-class-bard)", th: "var(--color-class-druid)", br: "var(--color-class-barbarian)", ve: "var(--color-class-wizard)" };
+    const conf = { High: ["var(--color-success-bg)", "var(--color-success-fg)"], Theory: ["var(--color-warning-bg)", "var(--color-warning-fg)"], Once: ["var(--color-bg-elevated)", "var(--color-fg-muted)"] };
+    const f = (t, who, c, s, at, k) => ({ t, who, c, s, at, conf: k === "Theory" ? "Party theory" : k === "Once" ? "Heard once" : "GM stated", cbg: conf[k][0], cfg: conf[k][1] });
+    return {
+      cloud: this.props.cloud ?? "off",
+      share: [["Alex", C.gm, "46%"], ["Pip", C.pip, "17%"], ["Velis", C.ve, "15%"], ["Brann", C.br, "12%"], ["Thessaly", C.th, "10%"]].map(([name, c, w]) => ({ name, c, w })),
+      party: [
+        { i: "AK", name: "Alex", ch: "Game master", cls: "GM, 4 NPC voices", c: C.gm, voice: "Trained", vc: "var(--color-success-fg)" },
+        { i: "SM", name: "Sam", ch: "Pip Tallowmere", cls: "Bard 6", c: C.pip, voice: "Trained", vc: "var(--color-success-fg)" },
+        { i: "JO", name: "Jo", ch: "Thessaly", cls: "Druid 6", c: C.th, voice: "Trained", vc: "var(--color-success-fg)" },
+        { i: "RN", name: "Rin", ch: "Brann Coldwater", cls: "Barbarian 6", c: C.br, voice: "Trained", vc: "var(--color-success-fg)" },
+        { i: "MY", name: "Maya", ch: "Velis Anwe", cls: "Wizard 6", c: C.ve, voice: "Learned in play", vc: "var(--color-fg-subtle)" }
+      ],
+      facts: [
+        f("The tide turns at the second bell.", "Captain Orsa Vell", C.gm, 12, "1:38:02", "High"),
+        f("Necromantic magic lies under the abbey bell’s shadow.", "Alex (narration)", C.gm, 12, "1:41:55", "High"),
+        f("The Diamond of Ysolde is hidden in the bell clapper.", "Velis", C.ve, 12, "1:40:31", "Theory"),
+        f("Orsa Vell owes Pip 20 gold.", "Pip", C.pip, 10, "0:52:10", "Once"),
+        f("The Tidecallers want the abbey sealed for good.", "Alex (narration)", C.gm, 11, "2:04:47", "High")
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="In-session Ask" style="width:1440px;height:900px;overflow:hidden;position:relative;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+  <div style="position:absolute;inset:0;pointer-events:none">
+    <dc-import name="Screen Live A" hint-size="1440px,900px"></dc-import>
+  </div>
+  <div style="position:absolute;inset:0;background:rgba(10,11,16,0.72);backdrop-filter:blur(2px)"></div>
+  <x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <div style="position:absolute;left:50%;top:72px;transform:translateX(-50%);width:900px;background:var(--color-bg-surface);border:1px solid var(--color-border-strong);border-radius:12px;box-shadow:0 30px 80px -20px rgba(0,0,0,0.7);display:flex;flex-direction:column;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--color-border-default)">
+      <dc-import name="Icon" n="message-circle-question" s="20" c="var(--color-accent-fg)" hint-size="20px,20px"></dc-import>
+      <span style="font-size:20px;font-weight:600;flex:1">What did Orsa say about the diamond?</span>
+      <span style="font-size:12px;color:var(--color-fg-subtle)">asked by Sam · 1:42</span>
+    </div>
+    <div style="padding:22px 24px;display:flex;flex-direction:column;gap:18px">
+      <p style="margin:0;font-family:Georgia,'Iowan Old Style',serif;font-size:24px;line-height:1.45;text-wrap:pretty">Orsa never said “under the bell.” Tonight she said it’s <span style="background:var(--color-accent-subtle);padding:0 4px;border-radius:3px">“beneath the tide’s tongue”</span><sup style="color:var(--color-accent-fg);font-size:13px"> 1</sup>. Back in session 10 she told Pip the abbot <span style="background:var(--color-accent-subtle);padding:0 4px;border-radius:3px">“keeps what he stole close to his voice”</span><sup style="color:var(--color-accent-fg);font-size:13px"> 2</sup>. Velis read both as the bell clapper.<sup style="color:var(--color-accent-fg);font-size:13px"> 3</sup></p>
+      <div style="display:flex;flex-direction:column;border:1px solid var(--color-border-default);border-radius:8px;overflow:hidden">
+        <sc-for list="{{ src }}" as="s" hint-placeholder-count="3">
+          <div style="display:grid;grid-template-columns:28px 36px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 14px;border-top:1px solid var(--color-border-subtle);background:var(--color-bg-subtle)">
+            <span style="font-size:12px;font-weight:700;color:var(--color-accent-fg)">{{ s.n }}</span>
+            <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:color-mix(in oklch, {{ s.c }} 22%, var(--color-bg-surface));color:{{ s.c }};box-shadow:inset 0 0 0 1.5px {{ s.c }}">{{ s.i }}</div>
+            <div style="min-width:0"><div style="font-size:12px;color:var(--color-fg-subtle)"><b style="color:{{ s.c }}">{{ s.who }}</b> · {{ s.where }}</div><div style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.q }}</div></div>
+            <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-accent-fg);white-space:nowrap"><dc-import name="Icon" n="play" s="12" hint-size="12px,12px"></dc-import>Play line</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:14px 20px;border-top:1px solid var(--color-border-default);background:var(--color-bg-subtle)">
+      <span style="font-size:12px;color:var(--color-fg-subtle);display:flex;align-items:center;gap:6px;flex:1"><dc-import name="Icon" n="lock" s="12" hint-size="12px,12px"></dc-import>Answered on this Mac in 4 s from 13 transcripts and 214 notes</span>
+      <button style="height:34px;padding:0 12px;border-radius:6px;border:1px solid var(--color-border-default);background:transparent;color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Ask a follow-up</button>
+    </div>
+  </div>
+  </x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      src: [
+        { n: "1", i: "AK", c: "var(--color-class-paladin)", who: "Alex as Orsa Vell", where: "Session 13 · 1:39:30", q: "“I said beneath the tide’s tongue. Make of it what you will.”" },
+        { n: "2", i: "AK", c: "var(--color-class-paladin)", who: "Alex as Orsa Vell", where: "Session 10 · 0:51:44", q: "“The abbot keeps what he stole close to his voice, that one.”" },
+        { n: "3", i: "MY", c: "var(--color-class-wizard)", who: "Velis", where: "Session 13 · 1:40:31", q: "“The tide’s tongue. That’s the clapper. The Diamond of Ysolde is in the bell itself.”" }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <script src="data.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Review C (write-up first)" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="sessions" hint-size="1440px,56px"></dc-import>
+  <div style="flex:1;display:grid;grid-template-columns:minmax(0,1fr) 520px;min-height:0">
+    <main style="overflow:hidden;padding:28px 56px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--color-fg-subtle);white-space:nowrap">
+        <span>Session 12 write-up · drafted by gemma on this Mac</span>
+        <span style="margin-left:auto;display:flex;gap:14px"><a href="#" style="text-decoration:none">Regenerate</a><a href="#" style="text-decoration:none">Open in Obsidian</a></span>
+      </div>
+      <h1 style="margin:0;font-family:Georgia,'Iowan Old Style',serif;font-size:34px;font-weight:700">The Drowned Abbey</h1>
+      <p style="margin:0;font-family:Georgia,'Iowan Old Style',serif;font-size:17px;line-height:1.65;color:var(--color-fg-muted);text-wrap:pretty">At low tide, Captain <span style="color:var(--color-fg-default);border-bottom:1px solid var(--color-border-strong)">Orsa Vell</span> brought the party to the doors of the <span style="color:var(--color-fg-default);border-bottom:1px solid var(--color-border-strong)">Drowned Abbey</span>. She refused to come further, warning that the tide turns at the second bell. Pressed by Pip, she repeated her riddle: the diamond lies “beneath the tide’s tongue.”</p>
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle);margin-top:6px">Key moments</div>
+      <sc-for list="{{ moments }}" as="m" hint-placeholder-count="3">
+        <div style="display:flex;gap:14px;align-items:baseline;padding:8px 12px;border-radius:6px;background:{{ m.bg }}">
+          <a href="#" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;text-decoration:none;width:56px;flex:none">{{ m.t }}</a>
+          <span style="font-size:15px;text-wrap:pretty">{{ m.x }}</span>
+        </div>
+      </sc-for>
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle);margin-top:6px;display:flex">New facts <span style="margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500">Accepted facts are written into each entry’s note</span></div>
+      <sc-for list="{{ facts }}" as="f" hint-placeholder-count="4">
+        <div style="display:flex;gap:12px;align-items:center;padding:10px 14px;border-radius:8px;border:1px solid {{ f.bd }};background:{{ f.bg }}">
+          <span style="width:20px;height:20px;flex:none;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:{{ f.cbg }};color:{{ f.cfg }};box-shadow:inset 0 0 0 1.5px {{ f.cring }}">{{ f.m }}</span>
+          <span style="flex:1;font-size:15px;text-wrap:pretty">{{ f.t }}</span>
+          <span style="font-size:12px;color:var(--color-fg-subtle);white-space:nowrap">{{ f.about }}</span>
+          <span style="font-size:12px;padding:1px 7px;border-radius:4px;font-weight:600;background:{{ f.kbg }};color:{{ f.kfg }};white-space:nowrap">{{ f.k }}</span>
+        </div>
+      </sc-for>
+    </main>
+    <aside style="border-left:1px solid var(--color-border-default);display:flex;flex-direction:column;min-height:0;background:var(--color-bg-subtle)">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--color-border-default);display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="width:32px;height:32px;border-radius:50%;background:var(--color-accent-emphasis);display:flex;align-items:center;justify-content:center;color:#fff"><dc-import name="Icon" n="play" s="14" hint-size="14px,14px"></dc-import></span>
+          <div style="flex:1;display:flex;gap:2px;align-items:center;height:28px">
+            <sc-for list="{{ wave }}" as="w" hint-placeholder-count="60"><span style="flex:1;border-radius:1px;height:{{ w.h }};background:{{ w.c }}"></span></sc-for>
+          </div>
+          <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--color-fg-subtle)">1:40:31</span>
+        </div>
+        <div style="display:flex;gap:8px;font-size:12px;color:var(--color-fg-subtle)"><span>Transcript follows the write-up. Click any line to hear it.</span></div>
+      </div>
+      <div style="flex:1;overflow:hidden;padding:8px 12px">
+        <sc-for list="{{ lines }}" as="l" hint-placeholder-count="10">
+          <div style="display:flex;gap:10px;padding:6px 8px;border-radius:6px;background:{{ l.bg }}">
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--color-fg-subtle);padding-top:3px;width:50px;flex:none">{{ l.t }}</span>
+            <div style="font-size:14px;line-height:1.5;color:{{ l.fg }}"><b style="color:{{ l.c }}">{{ l.name }}</b> {{ l.text }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </aside>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  componentDidMount() { if (!window.TB) { const i = setInterval(() => { if (window.TB) { clearInterval(i); this.forceUpdate(); } }, 50); } }
+  renderVals() {
+    const TB = window.TB;
+    const moments = [["1:38:02", "Orsa warns the tide turns at the second bell.", 0], ["1:40:31", "Velis decodes the riddle: the diamond is in the bell’s clapper.", 1], ["1:41:55", "Thessaly’s Detect Magic finds necromancy under the bell’s shadow.", 0]].map(([t, x, on]) => ({ t, x, bg: on ? "var(--color-accent-subtle)" : "transparent" }));
+    const mk = (t, about, st, k) => {
+      const cf = TB ? TB.conf[k] : { label: "", bg: "", fg: "" };
+      return { t, about, m: st === "done" ? "✓" : "", bd: st === "done" ? "color-mix(in oklch, var(--color-success-fg) 30%, transparent)" : "var(--color-border-default)", bg: st === "done" ? "var(--color-success-subtle)" : "var(--color-bg-surface)", cbg: st === "done" ? "var(--color-success-fg)" : "transparent", cfg: "#000", cring: st === "done" ? "transparent" : "var(--color-border-strong)", k: cf.label, kbg: cf.bg, kfg: cf.fg };
+    };
+    const facts = [
+      mk("The tide turns at the second bell.", "Drowned Abbey", "done", "gm"),
+      mk("The Diamond of Ysolde is hidden in the bell’s clapper.", "Diamond of Ysolde", "todo", "theory"),
+      mk("Necromantic magic lies under the bell’s shadow.", "Drowned Abbey", "todo", "gm"),
+      mk("Orsa Vell won’t set foot in the abbey.", "Orsa Vell", "done", "gm")
+    ];
+    const lv = [4,6,9,12,8,14,18,22,16,10,8,12,20,26,24,18,12,9,14,22,28,30,24,16,12,8,10,14,18,22,26,20,14,10,8,6,10,16,22,28,24,18,12,8,6,10,14,12,8,6,4,6,8,10,6,4,3,4,3,2];
+    const wave = lv.map((v, i) => ({ h: (v * 3) + "%", c: i < 38 ? "var(--color-accent-fg)" : "var(--color-border-strong)" }));
+    const lines = TB ? TB.lines(2).slice(0, 9).map(l => Object.assign({}, l, { bg: l.t === "1:40:31" ? "var(--color-accent-subtle)" : "transparent", fg: l.t === "1:40:31" ? "var(--color-fg-default)" : "var(--color-fg-muted)" })) : [];
+    return { moments, facts, wave, lines };
+  }
+}
+</script>
+</body>
+</html>

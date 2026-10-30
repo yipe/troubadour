@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <script src="data.js"></script>
+  <style>body{margin:0;background:#0f1016}a{color:#90cdf4}a:hover{color:#edf2f7}</style>
+</helmet>
+<section data-screen-label="Turn 4" style="padding:64px 64px 0;display:flex;flex-direction:column;gap:20px;background:#0f1016;color:#edf2f7;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;width:max-content">
+  <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:30px;font-weight:700">Turn 4 · The story so far, vertical</div>
+  <div id="4a" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">4a</span><span style="font-size:20px;font-weight:600">One row per session, newest first; the travel line runs down the Where column</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Timeline C" hint-size="1440px,900px"></dc-import></div></div>
+</section>
+<section data-screen-label="Turn 3" style="padding:64px 64px 0;display:flex;flex-direction:column;gap:20px;background:#0f1016;color:#edf2f7;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;width:max-content">
+  <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:30px;font-weight:700">Turn 3 · prototype, timeline, player view</div>
+  <div style="display:flex;gap:40px;font-size:15px;color:#cbd5e0;max-width:1440px;flex-wrap:wrap">
+    <span>· One person runs it on a laptop</span>
+    <span>· The cloud is a backup from one main Mac; newest backup wins</span>
+    <span>· When a fact changes, it’s updated and keeps its history</span>
+    <span>· Ask just answers with sources; no saving answers as facts</span>
+  </div>
+  <div style="display:flex;gap:56px;align-items:flex-start">
+    <div id="3a" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">3a</span><span style="font-size:20px;font-weight:600">Live session prototype (from 1f): click around</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Live Prototype" hint-size="1440px,900px"></dc-import></div></div>
+    <div id="3b" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">3b</span><span style="font-size:20px;font-weight:600">Campaign timeline A · swimlanes per session</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Timeline A" hint-size="1440px,900px"></dc-import></div></div>
+    <div id="3c" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">3c</span><span style="font-size:20px;font-weight:600">Campaign timeline B · the journey</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Timeline B" hint-size="1440px,900px"></dc-import></div></div>
+    <div id="3d" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">3d</span><span style="font-size:20px;font-weight:600">Troubadour Cloud · player view</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Cloud Player" hint-size="1440px,900px"></dc-import></div></div>
+  </div>
+</section>
+<section data-screen-label="Turn 2" style="padding:64px 64px 0;display:flex;flex-direction:column;gap:20px;background:#0f1016;color:#edf2f7;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;width:max-content">
+  <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:30px;font-weight:700">Sync to Troubadour Cloud</div>
+  <p style="margin:0;font-size:16px;color:#cbd5e0;max-width:1100px">Built on today’s opt-in backup: notes go up automatically, transcripts are optional, audio and voiceprints never leave the Mac. The nav shows when the campaign was last backed up.</p>
+  <div style="display:flex;gap:56px;align-items:flex-start">
+    <div id="2a" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">2a</span><span style="font-size:20px;font-weight:600">First connect: what goes up, what stays</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Cloud Connect" hint-size="1440px,900px"></dc-import></div></div>
+    <div id="2b" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">2b</span><span style="font-size:20px;font-weight:600">Everyday status from the nav</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Cloud Popover" hint-size="1440px,900px"></dc-import></div></div>
+    <div id="2c" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">2c</span><span style="font-size:20px;font-weight:600">Settings: contents, history, restore</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Cloud Settings" hint-size="1440px,900px"></dc-import></div></div>
+  </div>
+</section>
+<section data-screen-label="Turn 1" style="padding:64px;display:flex;flex-direction:column;gap:72px;background:#0f1016;color:#edf2f7;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;width:max-content">
+  <div style="display:flex;gap:48px;align-items:flex-start;max-width:1440px">
+    <div style="flex:1">
+      <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:44px;font-weight:700">Troubadour, redesigned</div>
+      <p style="font-size:18px;line-height:1.6;color:#cbd5e0;max-width:900px;text-wrap:pretty">The app follows the campaign’s rhythm: <b>Home</b> (what’s next, what needs review), <b>Sessions</b> (prepare, play, review, history), <b>Codex</b> (people, places, things), <b>Facts</b> (what’s true and who said it) and <b>Ask</b>. The type, colours and tabs come from DPRcalc. Each player’s colour is their class colour, so a speaker looks the same in the live transcript, the review, the facts and the recap.</p>
+    </div>
+    <div style="width:380px;display:flex;flex-direction:column;gap:8px;font-size:14px;color:#cbd5e0;padding-top:12px">
+      <div style="font-weight:700;color:#edf2f7">On every screen</div>
+      <div>· Every fact links back to the line it came from (▶ S12 1:40:31)</div>
+      <div>· How sure: GM stated / Party theory / Heard once</div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:30px;font-weight:700">Setup &amp; prep</div>
+    <div style="display:flex;gap:56px;align-items:flex-start">
+      <div id="1a" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1a</span><span style="font-size:20px;font-weight:600">First run: new campaign wizard</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Setup" hint-size="1440px,900px"></dc-import></div></div>
+      <div id="1b" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1b</span><span style="font-size:20px;font-weight:600">Home: campaign hub</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Home" hint-size="1440px,900px"></dc-import></div></div>
+      <div id="1c" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1c</span><span style="font-size:20px;font-weight:600">Pre-session ready check</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Lobby" hint-size="1440px,900px"></dc-import></div></div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:30px;font-weight:700">Live session, 2 options + Ask</div>
+    <div style="display:flex;gap:56px;align-items:flex-start">
+      <div id="1d" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1d</span><span style="font-size:20px;font-weight:600">A · Balanced: speakers, transcript, Ask rail</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Live A" hint-size="1440px,900px"></dc-import></div></div>
+      <div id="1f" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1f</span><span style="font-size:20px;font-weight:600">C · Notebook: facts collected while you play</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Live C" hint-size="1440px,900px"></dc-import></div></div>
+      <div id="1g" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1g</span><span style="font-size:20px;font-weight:600">Asking a question mid-game</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Ask Overlay" hint-size="1440px,900px"></dc-import></div></div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:30px;font-weight:700">Post-session review, 3 options</div>
+    <div style="display:flex;gap:56px;align-items:flex-start">
+      <div id="1h" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1h</span><span style="font-size:20px;font-weight:600">A · Margin notes beside each line</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Review A" hint-size="1440px,900px"></dc-import></div></div>
+      <div id="1i" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1i</span><span style="font-size:20px;font-weight:600">B · One at a time, with source and destination</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Review B" hint-size="1440px,900px"></dc-import></div></div>
+      <div id="1j" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1j</span><span style="font-size:20px;font-weight:600">C · Write-up first, transcript follows</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Review C" hint-size="1440px,900px"></dc-import></div></div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:30px;font-weight:700">Facts, 3 options + Codex entry</div>
+    <div style="display:flex;gap:56px;align-items:flex-start">
+      <div id="1k" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1k</span><span style="font-size:20px;font-weight:600">A · Table: filter, sort, jump to source</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Facts A" hint-size="1440px,900px"></dc-import></div></div>
+      <div id="1l" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1l</span><span style="font-size:20px;font-weight:600">B · Timeline: follow one thread across sessions</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Facts B" hint-size="1440px,900px"></dc-import></div></div>
+      <div id="1m" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1m</span><span style="font-size:20px;font-weight:600">C · Grouped by entry</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Facts C" hint-size="1440px,900px"></dc-import></div></div>
+      <div id="1n" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1n</span><span style="font-size:20px;font-weight:600">Codex entry page</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Codex" hint-size="1440px,900px"></dc-import></div></div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:30px;font-weight:700">History, recap, settings</div>
+    <div style="display:flex;gap:56px;align-items:flex-start">
+      <div id="1o" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1o</span><span style="font-size:20px;font-weight:600">Session history</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen History" hint-size="1440px,900px"></dc-import></div></div>
+      <div id="1p" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1p</span><span style="font-size:20px;font-weight:600">Recap for the players</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Recap" hint-size="1440px,900px"></dc-import></div></div>
+      <div id="1q" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1q</span><span style="font-size:20px;font-weight:600">Models &amp; privacy</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="Screen Settings" hint-size="1440px,900px"></dc-import></div></div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px">
+    <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:30px;font-weight:700">App icon, 3 options</div>
+    <div id="1r" style="display:flex;flex-direction:column;gap:12px;width:1440px"><div style="display:flex;gap:10px;align-items:center"><span style="font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px;background:#3182ce;color:#fff">1r</span><span style="font-size:20px;font-weight:600">Quill wave · Speaking scroll · Listening die</span></div><div style="border-radius:10px;overflow:hidden;border:1px solid #2d3748"><dc-import name="App Icons" hint-size="1440px,620px"></dc-import></div></div>
+  </div>
+</section>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Review B (triage)" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="sessions" hint-size="1440px,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:330px;flex:none;border-right:1px solid var(--color-border-default);display:flex;flex-direction:column;min-height:0">
+      <div style="padding:16px 18px;border-bottom:1px solid var(--color-border-default)">
+        <div style="font-size:12px;color:var(--color-fg-subtle)">Review · Session 12</div>
+        <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:20px;font-weight:700">The Drowned Abbey</div>
+        <div style="height:6px;border-radius:3px;background:var(--color-bg-elevated);margin-top:10px"><div style="width:36%;height:6px;border-radius:3px;background:var(--color-success-fg)"></div></div>
+        <div style="font-size:12px;color:var(--color-fg-subtle);margin-top:6px">5 of 14 done</div>
+      </div>
+      <div style="flex:1;overflow:hidden;padding:8px">
+        <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+          <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle);padding:12px 10px 6px;display:flex"><span>{{ g.title }}</span><span style="margin-left:auto">{{ g.n }}</span></div>
+          <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+            <div style="display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:6px;background:{{ it.bg }};box-shadow:{{ it.ring }}">
+              <span style="width:16px;height:16px;flex:none;margin-top:2px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;background:{{ it.dbg }};color:{{ it.dfg }}">{{ it.m }}</span>
+              <span style="font-size:13px;color:{{ it.fg }};text-wrap:pretty;text-decoration:{{ it.td }}">{{ it.t }}</span>
+            </div>
+          </sc-for>
+        </sc-for>
+      </div>
+    </aside>
+    <main style="flex:1;min-width:0;padding:24px 32px;display:flex;flex-direction:column;gap:18px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--color-fg-subtle)"><span style="font-weight:700;color:var(--color-accent-fg)">FACT</span><span>6 of 14</span><span style="margin-left:auto">J / K to move</span></div>
+      <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-strong);border-radius:10px;padding:20px 22px;display:flex;flex-direction:column;gap:16px">
+        <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:26px;line-height:1.35;text-wrap:pretty">The Diamond of Ysolde is hidden in the abbey bell’s clapper.</div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+          <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--color-fg-subtle)">About</span><div style="height:34px;border:1px solid var(--color-border-default);border-radius:6px;background:var(--color-bg-canvas);display:flex;align-items:center;gap:8px;padding:0 10px"><span style="color:var(--color-rarity-legendary);font-weight:600">Diamond of Ysolde</span><span style="margin-left:auto;font-size:12px;color:var(--color-fg-subtle)">+ Drowned Abbey</span></div></div>
+          <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--color-fg-subtle)">Said by</span><div style="height:34px;border:1px solid var(--color-border-default);border-radius:6px;background:var(--color-bg-canvas);display:flex;align-items:center;gap:8px;padding:0 10px"><span style="width:8px;height:8px;border-radius:50%;background:var(--color-class-wizard)"></span>Velis (Maya)</div></div>
+          <div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--color-fg-subtle)">How sure</span>
+            <div style="display:flex;height:34px;border:1px solid var(--color-border-default);border-radius:6px;overflow:hidden;font-size:13px">
+              <span style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--color-fg-subtle)">GM stated</span>
+              <span style="flex:1;display:flex;align-items:center;justify-content:center;background:var(--color-warning-bg);color:var(--color-warning-fg);font-weight:600;border-left:1px solid var(--color-border-default);border-right:1px solid var(--color-border-default)">Party theory</span>
+              <span style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--color-fg-subtle)">Rumour</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button style="height:38px;padding:0 16px;border-radius:6px;border:none;background:var(--color-success-fg);color:#000;font:inherit;font-weight:700;cursor:pointer;white-space:nowrap">Accept <span style="opacity:0.6;font-weight:500;margin-left:4px">A</span></button>
+          <button style="height:38px;padding:0 14px;border-radius:6px;border:1px solid var(--color-border-default);background:transparent;color:var(--color-fg-default);font:inherit;font-weight:600;cursor:pointer;white-space:nowrap">Edit <span style="opacity:0.5;font-weight:500;margin-left:4px">E</span></button>
+          <button style="height:38px;padding:0 14px;border-radius:6px;border:1px solid var(--color-border-default);background:transparent;color:var(--color-fg-default);font:inherit;font-weight:600;cursor:pointer;white-space:nowrap">Merge with existing</button>
+          <button style="height:38px;padding:0 14px;border-radius:6px;border:none;background:transparent;color:var(--color-fg-subtle);font:inherit;font-weight:600;cursor:pointer;white-space:nowrap">Reject <span style="opacity:0.6;font-weight:500;margin-left:4px">R</span></button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle)">Where it came from</span><span style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-accent-fg)"><dc-import name="Icon" n="play" s="12" hint-size="12px,12px"></dc-import>Play 1:39:12 – 1:40:40</span></div>
+        <div style="border:1px solid var(--color-border-default);border-radius:8px;padding:6px;background:var(--color-bg-subtle)">
+          <sc-for list="{{ ctx }}" as="l" hint-placeholder-count="4">
+            <div style="display:flex;gap:12px;padding:7px 10px;border-radius:6px;background:{{ l.bg }}">
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--color-fg-subtle);padding-top:2px;width:56px;flex:none">{{ l.t }}</span>
+              <div style="font-size:15px;line-height:1.5;color:{{ l.fg }}"><b style="color:{{ l.c }}">{{ l.n }}</b> {{ l.x }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </main>
+    <aside style="width:380px;flex:none;border-left:1px solid var(--color-border-default);padding:20px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box;background:var(--color-bg-subtle)">
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle)">Lands on</div>
+      <div style="display:flex;align-items:center;gap:8px"><span style="font-family:Georgia,'Iowan Old Style',serif;font-size:20px;font-weight:700;color:var(--color-rarity-legendary)">Diamond of Ysolde</span>
+        <x-import component-from-global-scope="YipeUi.BasicBadge" hint-size="50px,22px">Item</x-import></div>
+      <div style="font-size:13px;color:var(--color-fg-muted)">Legendary gem, stolen from the Saltreach temple. Mentioned in 6 sessions.</div>
+      <div style="display:flex;gap:10px;padding:12px;border-radius:8px;background:var(--color-warning-subtle);border:1px solid color-mix(in oklch, var(--color-warning-fg) 35%, transparent);font-size:13px">
+        <dc-import name="Icon" n="git-merge" s="16" c="var(--color-warning-fg)" hint-size="16px,16px"></dc-import>
+        <div><b>Close to an existing fact</b><div style="color:var(--color-fg-muted)">“The diamond is somewhere in the abbey” · S11, Pip. Merge to keep one fact with both sources.</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <div style="font-size:12px;color:var(--color-fg-subtle);margin-bottom:4px">Already known</div>
+        <sc-for list="{{ known }}" as="k" hint-placeholder-count="4">
+          <div style="display:flex;gap:8px;padding:7px 0;border-top:1px solid var(--color-border-default);font-size:13px"><span style="flex:1;text-wrap:pretty">{{ k.t }}</span><span style="color:var(--color-fg-subtle);white-space:nowrap">S{{ k.s }}</span></div>
+        </sc-for>
+      </div>
+    </aside>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  renderVals() {
+    const it = (t, st) => ({
+      t, m: st === "done" ? "✓" : st === "no" ? "×" : "",
+      bg: st === "now" ? "var(--color-bg-surface)" : "transparent", ring: st === "now" ? "inset 0 0 0 1px var(--color-accent-emphasis)" : "none",
+      dbg: st === "done" ? "var(--color-success-bg)" : st === "no" ? "var(--color-bg-elevated)" : st === "now" ? "var(--color-accent-emphasis)" : "transparent",
+      dfg: st === "done" ? "var(--color-success-fg)" : "var(--color-fg-subtle)",
+      fg: st === "done" || st === "no" ? "var(--color-fg-subtle)" : "var(--color-fg-default)", td: st === "no" ? "line-through" : "none"
+    });
+    const groups = [
+      { title: "Facts", n: "2 left", items: [it("The tide turns at the second bell.", "done"), it("Orsa Vell won’t enter the abbey.", "done"), it("The Diamond of Ysolde is hidden in the bell’s clapper.", "now"), it("Necromantic magic lies under the bell’s shadow.", "todo")] },
+      { title: "Spellings", n: "1 left", items: [it("Isolde → Ysolde ×2", "done"), it("Orsa Bell → Orsa Vell ×1", "done"), it("Saltrich → Saltreach ×3", "todo")] },
+      { title: "New entries", n: "2 left", items: [it("The Abbot (NPC)", "todo"), it("Second bell (Term)", "no"), it("Tidecaller chapel (Place)", "todo")] }
+    ];
+    const ctx = [
+      ["1:39:12", "Pip", "var(--color-class-bard)", "Wait. Orsa, you said the abbot keeps the diamond under the bell. Didn’t you?", 0],
+      ["1:39:30", "Orsa Vell", "var(--color-class-paladin)", "I said beneath the tide’s tongue. Make of it what you will.", 0],
+      ["1:40:31", "Velis", "var(--color-class-wizard)", "The tide’s tongue. That’s the clapper. The Diamond of Ysolde is in the bell itself.", 1],
+      ["1:40:40", "Brann", "var(--color-class-barbarian)", "So we ring it?", 0]
+    ].map(([t, n, c, x, h]) => ({ t, n, c, x, bg: h ? "var(--color-accent-subtle)" : "transparent", fg: h ? "var(--color-fg-default)" : "var(--color-fg-muted)" }));
+    const known = [["Stolen from the Saltreach temple during the eclipse.", 3], ["Cursed: whoever holds it can’t lie.", 5], ["The Tidecallers will pay 4,000 gp for it.", 8], ["The diamond is somewhere in the abbey.", 11]].map(([t, s]) => ({ t, s }));
+    return { groups, ctx, known };
+  }
+}
+</script>
+</body>
+</html>

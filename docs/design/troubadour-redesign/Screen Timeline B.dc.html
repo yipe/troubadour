@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Campaign timeline B (journey)" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="timeline" hint-size="1440px,56px"></dc-import>
+  <div style="flex:1;display:grid;grid-template-columns:minmax(0,1fr) 420px;min-height:0">
+    <main style="padding:24px 40px;display:flex;flex-direction:column;gap:16px;min-height:0;overflow:hidden">
+      <div>
+        <x-import component-from-global-scope="YipeUi.PageHeading" hint-size="300px,40px">The journey</x-import>
+        <div style="color:var(--color-fg-subtle);font-size:13px">Every place the party has been, in order. Places are spread out by when you got there, not on a real map.</div>
+      </div>
+      <div style="position:relative;height:300px;border:1px solid var(--color-border-default);border-radius:8px;background:var(--color-bg-subtle);overflow:hidden">
+        <sc-for list="{{ legs }}" as="g" hint-placeholder-count="6">
+          <span style="position:absolute;left:{{ g.x }};top:{{ g.y }};width:{{ g.len }};height:0;border-top:3px {{ g.style }} {{ g.c }};transform-origin:0 0;transform:rotate({{ g.rot }})"></span>
+        </sc-for>
+        <sc-for list="{{ stops }}" as="s" hint-placeholder-count="7">
+          <div style="position:absolute;left:{{ s.x }};top:{{ s.y }};transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:6px">
+            <span style="width:{{ s.size }};height:{{ s.size }};border-radius:50%;background:{{ s.fill }};box-shadow:0 0 0 4px var(--color-bg-subtle), 0 0 0 5px {{ s.ring }};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff">{{ s.k }}</span>
+          </div>
+          <div style="position:absolute;left:{{ s.x }};top:{{ s.ly }};transform:translateX(-50%);text-align:center;line-height:1.25;white-space:nowrap">
+            <div style="font-weight:700;color:{{ s.tc }}">{{ s.n }}</div><div style="font-size:11px;color:var(--color-fg-subtle)">{{ s.when }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle)">Chapters</div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+        <sc-for list="{{ chapters }}" as="c" hint-placeholder-count="6">
+          <div style="background:var(--color-bg-surface);border:1px solid {{ c.bd }};border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:Georgia,'Iowan Old Style',serif;font-weight:700;font-size:16px">{{ c.place }}</span><span style="margin-left:auto;font-size:12px;color:var(--color-fg-subtle);white-space:nowrap">{{ c.s }}</span></div>
+            <div style="font-size:13px;color:var(--color-fg-muted);text-wrap:pretty">{{ c.x }}</div>
+            <div style="display:flex;height:5px;border-radius:3px;overflow:hidden;gap:1px;margin-top:2px"><sc-for list="{{ c.talk }}" as="t" hint-placeholder-count="5"><span style="width:{{ t.w }};background:{{ t.c }}"></span></sc-for></div>
+          </div>
+        </sc-for>
+      </div>
+    </main>
+    <aside style="border-left:1px solid var(--color-border-default);padding:24px;display:flex;flex-direction:column;gap:18px;box-sizing:border-box;background:var(--color-bg-subtle);overflow:hidden">
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle)">Campaign at a glance</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <sc-for list="{{ stats }}" as="k" hint-placeholder-count="4">
+          <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;padding:10px 12px"><div style="font-size:20px;font-weight:700">{{ k.v }}</div><div style="font-size:12px;color:var(--color-fg-subtle)">{{ k.l }}</div></div>
+        </sc-for>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="font-weight:700">Talk time, all sessions</div>
+        <sc-for list="{{ talkAll }}" as="p" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:90px minmax(0,1fr) 64px;gap:10px;align-items:center;font-size:13px">
+            <span style="color:{{ p.c }};font-weight:600">{{ p.n }}</span>
+            <div style="height:8px;border-radius:4px;background:var(--color-bg-elevated)"><div style="height:8px;border-radius:4px;width:{{ p.w }};background:{{ p.c }}"></div></div>
+            <span style="text-align:right;color:var(--color-fg-muted);font-variant-numeric:tabular-nums">{{ p.t }}</span>
+          </div>
+        </sc-for>
+        <div style="font-size:12px;color:var(--color-fg-subtle)">Pip’s share has grown every session since S8.</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="font-weight:700">Most talked about</div>
+        <sc-for list="{{ top }}" as="t" hint-placeholder-count="4">
+          <div style="display:flex;gap:10px;align-items:center;font-size:13px;padding:6px 0;border-bottom:1px solid var(--color-border-default)"><span style="flex:1;font-weight:600;color:{{ t.c }}">{{ t.n }}</span><span style="color:var(--color-fg-subtle)">{{ t.m }} mentions</span></div>
+        </sc-for>
+      </div>
+    </aside>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  renderVals() {
+    const C = { gm: "var(--color-class-paladin)", pip: "var(--color-class-bard)", ve: "var(--color-class-wizard)", br: "var(--color-class-barbarian)", th: "var(--color-class-druid)" };
+    const W = 860, H = 300;
+    const P = [["Saltreach", "S1–3", 70, 210], ["Marrow Street", "S4", 200, 110], ["Merrow’s chapel", "S5", 330, 190], ["Saltreach docks", "S6–9", 470, 95], ["Gull’s Debt", "S10–11", 620, 170], ["Drowned Abbey", "S12 · now", 770, 90]];
+    const stops = P.map(([n, when, x, y], i) => {
+      const now = i === P.length - 1;
+      return { n, when, x: x + "px", y: y + "px", ly: (y + 18) + "px", k: String(i + 1), size: now ? "26px" : "22px", fill: now ? "var(--color-accent-emphasis)" : "var(--color-bg-elevated)", ring: now ? "var(--color-accent-fg)" : "var(--color-border-strong)", tc: now ? "var(--color-accent-fg)" : "var(--color-fg-default)" };
+    });
+    const legs = P.slice(1).map((p, i) => {
+      const a = P[i], dx = p[2] - a[2], dy = p[3] - a[3];
+      return { x: a[2] + "px", y: a[3] + "px", len: Math.hypot(dx, dy) + "px", rot: Math.atan2(dy, dx) + "rad", style: i === 3 ? "dashed" : "solid", c: i === P.length - 2 ? "var(--color-accent-emphasis)" : "var(--color-border-strong)" };
+    });
+    const tk = arr => arr.map((p, j) => ({ w: p + "%", c: [C.gm, C.pip, C.ve, C.br, C.th][j] }));
+    const chapters = [
+      ["Saltreach", "S1–3", "Hired by the temple, then framed for the Eclipse Heist.", [47, 17, 13, 13, 10]],
+      ["Marrow Street", "S4", "Chased the thief through the tanneries and lost him.", [48, 18, 10, 16, 8]],
+      ["Merrow’s chapel", "S5", "Sister Merrow admitted the diamond can’t abide a lie.", [52, 12, 16, 8, 12]],
+      ["Saltreach docks", "S6–9", "Brann’s oath, the Tidecaller offer, and a fire on pier six.", [47, 15, 13, 14, 11]],
+      ["Gull’s Debt", "S10–11", "Orsa’s riddles at sea; the bells of Saltreach rang wrong.", [46, 19, 15, 10, 10]],
+      ["Drowned Abbey", "S12", "Low tide, a riddle solved, and necromancy below.", [46, 17, 15, 12, 10]]
+    ].map(([place, s, x, t], i) => ({ place, s, x, talk: tk(t), bd: i === 5 ? "var(--color-accent-emphasis)" : "var(--color-border-default)" }));
+    const stats = [["38 h 40 m", "At the table"], ["6", "Places visited"], ["58", "NPCs met"], ["389", "Facts"]].map(([v, l]) => ({ v, l }));
+    const talkAll = [["Alex", 47, "18 h 10 m", C.gm], ["Pip", 17, "6 h 34 m", C.pip], ["Velis", 14, "5 h 25 m", C.ve], ["Brann", 12, "4 h 38 m", C.br], ["Thessaly", 10, "3 h 52 m", C.th]].map(([n, p, t, c]) => ({ n, w: (p * 2) + "%", t, c }));
+    const top = [["Diamond of Ysolde", 212, "var(--color-rarity-legendary)"], ["Captain Orsa Vell", 148], ["The Tidecallers", 97], ["Sister Merrow", 64]].map(([n, m, c]) => ({ n, m, c: c || "var(--color-fg-default)" }));
+    return { stops, legs, chapters, stats, talkAll, top };
+  }
+}
+</script>
+</body>
+</html>

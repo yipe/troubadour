@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Connect to Troubadour Cloud" style="width:1440px;height:900px;overflow:hidden;position:relative;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+  <div style="position:absolute;inset:0;pointer-events:none"><dc-import name="Screen Home" cloud="connect" hint-size="1440px,900px"></dc-import></div>
+  <div style="position:absolute;inset:0;background:rgba(10,11,16,0.72)"></div>
+  <x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <div style="position:absolute;left:50%;top:110px;transform:translateX(-50%);width:640px;background:var(--color-bg-surface);border:1px solid var(--color-border-strong);border-radius:12px;box-shadow:0 30px 80px -20px rgba(0,0,0,0.7);display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:24px 26px 6px;display:flex;flex-direction:column;gap:8px">
+      <div style="width:44px;height:44px;border-radius:10px;background:var(--color-accent-subtle);color:var(--color-accent-fg);display:flex;align-items:center;justify-content:center"><dc-import name="Icon" n="cloud-upload" s="22" hint-size="22px,22px"></dc-import></div>
+      <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:24px;font-weight:700">Back up The Sunken Crown</div>
+      <div style="color:var(--color-fg-muted);text-wrap:pretty">Keep a copy of this campaign’s notes online, with history, and read them in a browser. Nothing leaves this Mac until you connect.</div>
+    </div>
+    <div style="padding:16px 26px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div style="border:1px solid var(--color-border-default);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--color-bg-subtle)">
+        <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-accent-fg)">Goes up</div>
+        <sc-for list="{{ up }}" as="u" hint-placeholder-count="3"><div style="display:flex;gap:8px;font-size:13px"><span style="color:var(--color-success-fg);font-weight:700">✓</span>{{ u }}</div></sc-for>
+        <div style="display:flex;gap:10px;align-items:center;font-size:13px;margin-top:4px;padding-top:8px;border-top:1px solid var(--color-border-default)"><span style="width:32px;height:18px;border-radius:9px;background:var(--color-bg-elevated);position:relative;flex:none"><span style="position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:var(--color-fg-subtle)"></span></span>Also transcripts</div>
+      </div>
+      <div style="border:1px solid var(--color-border-default);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--color-bg-subtle)">
+        <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle)">Stays on this Mac</div>
+        <sc-for list="{{ stay }}" as="u" hint-placeholder-count="3"><div style="display:flex;gap:8px;font-size:13px;color:var(--color-fg-muted)"><dc-import name="Icon" n="lock" s="13" hint-size="13px,13px"></dc-import>{{ u }}</div></sc-for>
+      </div>
+    </div>
+    <div style="padding:14px 26px;display:flex;align-items:center;gap:8px;border-top:1px solid var(--color-border-default);background:var(--color-bg-subtle)">
+      <span style="font-size:12px;color:var(--color-fg-subtle);flex:1">You’ll sign in in your browser, then come back here.</span>
+      <button style="height:36px;padding:0 14px;border-radius:6px;border:1px solid var(--color-border-default);background:transparent;color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Not now</button>
+      <button style="height:36px;padding:0 16px;border-radius:6px;border:none;background:var(--color-accent-emphasis);color:var(--color-fg-on-accent);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;display:flex;gap:6px;align-items:center">Connect<dc-import name="Icon" n="external-link" s="13" hint-size="13px,13px"></dc-import></button>
+    </div>
+  </div>
+  </x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      up: ["Notes, codex entries and facts", "Session write-ups and recaps", "Backup history for 90 days"],
+      stay: ["Audio recordings", "Voiceprints", "The AI model and your questions"]
+    };
+  }
+}
+</script>
+</body>
+</html>

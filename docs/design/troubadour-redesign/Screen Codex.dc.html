@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <script src="data.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Codex entry" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="codex" hint-size="1440px,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:320px;flex:none;border-right:1px solid var(--color-border-default);display:flex;flex-direction:column;min-height:0">
+      <div style="padding:16px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--color-border-default)">
+        <div style="display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border:1px solid var(--color-border-default);border-radius:6px;background:var(--color-bg-surface);color:var(--color-fg-subtle);font-size:13px"><dc-import name="Icon" n="search" s="14" hint-size="14px,14px"></dc-import>Names, aliases, heard as…</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <sc-for list="{{ types }}" as="t" hint-placeholder-count="6"><span style="font-size:12px;padding:3px 9px;border-radius:999px;background:{{ t.bg }};color:{{ t.fg }};font-weight:{{ t.w }}">{{ t.n }}</span></sc-for>
+          <span style="font-size:12px;padding:3px 9px;border-radius:999px;background:var(--color-warning-bg);color:var(--color-warning-fg);font-weight:600">Needs review 3</span>
+        </div>
+      </div>
+      <div style="flex:1;overflow:hidden;padding:6px 8px">
+        <sc-for list="{{ list }}" as="e" hint-placeholder-count="10">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;background:{{ e.bg }}">
+            <div style="flex:1;min-width:0;line-height:1.25"><div style="font-weight:600;color:{{ e.c }}">{{ e.n }}</div><div style="font-size:12px;color:var(--color-fg-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.a }}</div></div>
+            <span style="font-size:11px;padding:1px 6px;border-radius:4px;background:var(--color-subtle-badge-bg);color:var(--color-subtle-badge-fg)">{{ e.type }}</span>
+            <span style="width:7px;height:7px;border-radius:50%;background:{{ e.dot }}"></span>
+          </div>
+        </sc-for>
+      </div>
+    </aside>
+    <main style="flex:1;min-width:0;overflow:hidden;padding:28px 40px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:flex-start;gap:16px">
+        <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:10px"><span style="font-family:Georgia,'Iowan Old Style',serif;font-size:32px;font-weight:700">Captain Orsa Vell</span><x-import component-from-global-scope="YipeUi.BasicBadge" hint-size="44px,22px">NPC</x-import></div>
+          <div style="color:var(--color-fg-muted);max-width:720px;text-wrap:pretty">Smuggler captain of the <i>Gull’s Debt</i>. Ferried the party to the Drowned Abbey and speaks in riddles about the diamond. Voiced by Alex.</div>
+          <div style="display:flex;gap:16px;font-size:13px;color:var(--color-fg-subtle);margin-top:4px;flex-wrap:wrap;align-items:center">
+            <span>Also called <b style="color:var(--color-fg-default);font-weight:600">Orsa, the Captain</b></span>
+            <span style="display:flex;gap:6px;align-items:center">Heard as <span style="padding:1px 8px;border-radius:4px;background:var(--color-bg-surface);color:var(--color-fg-muted)">Orsa Bell</span><span style="padding:1px 8px;border-radius:4px;background:var(--color-bg-surface);color:var(--color-fg-muted)">Ursa</span><span style="padding:1px 8px;border-radius:4px;border:1px dashed var(--color-accent-emphasis);color:var(--color-accent-fg)">Orsa Fell? ✓ ×</span></span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button style="height:34px;padding:0 12px;border-radius:6px;border:1px solid var(--color-border-default);background:var(--color-bg-surface);color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;display:flex;gap:6px;align-items:center"><dc-import name="Icon" n="search" s="14" hint-size="14px,14px"></dc-import>Look for more facts</button>
+          <button style="height:34px;padding:0 12px;border-radius:6px;border:1px solid var(--color-border-default);background:var(--color-bg-surface);color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Edit</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle)">Appearances</span><span style="font-size:12px;color:var(--color-fg-subtle)">mentions per session</span></div>
+        <div style="display:flex;gap:6px;align-items:flex-end;height:64px;padding:8px 12px;background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px">
+          <sc-for list="{{ bars }}" as="b" hint-placeholder-count="12">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end"><span style="width:100%;border-radius:3px 3px 0 0;height:{{ b.h }};background:{{ b.c }}"></span><span style="font-size:10px;color:var(--color-fg-subtle)">{{ b.s }}</span></div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0;border:1px solid var(--color-border-default);border-radius:8px;overflow:hidden">
+        <div style="display:flex;align-items:center;padding:10px 16px;background:var(--color-bg-subtle);border-bottom:1px solid var(--color-border-default)"><span style="font-family:Georgia,'Iowan Old Style',serif;font-weight:700">Facts</span><span style="margin-left:8px;color:var(--color-fg-subtle);font-size:13px">9</span><span style="margin-left:auto;font-size:12px;color:var(--color-fg-subtle)">Things still true next session</span></div>
+        <sc-for list="{{ facts }}" as="f" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 150px 120px 110px;gap:14px;padding:11px 16px;border-bottom:1px solid var(--color-border-default);align-items:center;background:var(--color-bg-surface)">
+            <span style="text-wrap:pretty">{{ f.t }}</span>
+            <span style="display:flex;gap:8px;align-items:center;font-size:13px"><span style="width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;background:color-mix(in oklch, {{ f.c }} 22%, var(--color-bg-surface));color:{{ f.c }};box-shadow:inset 0 0 0 1.5px {{ f.c }}">{{ f.i }}</span>{{ f.who }}</span>
+            <a href="#" style="font-size:13px;text-decoration:none">▶ S{{ f.s }} {{ f.at }}</a>
+            <span><span style="font-size:12px;padding:2px 8px;border-radius:4px;font-weight:600;background:{{ f.cbg }};color:{{ f.cfg }};white-space:nowrap">{{ f.conf }}</span></span>
+          </div>
+        </sc-for>
+        <div style="display:flex;gap:8px;padding:10px 16px;background:var(--color-bg-surface)"><div style="flex:1;height:32px;border:1px solid var(--color-border-default);border-radius:6px;background:var(--color-bg-canvas);display:flex;align-items:center;padding:0 10px;color:var(--color-fg-subtle);font-size:13px">Add a fact, e.g. Owes Pip 20 gold</div></div>
+      </div>
+    </main>
+    <aside style="width:300px;flex:none;border-left:1px solid var(--color-border-default);padding:24px 20px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box">
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle)">Connected</div>
+      <sc-for list="{{ rel }}" as="r" hint-placeholder-count="4">
+        <div style="display:flex;flex-direction:column;gap:2px;padding-bottom:10px;border-bottom:1px solid var(--color-border-default)"><span style="font-weight:600;color:{{ r.c }}">{{ r.n }}</span><span style="font-size:12px;color:var(--color-fg-subtle)">{{ r.why }}</span></div>
+      </sc-for>
+      <div style="flex:1"></div>
+      <div style="font-size:12px;color:var(--color-fg-subtle);display:flex;flex-direction:column;gap:4px"><span style="font-family:ui-monospace,Menlo,monospace">NPCs/Captain Orsa Vell.md</span><a href="#" style="text-decoration:none">Open in Obsidian</a></div>
+    </aside>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  componentDidMount() { if (!window.TB) { const i = setInterval(() => { if (window.TB) { clearInterval(i); this.forceUpdate(); } }, 50); } }
+  renderVals() {
+    const TB = window.TB;
+    const types = [["All", 1], ["NPCs"], ["Places"], ["Items"], ["Factions"], ["PCs"]].map(([n, on]) => ({ n, bg: on ? "var(--color-accent-emphasis)" : "var(--color-bg-surface)", fg: on ? "#fff" : "var(--color-fg-muted)", w: on ? 600 : 500 }));
+    const L = [["Captain Orsa Vell", "Orsa, the Captain", "NPC", 1], ["Diamond of Ysolde", "the diamond, Ysolde’s tear", "Item", 0, 1], ["The Tidecallers", "the chapel folk", "Faction"], ["Drowned Abbey", "the abbey", "Place"], ["The Abbot", "suggested from S12", "NPC", 0, 0, 1], ["Saltreach", "the port", "Place"], ["Sister Merrow", "Merrow", "NPC"], ["Pip Tallowmere", "Pip · Sam", "PC"], ["Brann Coldwater", "Brann · Rin", "PC"], ["Gull’s Debt", "Orsa’s ship", "Item"]];
+    const list = L.map(([n, a, type, on, leg, rev]) => ({ n, a, type, bg: on ? "var(--color-bg-surface)" : "transparent", c: leg ? "var(--color-rarity-legendary)" : "var(--color-fg-default)", dot: rev ? "var(--color-warning-fg)" : "transparent" }));
+    const m = [0, 0, 0, 0, 0, 0, 0, 5, 9, 14, 6, 11];
+    const bars = m.map((v, n) => ({ h: Math.max(2, v * 3) + "px", c: v ? "var(--color-accent-emphasis)" : "var(--color-bg-elevated)", s: "S" + (n + 1) }));
+    const facts = TB ? TB.facts.filter(f => f.about === "Captain Orsa Vell" || f.who === "Orsa Vell").slice(0, 5) : [];
+    const rel = [["Diamond of Ysolde", "Her riddles point to it", "var(--color-rarity-legendary)"], ["The Tidecallers", "Pip thinks she smuggles for them"], ["Pip Tallowmere", "Owes him 20 gold", "var(--color-class-bard)"], ["Gull’s Debt", "Her ship"]].map(([n, why, c]) => ({ n, why, c: c || "var(--color-fg-default)" }));
+    return { types, list, bars, facts, rel };
+  }
+}
+</script>
+</body>
+</html>

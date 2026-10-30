@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <script src="data.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Live session A" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="sessions" live="{{ true }}" hint-size="1440px,56px"></dc-import>
+  <div style="height:52px;flex:none;display:flex;align-items:center;gap:14px;padding:0 20px;border-bottom:1px solid var(--color-border-default);background:var(--color-bg-subtle);white-space:nowrap">
+    <span style="font-weight:700">Session 13</span>
+    <span style="color:var(--color-fg-subtle);font-size:13px;display:flex;align-items:center;gap:6px"><dc-import name="Icon" n="mic" s="14" hint-size="14px,14px"></dc-import>Jabra Speak 710</span>
+    <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-fg-subtle)">Scene: <b style="color:var(--color-fg-muted);font-weight:600">Entering the abbey</b> since 1:36</span>
+    <div style="flex:1"></div>
+    <button style="height:32px;padding:0 12px;border-radius:6px;border:1px solid var(--color-border-default);background:var(--color-bg-surface);color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><dc-import name="Icon" n="flag" s="14" hint-size="14px,14px"></dc-import>Mark moment</button>
+    <button style="height:32px;padding:0 12px;border-radius:6px;border:1px solid var(--color-border-default);background:var(--color-bg-surface);color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><dc-import name="Icon" n="pause" s="14" hint-size="14px,14px"></dc-import>Pause</button>
+    <button style="height:32px;padding:0 12px;border-radius:6px;border:none;background:var(--color-danger-bg);color:var(--color-danger-fg);font:inherit;font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><dc-import name="Icon" n="square" s="14" hint-size="14px,14px"></dc-import>End session</button>
+  </div>
+  <div style="flex:1;display:flex;min-height:0">
+    <main style="flex:1;display:flex;flex-direction:column;min-width:0">
+      <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;padding:14px 20px;border-bottom:1px solid var(--color-border-default)">
+        <sc-for list="{{ talk }}" as="p" hint-placeholder-count="5">
+          <div style="position:relative;overflow:hidden;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:var(--color-bg-surface);border:1px solid {{ p.bd }};box-shadow:{{ p.glow }}">
+            <div style="width:36px;height:36px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:color-mix(in oklch, {{ p.c }} 22%, var(--color-bg-surface));color:{{ p.c }};box-shadow:inset 0 0 0 1.5px {{ p.c }}">{{ p.i }}</div>
+            <div style="min-width:0;flex:1;line-height:1.25">
+              <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.ch }}</div>
+              <div style="font-size:12px;color:var(--color-fg-subtle)">{{ p.player }}</div>
+            </div>
+            <div style="text-align:right;line-height:1.2"><div style="font-weight:700;font-variant-numeric:tabular-nums">{{ p.pct }}%</div><div style="font-size:11px;color:var(--color-fg-subtle)">{{ p.time }}</div></div>
+            <span style="position:absolute;left:0;bottom:0;height:3px;width:{{ p.w }};background:{{ p.c }}"></span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="flex:1;overflow:hidden;padding:8px 20px 0;display:flex;flex-direction:column;justify-content:flex-end">
+        <sc-for list="{{ lines }}" as="l" hint-placeholder-count="10">
+          <div style="display:flex;gap:12px;padding:{{ l.pad }};border-radius:6px;background:{{ l.bg }}">
+            <div style="width:36px;flex:none">
+              <sc-if value="{{ l.head }}" hint-placeholder-val="{{ true }}"><div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:color-mix(in oklch, {{ l.c }} 22%, var(--color-bg-surface));color:{{ l.c }};box-shadow:inset 0 0 0 1.5px {{ l.c }}">{{ l.i }}</div></sc-if>
+            </div>
+            <div style="flex:1;min-width:0">
+              <sc-if value="{{ l.head }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;align-items:baseline;gap:8px;font-size:13px;white-space:nowrap">
+                  <span style="font-weight:700;color:{{ l.c }}">{{ l.name }}</span><span style="color:var(--color-fg-subtle)">{{ l.as }}</span>
+                  <sc-if value="{{ l.unsure }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:var(--color-accent-fg);font-weight:600">Who is this? →</span></sc-if>
+                  <span style="margin-left:auto;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--color-fg-subtle)">{{ l.t }}</span>
+                </div>
+              </sc-if>
+              <div style="font-size:16px;line-height:1.55;color:{{ l.fg }};font-style:{{ l.fs }};text-wrap:pretty">{{ l.text }}</div>
+            </div>
+          </div>
+        </sc-for>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0 14px 48px;color:var(--color-fg-subtle);font-size:13px">
+          <span style="display:flex;gap:3px;align-items:center"><span style="width:3px;height:10px;border-radius:2px;background:var(--color-class-paladin)"></span><span style="width:3px;height:16px;border-radius:2px;background:var(--color-class-paladin)"></span><span style="width:3px;height:8px;border-radius:2px;background:var(--color-class-paladin)"></span><span style="width:3px;height:13px;border-radius:2px;background:var(--color-class-paladin)"></span></span>
+          Alex is speaking…
+        </div>
+      </div>
+    </main>
+    <aside style="width:380px;flex:none;border-left:1px solid var(--color-border-default);display:flex;flex-direction:column;gap:16px;padding:16px;box-sizing:border-box;overflow:hidden">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;height:44px;padding:0 12px;border-radius:8px;border:1px solid var(--color-accent-emphasis);background:var(--color-bg-surface)">
+          <dc-import name="Icon" n="message-circle-question" s="16" c="var(--color-accent-fg)" hint-size="16px,16px"></dc-import>
+          <span style="flex:1;color:var(--color-fg-subtle)">Ask about the campaign…</span>
+          <span style="font-size:11px;padding:2px 6px;border-radius:4px;border:1px solid var(--color-border-strong);color:var(--color-fg-subtle)">/</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span style="font-size:12px;padding:4px 10px;border-radius:999px;background:var(--color-bg-surface);border:1px solid var(--color-border-default);color:var(--color-fg-muted)">What did Orsa say about the diamond?</span>
+          <span style="font-size:12px;padding:4px 10px;border-radius:999px;background:var(--color-bg-surface);border:1px solid var(--color-border-default);color:var(--color-fg-muted)">Who is the abbot?</span>
+        </div>
+      </div>
+      <div style="background:var(--color-bg-surface);border:1px dashed var(--color-border-strong);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:700">Voice 3</span><span style="font-size:12px;color:var(--color-fg-subtle)">4 s heard · new voice</span><span style="margin-left:auto;display:flex"><dc-import name="Icon" n="circle-play" s="18" c="var(--color-fg-muted)" hint-size="18px,18px"></dc-import></span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:600;padding:5px 10px;border-radius:6px;background:var(--color-accent-subtle);color:var(--color-accent-fg)">Alex as an NPC? 71%</span>
+          <span style="font-size:12px;padding:5px 10px;border-radius:6px;border:1px solid var(--color-border-default)">Maya</span>
+          <span style="font-size:12px;padding:5px 10px;border-radius:6px;border:1px solid var(--color-border-default)">Guest…</span>
+          <span style="font-size:12px;padding:5px 10px;border-radius:6px;color:var(--color-fg-subtle)">Later</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
+        <div style="display:flex;align-items:center;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle)">Mentioned just now</div>
+        <sc-for list="{{ mentions }}" as="m" hint-placeholder-count="3">
+          <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:700;color:{{ m.c }}">{{ m.n }}</span><span style="font-size:11px;padding:1px 6px;border-radius:4px;background:var(--color-subtle-badge-bg);color:var(--color-subtle-badge-fg)">{{ m.type }}</span><span style="margin-left:auto;font-size:11px;color:var(--color-fg-subtle)">{{ m.when }}</span></div>
+            <div style="font-size:13px;color:var(--color-fg-muted);text-wrap:pretty">{{ m.d }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </aside>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  componentDidMount() { if (!window.TB) { const i = setInterval(() => { if (window.TB) { clearInterval(i); this.forceUpdate(); } }, 50); } }
+  renderVals() {
+    const TB = window.TB;
+    if (!TB) return { talk: [], lines: [], mentions: [] };
+    const talk = TB.talk.map(p => Object.assign({}, p, { bd: p.speaking ? p.c : "var(--color-border-default)", glow: p.speaking ? `0 0 0 1px ${p.c}, 0 0 18px -4px ${p.c}` : "none" }));
+    const lines = TB.lines(2).map(l => Object.assign({}, l, { pad: l.head ? "8px 8px 2px" : "0 8px 2px", bg: l.unsure ? "var(--color-bg-subtle)" : "transparent", fg: l.unsure ? "var(--color-fg-subtle)" : "var(--color-fg-default)", fs: l.unsure ? "italic" : "normal" }));
+    const mentions = [
+      { n: "Diamond of Ysolde", type: "Item", when: "1:40", c: "var(--color-rarity-legendary)", d: "Stolen from the Saltreach temple (S3). Party thinks it’s in the bell clapper." },
+      { n: "Captain Orsa Vell", type: "NPC", when: "1:39", c: "var(--color-fg-default)", d: "Smuggler captain. Brought you to the abbey; owes Pip 20 gold." },
+      { n: "The Drowned Abbey", type: "Place", when: "1:36", c: "var(--color-fg-default)", d: "Flooded at high tide. First visited tonight." }
+    ];
+    return { talk, lines, mentions };
+  }
+}
+</script>
+</body>
+</html>

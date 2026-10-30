@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <script src="data.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Review A (margin notes)" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="sessions" hint-size="1440px,56px"></dc-import>
+  <div style="flex:none;display:flex;align-items:center;gap:16px;padding:14px 28px;border-bottom:1px solid var(--color-border-default);white-space:nowrap">
+    <div>
+      <div style="font-size:12px;color:var(--color-fg-subtle)">Review · Session 12 · Thu Oct 22</div>
+      <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:22px;font-weight:700">The Drowned Abbey</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;width:220px;margin-left:24px">
+      <div style="display:flex;font-size:12px;color:var(--color-fg-subtle)"><span>5 of 14 reviewed</span><span style="margin-left:auto">~4 min left</span></div>
+      <div style="height:6px;border-radius:3px;background:var(--color-bg-elevated)"><div style="width:36%;height:6px;border-radius:3px;background:var(--color-success-fg)"></div></div>
+    </div>
+    <div style="display:flex;gap:6px;margin-left:12px">
+      <span style="font-size:12px;padding:4px 10px;border-radius:999px;background:var(--color-accent-emphasis);color:#fff;font-weight:600">All 9</span>
+      <span style="font-size:12px;padding:4px 10px;border-radius:999px;background:var(--color-bg-surface);color:var(--color-fg-muted)">Facts 4</span>
+      <span style="font-size:12px;padding:4px 10px;border-radius:999px;background:var(--color-bg-surface);color:var(--color-fg-muted)">Spellings 3</span>
+      <span style="font-size:12px;padding:4px 10px;border-radius:999px;background:var(--color-bg-surface);color:var(--color-fg-muted)">New entries 2</span>
+    </div>
+    <div style="flex:1"></div>
+    <button style="height:34px;padding:0 12px;border-radius:6px;border:1px solid var(--color-border-default);background:var(--color-bg-surface);color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Accept all GM-stated (3)</button>
+    <button style="height:34px;padding:0 14px;border-radius:6px;border:none;background:var(--color-accent-emphasis);color:var(--color-fg-on-accent);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Finish review</button>
+  </div>
+  <div style="flex:1;overflow:hidden;padding:12px 28px 0">
+    <div style="display:flex;flex-direction:column">
+      <div style="display:flex;gap:28px">
+      <div style="flex:1;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle);padding:6px 0 10px">Transcript</div>
+      <div style="width:460px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle);padding:6px 0 10px">Suggestions on these lines</div>
+      </div>
+      <sc-for list="{{ rows }}" as="r" hint-placeholder-count="10">
+        <div style="display:flex;gap:28px;align-items:flex-start">
+        <div style="flex:1;min-width:0;display:flex;gap:12px;padding:6px 10px;border-radius:6px;background:{{ r.bg }};border-left:3px solid {{ r.edge }}">
+          <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--color-fg-subtle);padding-top:3px;width:56px;flex:none">{{ r.t }}</span>
+          <div style="font-size:15px;line-height:1.55;text-wrap:pretty"><b style="color:{{ r.c }}">{{ r.name }}</b> <span style="color:var(--color-fg-subtle);font-size:13px">{{ r.asx }}</span> {{ r.text }}</div>
+        </div>
+        <div style="width:460px;flex:none;padding:2px 0 8px">
+          <sc-if value="{{ r.has }}" hint-placeholder-val="{{ false }}">
+            <div style="background:var(--color-bg-surface);border:1px solid {{ r.sbd }};border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px;font-size:12px"><span style="font-weight:700;color:{{ r.kc }}">{{ r.kind }}</span><span style="color:var(--color-fg-subtle)">{{ r.about }}</span><span style="margin-left:auto;padding:1px 7px;border-radius:4px;font-weight:600;background:{{ r.cbg }};color:{{ r.cfg }}">{{ r.conf }}</span></div>
+              <div style="font-size:14px;text-wrap:pretty">{{ r.s }}</div>
+              <div style="display:flex;gap:6px">
+                <span style="font-size:12px;padding:4px 10px;border-radius:5px;background:{{ r.accBg }};color:{{ r.accFg }};font-weight:600">{{ r.acc }}</span>
+                <span style="font-size:12px;padding:4px 10px;border-radius:5px;border:1px solid var(--color-border-default)">Edit</span>
+                <span style="font-size:12px;padding:4px 10px;color:var(--color-fg-subtle)">Reject</span>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  componentDidMount() { if (!window.TB) { const i = setInterval(() => { if (window.TB) { clearInterval(i); this.forceUpdate(); } }, 50); } }
+  renderVals() {
+    const TB = window.TB;
+    if (!TB) return { rows: [] };
+    const S = {
+      "1:38:02": { kind: "Fact", about: "→ Drowned Abbey", s: "The tide turns at the second bell.", k: "gm", done: true },
+      "1:39:12": { kind: "New entry", about: "NPC", s: "The Abbot: keeps the diamond, according to Pip.", k: "once" },
+      "1:40:31": { kind: "Fact", about: "→ Diamond of Ysolde", s: "The diamond is hidden in the abbey bell’s clapper.", k: "theory" },
+      "1:40:32": { kind: "Spelling", about: "heard 2×", s: "“Isolde” → Ysolde", k: "gm", spell: true },
+      "1:41:55": { kind: "Fact", about: "→ Drowned Abbey", s: "Necromantic magic lies under the bell’s shadow.", k: "gm" }
+    };
+    const rows = TB.lines(0).slice(0, 11).map(l => {
+      const key = l.t === "1:40:31" ? null : l.t;
+      let s = S[l.t];
+      const base = Object.assign({}, l, { asx: l.as.startsWith("as ") ? l.as : "", has: !!s, bg: "transparent", edge: "transparent" });
+      if (l.t === "1:40:31") s = S["1:40:31"];
+      if (!s) return base;
+      const cf = TB.conf[s.k];
+      return Object.assign(base, {
+        has: true, kind: s.kind, about: s.about, s: s.s,
+        conf: s.spell ? "Fixed in 2 lines" : cf.label, cbg: s.spell ? "var(--color-bg-elevated)" : cf.bg, cfg: s.spell ? "var(--color-fg-muted)" : cf.fg,
+        kc: s.kind === "Fact" ? "var(--color-accent-fg)" : s.kind === "Spelling" ? "var(--color-info-fg)" : "var(--color-rarity-veryrare)",
+        acc: s.done ? "✓ Accepted" : s.kind === "New entry" ? "Add to codex" : "Accept",
+        accBg: s.done ? "var(--color-success-bg)" : "var(--color-accent-emphasis)", accFg: s.done ? "var(--color-success-fg)" : "#fff",
+        sbd: s.done ? "color-mix(in oklch, var(--color-success-fg) 35%, transparent)" : "var(--color-border-default)",
+        bg: s.done ? "transparent" : "var(--color-accent-subtle)", edge: s.done ? "var(--color-success-fg)" : "var(--color-accent-emphasis)"
+      });
+    });
+    return { rows };
+  }
+}
+</script>
+</body>
+</html>
