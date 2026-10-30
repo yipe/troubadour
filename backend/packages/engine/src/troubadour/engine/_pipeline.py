@@ -15,7 +15,7 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 from troubadour.core import config, transcript
@@ -30,7 +30,10 @@ from .buffers import AudioBuffer
 from .bus import Bus
 from .live_session import STOP, LiveSession
 from .model import JOIN, PROVISIONAL_BELOW, SR, Message, Player, short_id
-from .notebook import Notebook
+from .notebook import Notebook, NotebookLoop
+
+if TYPE_CHECKING:
+    from .core import Engine
 from .paths import SESSION_ID, sample_path, session_audio
 
 log = logging.getLogger("troubadour")
@@ -242,6 +245,7 @@ class PipelineMixin:
 
         sess.notebook.is_live = is_live
         sess.notebook.emit = lambda data: self.bus.emit("notebook.updated", data)
+        NotebookLoop(cast("Engine", self), sess).start()
 
     def notebook_json(self) -> dict:
         """The live notebook, or an empty one when no session is running."""
