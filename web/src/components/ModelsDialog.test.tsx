@@ -133,7 +133,10 @@ describe("Models dialog", () => {
     await act(async () => {})
     expect(screen.getByRole("button", { name: /MTPLX/ })).toHaveAttribute("aria-current", "true") // now the one in use
     await act(async () => {})
-    expect(screen.getByLabelText("Model server")).toHaveValue("http://127.0.0.1:8000/v1")
+    const box = screen.getByLabelText("Model server")
+    expect(box).toHaveValue("MTPLX / vLLM · 8000") // a known server reads by name
+    fireEvent.focus(box)
+    expect(box).toHaveValue("http://127.0.0.1:8000/v1") // editing shows the address
     expect(writes()).toEqual([
       {
         method: "POST",

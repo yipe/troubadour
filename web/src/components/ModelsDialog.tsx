@@ -42,6 +42,8 @@ export function ModelsDialog({
   const [memoryUrl, setMemoryUrl] = useState("")
   const [memoryChoices, setMemoryChoices] = useState<string[] | null>(null)
   const [servers, setServers] = useState<LocalServer[] | null>(null)
+  const [editingUrl, setEditingUrl] = useState(false)
+  const known = servers?.find((s) => s.url === url.trim())
   const [apiKey, setApiKey] = useState("")
   const [hosted, setHosted] = useState<Hosted | null>(null)
   const [lists, setLists] = useState<Partial<Record<HostedId, ModelList>>>({})
@@ -235,7 +237,11 @@ export function ModelsDialog({
                     <input
                       id="model-server"
                       className="h-8 w-full rounded-lg border bg-background px-2"
-                      value={url}
+                      // A known server reads by name ("MTPLX / vLLM · 8000"); editing shows its address.
+                      value={known && !editingUrl ? `${known.name} · ${known.port}` : url}
+                      title={url}
+                      onFocus={() => setEditingUrl(true)}
+                      onBlur={() => setEditingUrl(false)}
                       onChange={(e) => setUrl(e.target.value)}
                       placeholder="1235, or 10.0.0.8:1234"
                       spellCheck={false}
