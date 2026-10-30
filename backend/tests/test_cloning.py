@@ -14,8 +14,11 @@ from troubadour.core import config
 from troubadour.core.config import SR
 from troubadour.engine import _training, core
 from troubadour.engine.cloning import Cloning
+from troubadour.lore.campaign import Vault
+from troubadour.lore.memory import Memory
 from troubadour.lore.talk import TEMPO_RANGE
-from troubadour.server import app as server
+from troubadour.server import deps
+from troubadour.server.app import app
 from troubadour.sound import tts
 from troubadour.sound.audio import wav_bytes
 
@@ -63,7 +66,7 @@ def recording(seconds: float, noise: float, freq: float = ALICE) -> np.ndarray:
 def cloning(engine, tmp_path, fake_vad):
     engine.status = "idle"
     engine.clones.synth = FakeSynth()
-    vault = server.Vault(lambda: tmp_path / "vault")
+    vault = Vault(lambda: tmp_path / "vault")
     llm = ScriptedLLM()
     c = Cloning(engine, llm=lambda: c.llm_now, vault=vault, written_up=lambda: {})
     c.llm_now = llm
@@ -316,18 +319,18 @@ def test_say_and_read_need_a_voice_and_for_their_words_a_profile(engine, cloning
 def api(engine, monkeypatch, tmp_path, fake_vad):
     engine.status = "idle"
     engine.clones.synth = FakeSynth()
-    vault = server.Vault(lambda: tmp_path / "vault")
-    memory = server.Memory(vault, engine.bus, llm=ScriptedLLM(), sessions_dir=engine.sessions_dir)
+    vault = Vault(lambda: tmp_path / "vault")
+    memory = Memory(vault, engine.bus, llm=ScriptedLLM(), sessions_dir=engine.sessions_dir)
     cloning = Cloning(engine, llm=lambda: memory.llm, vault=vault, written_up=memory.written_up)
     for name, value in [("engine", engine), ("vault", vault), ("memory", memory), ("cloning", cloning)]:
-        monkeypatch.setattr(server, name, value)
-    return TestClient(server.app, base_url="http://127.0.0.1:8765")
+        monkeypatch.setattr(deps, name, value)
+    return TestClient(app, base_url="http://127.0.0.1:8765")
 
 
 def finished(j: dict) -> dict:
     deadline = time.time() + 10
     while time.time() < deadline:
-        state = server.memory.jobs[j["id"]]
+        state = deps.memory.jobs[j["id"]]
         if state.state in ("done", "error"):
             return state.to_json()
         time.sleep(0.02)
@@ -425,7 +428,7 @@ def test_api_profile_then_say_in_their_words(api, engine, monkeypatch):
     table_talk(pid)
 
     llm = ScriptedLLM({"text": "Asks before acting; opens with okay."}, {"text": "Okay you know what, I open the door."})
-    monkeypatch.setattr(server.memory, "llm", llm)
+    monkeypatch.setattr(deps.memory, "llm", llm)
     j = api.post(f"/api/players/{pid}/profile").json()
     assert (j["kind"], j["player_id"]) == ("profile", pid)
     assert finished(j)["message"] == "Profile ready"
@@ -457,7 +460,7 @@ def test_api_build_writes_a_line_they_would_say(api, engine, monkeypatch):
     pid = alice(api, engine)
     table_talk(pid)
     line = " ".join(["Okay so you know what, I check the door for traps?"] * 7)
-    monkeypatch.setattr(server.memory, "llm", ScriptedLLM({"text": "Asks before acting."}, {"text": line}))
+    monkeypatch.setattr(deps.memory, "llm", ScriptedLLM({"text": "Asks before acting."}, {"text": line}))
     assert finished(api.post(f"/api/players/{pid}/clone").json())["state"] == "done"
     clones = api.get("/api/clones").json()
     assert pid in clones["profiles"]  # made on the way, from their transcripts
@@ -504,9 +507,7 @@ def test_api_estimates_in_character_time_for_a_saved_session(api, engine, monkey
     folder.mkdir(parents=True)
     (folder / "transcript.json").write_text(json.dumps(record))
     (folder / "meta.json").write_text(json.dumps(record["session"]))
-    monkeypatch.setattr(
-        server.memory, "llm", ScriptedLLM({"labels": [{"n": 1, "label": "character"}, {"n": 2, "label": "table"}]})
-    )
+    monkeypatch.setattr(deps.memory, "llm", ScriptedLLM({"labels": [{"n": 1, "label": "character"}, {"n": 2, "label": "table"}]}))
     j = finished(api.post(f"/api/sessions/{sid}/in-character").json())
     assert (j["state"], j["message"]) == ("done", "50% of the players' lines in character")
     saved = json.loads((folder / "transcript.json").read_text())
