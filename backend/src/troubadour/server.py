@@ -824,6 +824,13 @@ def write_up(sid: str):
         raise HTTPException(404, "not found")
     with campaign_gate:
         _require_open_campaign(sid)
+    if not (memory.sessions_dir() / sid / "transcript.json").is_file():
+        raise HTTPException(404, f"not found: {sid}")
+    # Fail now, not minutes into the job, when the write-up's model can't answer.
+    if (problem := memory.llm.problem()) is not None:
+        raise HTTPException(503, problem)
+    with campaign_gate:
+        _require_open_campaign(sid)
         return _call(memory.write_up, sid).to_json()
 
 

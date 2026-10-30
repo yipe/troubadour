@@ -85,6 +85,26 @@ class MemoryLLM:
         secret = self.token() if self.wire == "responses" and self.token else self.api_key
         return providers.headers(self.wire, secret)
 
+    def problem(self) -> str | None:
+        """Why this model can't be used right now (server down, model not offered), or None. A quick check
+        before a long job, so it fails at the start with a reason instead of minutes in."""
+        try:
+            r = self.client.get(f"{self.url}{providers.models_path(self.wire)}", headers=self._headers(), timeout=10)
+        except providers.NotConnected as e:
+            return str(e)
+        except httpx.HTTPError:
+            return f"Couldn't reach the model server at {self.url}. Is it running? (Models picks the server.)"
+        if r.status_code != 200:
+            return f"The model server at {self.url} answered {r.status_code}."
+        try:
+            offered = providers.model_ids(self.wire, r.json())
+        except ValueError:
+            return f"The model server at {self.url} sent a model list Troubadour can't read."
+        if self.model not in offered:
+            some = ", ".join(offered[:5]) or "none"
+            return f"The model server at {self.url} doesn't offer {self.model} (it offers: {some}). Pick one in Models."
+        return None
+
     def healthy(self) -> bool:
         """The server answers and has this model."""
         try:

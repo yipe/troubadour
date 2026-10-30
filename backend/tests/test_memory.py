@@ -735,3 +735,17 @@ def test_a_server_hiccup_is_tried_again(monkeypatch):
     ]
     llm = _llm_with(lambda request: replies.pop(0))
     assert llm.json("s", "u", {}) == {"ok": 1}
+
+
+def test_problem_says_why_a_model_cant_be_used():
+    def offers(*ids):
+        return lambda request: httpx.Response(200, json={"data": [{"id": i} for i in ids]})
+
+    assert _llm_with(offers("m", "other")).problem() is None
+    assert "doesn't offer m (it offers: other)" in _llm_with(offers("other")).problem()
+    assert "answered 500" in _llm_with(lambda r: httpx.Response(500)).problem()
+
+    def refuse(request):
+        raise httpx.ConnectError("refused")
+
+    assert "Is it running?" in _llm_with(refuse).problem()

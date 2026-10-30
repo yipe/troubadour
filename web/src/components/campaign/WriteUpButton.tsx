@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { BookOpenText, Loader2 } from "lucide-react"
 import { ReadAloud } from "@/components/clone/ReadAloud"
 import { Button } from "@/components/ui/button"
@@ -17,7 +17,8 @@ export function WriteUpButton({ sessionId }: { sessionId: string }) {
     if (!useCampaign.getState().campaign) void campaignActions.refresh()
   }, [])
 
-  const running = !!job && jobActive(job)
+  const [starting, setStarting] = useState(false) // the server checks the model can answer first
+  const running = starting || (!!job && jobActive(job))
   const page = campaign?.written_up[sessionId]
 
   return (
@@ -26,11 +27,19 @@ export function WriteUpButton({ sessionId }: { sessionId: string }) {
         size="sm"
         variant="outline"
         disabled={running}
-        onClick={() => void campaignActions.startJob(() => api.writeUp(sessionId))}
+        onClick={async () => {
+          setStarting(true)
+          await campaignActions.startJob(() => api.writeUp(sessionId))
+          setStarting(false)
+        }}
       >
         {running ? <Loader2 className="animate-spin" /> : <BookOpenText />}
         {page ? "Write up again" : "Write up for campaign"}
-        {running && <span className="text-muted-foreground tabular-nums">{jobCount(job)}</span>}
+        {running && (
+          <span className="text-muted-foreground tabular-nums">
+            {starting || !job ? "checking the model…" : jobCount(job)}
+          </span>
+        )}
       </Button>
       <JobSteps job={job} />
       <JobStatus job={job} working="Writing up…" failed="Write-up failed" progress={false} />

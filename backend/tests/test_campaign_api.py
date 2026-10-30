@@ -112,3 +112,15 @@ def test_ignore_endpoints(api):
     assert api.get("/api/campaign").json()["ignored"] == ["T-Mobile"]
     assert api.delete("/api/campaign/ignore/T-Mobile").json() == []
     assert api.post("/api/campaign/ignore", json={"words": []}).status_code == 422
+
+
+def test_writeup_checks_its_model_before_starting(api, monkeypatch):
+    sid = "2026-10-08_193401-eebf"
+    folder = config.DATA_DIR / "sessions" / sid
+    folder.mkdir(parents=True)
+    (folder / "transcript.json").write_text(json.dumps({"session": {"id": sid}, "messages": []}))
+    (folder / "meta.json").write_text(json.dumps({"id": sid}))
+    monkeypatch.setattr(server.memory.llm, "problem", lambda: "Couldn't reach the model server at x. Is it running?")
+    r = api.post(f"/api/campaign/writeup/{sid}")
+    assert (r.status_code, r.json()["detail"]) == (503, "Couldn't reach the model server at x. Is it running?")
+    assert not any(j["kind"] == "writeup" for j in api.get("/api/campaign").json()["jobs"])
