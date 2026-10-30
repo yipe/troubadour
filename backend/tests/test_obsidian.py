@@ -1,8 +1,7 @@
 import json
 
 import pytest
-
-from troubadour.obsidian import vault_for
+from troubadour.lore.obsidian import vault_for
 
 
 @pytest.fixture

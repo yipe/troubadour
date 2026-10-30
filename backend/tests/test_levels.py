@@ -6,10 +6,11 @@ import numpy as np
 import pytest
 from conftest import write_wav
 from fastapi.testclient import TestClient
-
-from troubadour import config, levels, server
-from troubadour.config import SR
-from troubadour.transcript import build
+from troubadour.core import config
+from troubadour.core.config import SR
+from troubadour.core.transcript import build
+from troubadour.server import app as server
+from troubadour.sound import levels
 
 RNG = np.random.default_rng(7)
 

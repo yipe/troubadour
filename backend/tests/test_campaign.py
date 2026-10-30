@@ -4,8 +4,7 @@ import json
 import os
 
 import pytest
-
-from troubadour.campaign import Entity, Vault, mention_counts, parse, render, safe_name
+from troubadour.lore.campaign import Entity, Vault, mention_counts, parse, render, safe_name
 
 
 @pytest.fixture
@@ -198,7 +197,7 @@ def test_index_lists_everything(vault):
 
 # ------------------------------------------------------------- corrector
 
-from troubadour.campaign import Corrector  # noqa: E402
+from troubadour.lore.campaign import Corrector  # noqa: E402
 
 
 def test_corrector_fixes_heard_as_and_case():

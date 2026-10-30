@@ -7,10 +7,11 @@ import httpx
 import pytest
 from conftest import RecordingBus
 from fastapi.testclient import TestClient
-
-from troubadour import ask, config, server
-from troubadour.campaign import Vault
-from troubadour.transcript import build
+from troubadour.core import config
+from troubadour.core.transcript import build
+from troubadour.lore import ask
+from troubadour.lore.campaign import Vault
+from troubadour.server import app as server
 
 SID = "2026-10-08_193401-eebf"
 LINES = [

@@ -7,9 +7,8 @@ import threading
 import numpy as np
 import pytest
 from conftest import FakeSynth, job, tone, write_wav
-
-from troubadour import tts
-from troubadour.audio import read_wav
+from troubadour.sound import tts
+from troubadour.sound.audio import read_wav
 
 ALICE = 200.0
 

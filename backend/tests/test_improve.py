@@ -7,10 +7,11 @@ import numpy as np
 import pytest
 from conftest import tone, write_wav
 from fastapi.testclient import TestClient
-
-from troubadour import config, improve, server
-from troubadour.campaign import Corrector, Entity
-from troubadour.transcript import build
+from troubadour.core import config
+from troubadour.core.transcript import build
+from troubadour.engine import improve
+from troubadour.lore.campaign import Corrector, Entity
+from troubadour.server import app as server
 
 SID = "2026-10-08_193401-eebf"
 
@@ -69,7 +70,7 @@ def api(engine, dirs, monkeypatch):
     folder.mkdir(parents=True)
     (folder / "transcript.json").write_text(json.dumps(record(["Dallara, three.", "Hello."])))
     write_wav(folder / "audio.wav", tone(220, 6.0))
-    monkeypatch.setattr("troubadour.asr.transcribe", lambda clip, prompt=None, model=None: "Elara, three!")
+    monkeypatch.setattr("troubadour.sound.asr.transcribe", lambda clip, prompt=None, model=None: "Elara, three!")
     return TestClient(server.app, base_url="http://127.0.0.1:8765"), folder
 
 
