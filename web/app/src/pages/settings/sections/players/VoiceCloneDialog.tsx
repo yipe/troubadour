@@ -23,7 +23,7 @@ import { notify } from "@troubadour/ui/toast"
 import { JobStatus } from "../../../../components/jobs/JobStatus.tsx"
 import { jobActive } from "../../../../components/jobs/progress.ts"
 import { SpeechProfile } from "./SpeechProfile.tsx"
-import { TheirWordsSwitch } from "./TheirWordsSwitch.tsx"
+import { TheirWordsSwitch } from "../../../../components/read-aloud/TheirWordsSwitch.tsx"
 
 const SAY_MAX = 2000 // tts.SAY_MAX_CHARS
 
