@@ -3,6 +3,7 @@ import type { CampaignAnswer } from "../ask/types.ts"
 import type { CampaignJob } from "../campaign/types.ts"
 import type { Campaigns } from "../campaigns/types.ts"
 import type { CloudStatus } from "../cloud/types.ts"
+import type { Notebook } from "../notebook/types.ts"
 import type { LlmProvider, LlmProviderId } from "../llm/types.ts"
 import type { LibraryPlayer, Player, TrainStatus } from "../players/types.ts"
 import type { Message, MessagePatch, Session, Snapshot, Voice } from "../session/types.ts"
@@ -31,3 +32,4 @@ export type ServerEvent =
   | { type: "library.updated"; data: LibraryPlayer[] }
   | { type: "cloud.updated"; data: CloudStatus }
   | { type: "llm.updated"; data: { provider: LlmProviderId; providers: LlmProvider[] } }
+  | { type: "notebook.updated"; data: Notebook } // the whole live notebook; replaces the cached one

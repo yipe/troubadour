@@ -13,6 +13,8 @@ import shutil
 import subprocess
 import threading
 import time
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -25,9 +27,11 @@ from troubadour.sound.segment import SegmentConfig, Segmenter
 from troubadour.sound.voices import normalize
 
 from .buffers import AudioBuffer
+from .bus import Bus
 from .live_session import STOP, LiveSession
 from .model import JOIN, PROVISIONAL_BELOW, SR, Message, Player, short_id
-from .paths import sample_path, session_audio
+from .notebook import Notebook
+from .paths import SESSION_ID, sample_path, session_audio
 
 log = logging.getLogger("troubadour")
 
@@ -61,6 +65,8 @@ class PipelineMixin:
     campaign: str
     voices: dict[str, Any]  # typed loosely: the older code here treats Voice fields as unchecked
     matcher: Any  # a VoiceMatcher once the models load (start() waits for them)
+    bus: Bus
+    sessions_dir: Callable[[], Path]  # SessionsMixin
 
     def start(
         self,
@@ -129,6 +135,7 @@ class PipelineMixin:
                 snapshot = self.snapshot()
             sess.awake = keep_awake()  # a 4-hour session must not stop when the Mac idles to sleep
             self._snapshot_setup(sess, "start")
+            self.bind_notebook(sess)
             sess.meter = levels.LevelMeter(self.bus.emit) if self.audio_monitor else None
             threading.Thread(target=self._segment_loop, args=(sess,), name="segmenter", daemon=True).start()
             threading.Thread(target=self._worker_loop, args=(sess,), name="worker", daemon=True).start()
@@ -216,6 +223,7 @@ class PipelineMixin:
         self.save_transcript(force=True)
         self._save_state()  # keep voiceprints adapted during the session
         self._snapshot_setup(sess, "end")
+        sess.notebook.save(self.sessions_dir() / sess.id / "notebook.json")
         if sess.desc["kind"] == "mic":
             threading.Thread(target=self._quality_quietly, args=(sess.id,), name="quality", daemon=True).start()
         with self.lock:
@@ -224,6 +232,42 @@ class PipelineMixin:
             self.status = "idle"
         self._emit_session()
         self.refine_now.set()
+
+    def bind_notebook(self, sess: LiveSession) -> None:
+        """Let the session's notebook emit, and only while the session is the live one."""
+
+        def is_live() -> bool:
+            with self.lock:
+                return sess is self.live
+
+        sess.notebook.is_live = is_live
+        sess.notebook.emit = lambda data: self.bus.emit("notebook.updated", data)
+
+    def notebook_json(self) -> dict:
+        """The live notebook, or an empty one when no session is running."""
+        with self.lock:
+            sess = self.live if self.status != "idle" else None
+        return sess.notebook.to_json() if sess is not None else Notebook(None).to_json()
+
+    def add_pin(self, t: float, text: str) -> dict:
+        with self.lock:
+            sess = self.live if self.status != "idle" else None
+        if sess is None:
+            raise ValueError("no session is running")
+        return sess.notebook.add_pin(t, text)
+
+    def set_notebook_status(self, item_id: str, status: str) -> dict:
+        with self.lock:
+            sess = self.live if self.status != "idle" else None
+        if sess is None:
+            raise KeyError(item_id)
+        return sess.notebook.set_status(item_id, status)
+
+    def saved_notebook(self, sid: str) -> dict:
+        """A saved session's notebook (empty when it has none)."""
+        if not SESSION_ID.fullmatch(sid):
+            raise KeyError(sid)
+        return Notebook.load(self.sessions_dir() / sid / "notebook.json", sid).to_json()
 
     def _segment_loop(self, sess: LiveSession) -> None:
         if not self._wait_ready(sess):
