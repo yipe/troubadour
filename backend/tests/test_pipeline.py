@@ -9,7 +9,7 @@ import pytest
 from conftest import RecordingBus, tone, write_wav
 from conftest import job as new_job
 from fastapi.testclient import TestClient
-from test_memory import KNOWN, FakeLLM
+from test_memory import KNOWN, FakeLLM, wait
 from troubadour.core import config
 from troubadour.core.transcript import build
 from troubadour.engine import MAIN_CAMPAIGN, improve, pipeline
@@ -215,10 +215,7 @@ def test_a_refreshed_write_up_keeps_confirmed_facts_trashes_the_old_page_and_onl
     vault = memory.vault
     memory.llm.found = {"facts": [{"about": "Elara", "text": "Elara owns a grey owl."}]}
     first = memory.write_up(OLD)
-    deadline = time.monotonic() + 5
-    while first.state in ("queued", "running") and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert first.state == "done", first.message
+    wait(first)
     owl = vault.get("Elara").suggested_facts[0]
     vault.update("Elara", facts=[Fact("Elara is a ranger.")], suggested_facts=[])
     vault.add_fact("Elara", Fact(owl.text))  # the owner accepted the owl
@@ -255,8 +252,7 @@ def test_a_refreshed_write_up_keeps_confirmed_facts_trashes_the_old_page_and_onl
 def test_a_write_up_that_fails_leaves_the_old_page_in_place(idle, memory, job):
     make_session(idle)
     first = memory.write_up(OLD)
-    while first.state in ("queued", "running"):
-        time.sleep(0.01)
+    wait(first)
     (page,) = (memory.vault.root / "Sessions").glob("*.md")
     before = page.read_text()
     memory.llm.read = {}  # the notes come back empty

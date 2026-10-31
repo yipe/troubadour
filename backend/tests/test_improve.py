@@ -188,7 +188,7 @@ def test_save_and_restore_write_every_file_with_fsync(api, monkeypatch):
 
 def test_retranscribe_keeps_every_runs_backup(api, engine):
     client, folder = api
-    engine.matcher.names.clear() if engine.matcher.names else None  # nobody to match: each run stops after its backup
+    engine.matcher.names.clear()  # nobody to match: each run stops after its backup
     for n in range(2):
         rec = json.loads((folder / "transcript.json").read_text())
         rec["messages"][0]["text"] = f"version {n}"
