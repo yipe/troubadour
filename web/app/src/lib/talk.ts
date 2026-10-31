@@ -93,13 +93,15 @@ export interface TalkSegment {
 type TalkPlayer = ColoredPlayer & { id: string; name: string }
 
 /**
- * The talk-time bar: one segment per player who spoke, in the players list's order. Keys that are not a
- * player (unnamed voices, `voice:<id>`, deleted players) are grouped as "Others", last.
+ * The talk-time bar: one segment per player who spoke, in the players list's order, or biggest share first
+ * with `order: "share"` (ties keep roster order). Keys that are not a player (unnamed voices,
+ * `voice:<id>`, deleted players) are grouped as "Others", always last.
  */
 export function talkSegments(
   talk: Record<string, number>,
   players: TalkPlayer[],
   classes: ClassInfo[] = [],
+  order: "roster" | "share" = "roster",
 ): TalkSegment[] {
   const ids = new Set(players.map((p) => p.id))
   const segments: TalkSegment[] = []
@@ -107,24 +109,10 @@ export function talkSegments(
     const value = talk[p.id] ?? 0
     if (value > 0) segments.push({ value, color: playerColor(p, classes), label: p.name })
   }
+  if (order === "share") segments.sort((a, b) => b.value - a.value)
   const others = Object.entries(talk)
     .filter(([key]) => !ids.has(key))
     .reduce((sum, [, seconds]) => sum + Math.max(0, seconds), 0)
   if (others > 0) segments.push({ value: others, color: "var(--color-fg-subtle)", label: "Others" })
   return segments
-}
-
-/** Who talked most, the GM excluded; `pct` is their whole-number share of all talk. Null when nobody did. */
-export function topPlayer<P extends TalkPlayer>(
-  talk: Record<string, number>,
-  players: P[],
-): { player: P; pct: number; seconds: number } | null {
-  const total = Object.values(talk).reduce((sum, s) => sum + Math.max(0, s), 0)
-  let best: { player: P; seconds: number } | null = null
-  for (const player of players) {
-    const seconds = talk[player.id] ?? 0
-    if (player.is_gm || seconds <= 0) continue
-    if (!best || seconds > best.seconds) best = { player, seconds }
-  }
-  return best && { ...best, pct: Math.round((best.seconds / total) * 100) }
 }

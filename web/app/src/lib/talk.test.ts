@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { message, player, voice } from "@troubadour/api/testing"
-import { recordTalkTime, sharePct, talkDuration, talkSegments, talkTime, topPlayer } from "./talk"
+import { recordTalkTime, sharePct, talkDuration, talkSegments, talkTime } from "./talk"
 
 const players = [player({ id: "p1" }), player({ id: "p2" })]
 const voices = [
@@ -108,7 +108,7 @@ describe("recordTalkTime", () => {
   })
 })
 
-describe("talkSegments and topPlayer", () => {
+describe("talkSegments", () => {
   const roster = [
     player({ id: "gm", name: "Nora", is_gm: true }),
     player({ id: "a", name: "Ana", color: "#111111" }),
@@ -124,14 +124,8 @@ describe("talkSegments and topPlayer", () => {
     ])
   })
 
-  it("topPlayer skips the GM and reports their share of all talk", () => {
-    const top = topPlayer({ gm: 500, a: 20, b: 60, "voice:x": 20 }, roster)
-    expect(top).toMatchObject({ pct: 10, seconds: 60 })
-    expect(top?.player.id).toBe("b")
-  })
-
-  it("topPlayer is null when only the GM spoke", () => {
-    expect(topPlayer({ gm: 10 }, roster)).toBeNull()
-    expect(topPlayer({}, roster)).toBeNull()
+  it("puts the biggest share first when asked, and Others still last", () => {
+    const segs = talkSegments({ a: 20, b: 60, "voice:v9": 90 }, roster, [], "share")
+    expect(segs.map((s) => s.label)).toEqual(["Bo", "Ana", "Others"])
   })
 })
