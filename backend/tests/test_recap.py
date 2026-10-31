@@ -9,6 +9,7 @@ import pytest
 from conftest import RecordingBus
 from fastapi.testclient import TestClient
 from troubadour.core import config
+from troubadour.engine import pipeline
 from troubadour.lore import memory as mem
 from troubadour.lore import recap
 from troubadour.lore.campaign import SessionIndex, Vault
@@ -261,6 +262,16 @@ def test_the_job_stores_the_recap_and_get_returns_it(api):
     assert stored["quote"]["speaker"] == "Velis"
     assert stored["built_at"] > 0
     assert json.loads((config.DATA_DIR / "sessions" / SID / "recap.json").read_text())["body"] == GOOD["body"]
+
+
+def test_the_recap_job_records_its_pipeline_step_only_when_it_worked(api):
+    meta = config.DATA_DIR / "sessions" / SID / "meta.json"
+    wait(api, api.post(f"/api/sessions/{SID}/recap", json=BODY).json()["id"])
+    assert json.loads(meta.read_text())["pipeline"] == {"recap": pipeline.BY_NAME["recap"].version}
+    meta.write_text(json.dumps({"id": SID}))
+    deps.memory.llm.answer = {}  # an empty body: the job fails
+    wait(api, api.post(f"/api/sessions/{SID}/recap", json=BODY).json()["id"], "error")
+    assert "pipeline" not in json.loads(meta.read_text())
 
 
 def test_a_second_post_while_running_is_409(api):

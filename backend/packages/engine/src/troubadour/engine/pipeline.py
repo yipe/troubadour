@@ -285,7 +285,9 @@ def _patch_files(folder: Path, changes: dict) -> None:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        target = data["session"] if name == "transcript.json" else data
+        target = data.get("session") if name == "transcript.json" else data
+        if not isinstance(target, dict):
+            continue
         target.update(changes)
         indent = 1 if name == "transcript.json" else None
         write_atomic(path, json.dumps(data, ensure_ascii=False, indent=indent))

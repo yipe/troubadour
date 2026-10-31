@@ -460,3 +460,42 @@ def test_the_model_check_runs_without_the_campaign_gate(client, idle, memory, mo
     assert client.post("/api/sessions/upgrade").status_code == 503
     assert len(held) == 2
     assert not any(held)
+
+
+# ------------------------------------------------------------------ the one-step endpoints record their step
+
+
+@pytest.fixture
+def api(idle, memory, monkeypatch):
+    monkeypatch.setattr(deps, "engine", idle)
+    monkeypatch.setattr(deps, "memory", memory)
+    monkeypatch.setattr(deps, "vault", memory.vault)
+    return TestClient(app, base_url="http://127.0.0.1:8765")
+
+
+def test_the_write_up_endpoint_records_its_step_so_the_session_is_not_offered_an_upgrade(api, idle, memory):
+    folder = make_session(idle)
+    job = api.post(f"/api/campaign/writeup/{OLD}").json()
+    wait(next(j for j in memory.jobs.values() if j.id == job["id"]))
+    assert pipeline_of(folder)["writeup"] == pipeline.BY_NAME["writeup"].version
+    assert pipeline_of(folder, "transcript.json")["writeup"] == pipeline.BY_NAME["writeup"].version
+
+
+def test_a_failed_write_up_is_not_recorded(api, idle, memory):
+    folder = make_session(idle)
+    memory.llm.read = {}  # the notes come back empty: the job fails
+    job = memory.jobs[api.post(f"/api/campaign/writeup/{OLD}").json()["id"]]
+    deadline = time.monotonic() + 5
+    while job.state in ("queued", "running") and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert job.state == "error"
+    assert "writeup" not in (pipeline_of(folder) or {})
+
+
+def test_the_first_review_records_its_step_and_an_older_list_is_left_for_the_upgrade(api, idle, memory):
+    folder = make_session(idle)
+    assert api.get(f"/api/sessions/{OLD}/review").status_code == 200
+    assert pipeline_of(folder)["review"] == pipeline.BY_NAME["review"].version
+    pipeline.patch_session(folder, {"pipeline": {}}, idle._transcript_lock)  # a list derived by older rules
+    assert api.get(f"/api/sessions/{OLD}/review").status_code == 200
+    assert not pipeline_of(folder)

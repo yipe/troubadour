@@ -441,6 +441,12 @@ def import_notes(body: ImportIn):
         return deps._call(deps.memory.import_notes, body.title, body.text).to_json()
 
 
+def _queue_write_up(sid: str):
+    """Memory.write_up, with the job recording the pipeline step so the session isn't offered an upgrade."""
+    record = json.loads((deps.memory.sessions_dir() / sid / "transcript.json").read_text())
+    return deps.memory.submit("writeup", sid, lambda job: deps.stamped(sid, "writeup", lambda: deps.memory._write_up(job, record)))  # noqa: SLF001
+
+
 @router.post("/api/campaign/writeup/{sid}")
 def write_up(sid: str):
     if not SESSION_ID.fullmatch(sid):
@@ -454,7 +460,7 @@ def write_up(sid: str):
         raise HTTPException(503, problem)
     with deps.campaign_gate:
         deps._require_open_campaign(sid)
-        return deps._call(deps.memory.write_up, sid).to_json()
+        return deps._call(_queue_write_up, sid).to_json()
 
 
 @router.post("/api/campaign/ignore")

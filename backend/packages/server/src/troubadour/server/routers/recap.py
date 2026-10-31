@@ -86,7 +86,7 @@ def build_recap(sid: str, body: RecapIn):
         if not (deps.memory.sessions_dir() / sid / "transcript.json").is_file():
             raise HTTPException(404, f"not found: {sid}")
         try:
-            return deps._call(recap.start, deps.memory, deps.memory.sessions_dir(), sid, options).to_json()
+            return deps._call(recap.start, deps.StampingMemory("recap"), deps.memory.sessions_dir(), sid, options).to_json()
         except RuntimeError as e:
             raise HTTPException(409, str(e)) from None
 

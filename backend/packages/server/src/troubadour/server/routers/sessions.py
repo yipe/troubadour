@@ -124,12 +124,6 @@ def _not_busy(*sids: str) -> None:
             raise HTTPException(409, "A job is working on this session. Wait for it to finish.")
 
 
-def _stamped(sid: str, step: str, work) -> None:
-    """Run one step's job, then record its version on the session (only when it finished)."""
-    work()
-    pipeline.stamp(deps.engine.sessions_dir() / sid, pipeline.BY_NAME[step], deps.engine._transcript_lock)
-
-
 @router.post("/api/sessions/merge", response_model=SavedSession)
 def merge_sessions(body: SessionMergeIn):
     """Append the later of two saved sessions onto the earlier one. The later folder goes to
@@ -188,7 +182,7 @@ def improve_transcript(sid: str):
         return deps.memory.submit(
             "improve",
             sid,
-            lambda job: _stamped(
+            lambda job: deps.stamped(
                 sid,
                 "transcribe",
                 lambda: improve.run(
@@ -209,7 +203,7 @@ def retranscribe(sid: str):
         return deps.memory.submit(
             "retranscribe",
             sid,
-            lambda job: _stamped(
+            lambda job: deps.stamped(
                 sid, "speakers", lambda: improve.reassign_speakers(job, deps.engine, sid, lambda: deps.memory.emit(job))
             ),
         ).to_json()
@@ -224,7 +218,7 @@ def fix_spellings(sid: str):
         return deps.memory.submit(
             "spelling",
             sid,
-            lambda job: _stamped(
+            lambda job: deps.stamped(
                 sid, "spelling", lambda: improve.fix_spellings(job, deps.engine, sid, lambda: deps.memory.emit(job))
             ),
         ).to_json()
@@ -240,7 +234,7 @@ def estimate_in_character(sid: str):
         return deps.memory.submit(
             "incharacter",
             sid,
-            lambda job: _stamped(sid, "in_character", lambda: improve.label_in_character(job, deps.engine, sid, deps.memory.llm)),
+            lambda job: deps.stamped(sid, "in_character", lambda: improve.label_in_character(job, deps.engine, sid, deps.memory.llm)),
         ).to_json()
 
 
