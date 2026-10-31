@@ -13,6 +13,7 @@ from test_memory import KNOWN, FakeLLM, wait
 from troubadour.core import config
 from troubadour.core.transcript import build
 from troubadour.engine import MAIN_CAMPAIGN, improve, pipeline
+from troubadour.engine.model import Message
 from troubadour.engine.pipeline import Run, Step
 from troubadour.lore import memory as mem
 from troubadour.lore.campaign import Vault
@@ -499,3 +500,27 @@ def test_the_first_review_records_its_step_and_an_older_list_is_left_for_the_upg
     pipeline.patch_session(folder, {"pipeline": {}}, idle._transcript_lock)  # a list derived by older rules
     assert api.get(f"/api/sessions/{OLD}/review").status_code == 200
     assert not pipeline_of(folder)
+
+
+# ------------------------------------------------------------------ a live session's save keeps the recorded steps
+
+
+def test_saving_a_finished_live_session_again_keeps_the_stamps_a_refresh_wrote(engine):
+    engine.messages["m1"] = Message("m1", None, "We found a cave.", 0.0, 3.0, 0.9, False, [])
+    folder = engine.save_transcript(force=True)
+    assert pipeline_of(folder) == pipeline.live_stamp()
+    pipeline.stamp(folder, pipeline.BY_NAME["writeup"], engine._transcript_lock)
+    pipeline.stamp(folder, pipeline.BY_NAME["talk"], engine._transcript_lock)
+    engine.save_transcript(force=True)  # e.g. a new session starts: the old one is saved a last time
+    assert pipeline_of(folder) == {**pipeline.live_stamp(), "writeup": 1}
+    assert pipeline_of(folder, "transcript.json") == pipeline_of(folder)
+
+
+def test_a_save_that_changes_the_lines_drops_the_steps_that_read_them(engine):
+    engine.messages["m1"] = Message("m1", None, "We found a cave.", 0.0, 3.0, 0.9, False, [])
+    folder = engine.save_transcript(force=True)
+    for name in ("writeup", "review", "recap", "in_character"):
+        pipeline.stamp(folder, pipeline.BY_NAME[name], engine._transcript_lock)
+    engine.messages["m1"].text = "We found a cave near Dallon."  # a late spelling fix
+    engine.save_transcript(force=True)
+    assert pipeline_of(folder) == {**pipeline.live_stamp(), "review": 1}

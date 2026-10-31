@@ -246,6 +246,7 @@ STEPS: tuple[Step, ...] = (
 )
 BY_NAME = {s.name: s for s in STEPS}
 REWRITES = frozenset({"transcribe", "speakers", "spelling", "in_character"})  # steps that rewrite transcript.json
+READS_WORDS = frozenset({"in_character", "writeup", "recap"})  # steps whose output came from the lines' words
 # What a live session already did when it was saved, so it doesn't look out of date the moment it ends.
 LIVE_STEPS = ("transcribe", "speakers", "spelling", "talk")
 
@@ -256,6 +257,17 @@ def current() -> dict[str, int]:
 
 def live_stamp() -> dict[str, int]:
     return {n: BY_NAME[n].version for n in LIVE_STEPS}
+
+
+def carried(prior: dict[str, int], words_changed: bool) -> dict[str, int]:
+    """The stamps a live session's save writes over what is on disk. Without earlier ones, what listening did.
+    With them, they stay (a refresh or the one-step buttons recorded them), unless the save changed the lines
+    themselves: then listening's own steps are done again and the steps that read the lines are out of date."""
+    if not prior:
+        return live_stamp()
+    if not words_changed:
+        return {**live_stamp(), **prior}
+    return {**{k: v for k, v in prior.items() if k not in READS_WORDS}, **live_stamp()}
 
 
 def llm_steps(steps: Sequence[Step]) -> bool:

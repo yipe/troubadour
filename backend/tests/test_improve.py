@@ -198,3 +198,13 @@ def test_retranscribe_keeps_every_runs_backup(api, engine):
     backups = sorted(folder.glob("transcript.before-retranscribe*.json"))
     assert len(backups) == 2
     assert {json.loads(b.read_text())["messages"][0]["text"] for b in backups} == {"version 0", "version 1"}
+
+
+def test_restore_forgets_only_the_steps_that_rewrote_the_words(api):
+    client, folder = api
+    wait_job(client, client.post(f"/api/sessions/{SID}/improve").json()["id"])  # stamps "transcribe"
+    meta = json.loads((folder / "meta.json").read_text())
+    meta["pipeline"] = {**meta["pipeline"], "writeup": 1, "recap": 1, "talk": 1, "spelling": 1}
+    (folder / "meta.json").write_text(json.dumps(meta))
+    assert client.post(f"/api/sessions/{SID}/restore").status_code == 200
+    assert json.loads((folder / "meta.json").read_text())["pipeline"] == {"writeup": 1, "recap": 1, "talk": 1}
