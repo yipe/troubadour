@@ -58,7 +58,6 @@ export function Component() {
 
   return (
     <RailLayout
-      railWidth={380}
       railToggleLabel="filters"
       rail={
         <FactsRail

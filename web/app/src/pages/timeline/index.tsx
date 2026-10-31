@@ -140,12 +140,16 @@ function RowCells({ row, maxFacts }: { row: Row; maxFacts: number }) {
         <TravelLine stop={stop} olderLane={olderLane} hasNewer={!newest} newest={newest} />
       </td>
       <td className={CELL}>
-        <SegmentedBar
-          segments={talkSegments(session.talk, players, classes, "share")}
-          height={18}
-          gap={1}
-          labels
-        />
+        {session.kind === "notes" ? (
+          <div className="text-12 text-ink-subtle">From notes</div>
+        ) : (
+          <SegmentedBar
+            segments={talkSegments(session.talk, players, classes, "share")}
+            height={18}
+            gap={1}
+            labels
+          />
+        )}
       </td>
       <td className={CELL}>
         <div className="flex flex-wrap items-center gap-1.5">

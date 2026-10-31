@@ -21,9 +21,9 @@ describe("paths", () => {
   })
 
   it("puts the transcript time and the facts filters in the query string", () => {
-    expect(paths.transcript("12")).toBe("/sessions/12/transcript")
-    expect(paths.transcript("12", 95)).toBe("/sessions/12/transcript?t=95")
-    expect(paths.transcript("12", 0)).toBe("/sessions/12/transcript?t=0")
+    expect(paths.transcript("12")).toBe("/sessions/12#transcript")
+    expect(paths.transcript("12", 95)).toBe("/sessions/12?t=95#transcript")
+    expect(paths.transcript("12", 0)).toBe("/sessions/12?t=0#transcript")
     expect(paths.facts()).toBe("/facts")
     expect(paths.facts({ about: "npc", sure: "gm", q: "bell tower" })).toBe(
       "/facts?about=npc&sure=gm&q=bell+tower",

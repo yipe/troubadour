@@ -1,27 +1,99 @@
 [
-  { "sessions": [], "expected": {} },
   {
-    "sessions": [
-      { "id": "c", "started_at": "2026-03-15T19:00:00Z" },
-      { "id": "a", "started_at": "2026-03-01T19:00:00Z" },
-      { "id": "b", "started_at": "2026-03-08T19:00:00Z" }
-    ],
-    "expected": { "a": 1, "b": 2, "c": 3 }
+    "sessions": [],
+    "expected": {}
   },
   {
     "sessions": [
-      { "id": "a", "started_at": "2026-03-01T19:00:00Z" },
-      { "id": "b", "started_at": "2026-03-08T19:00:00Z", "merged_from": ["c"] },
-      { "id": "c", "started_at": "2026-03-08T21:00:00Z" },
-      { "id": "d", "started_at": "2026-03-15T19:00:00Z" }
+      {
+        "id": "c",
+        "started_at": "2026-03-15T19:00:00Z"
+      },
+      {
+        "id": "a",
+        "started_at": "2026-03-01T19:00:00Z"
+      },
+      {
+        "id": "b",
+        "started_at": "2026-03-08T19:00:00Z"
+      }
     ],
-    "expected": { "a": 1, "b": 2, "d": 3 }
+    "expected": {
+      "a": 1,
+      "b": 2,
+      "c": 3
+    }
   },
   {
     "sessions": [
-      { "id": "y", "started_at": "2026-03-01T19:00:00Z" },
-      { "id": "x", "started_at": "2026-03-01T19:00:00Z" }
+      {
+        "id": "a",
+        "started_at": "2026-03-01T19:00:00Z"
+      },
+      {
+        "id": "b",
+        "started_at": "2026-03-08T19:00:00Z",
+        "merged_from": [
+          "c"
+        ]
+      },
+      {
+        "id": "c",
+        "started_at": "2026-03-08T21:00:00Z"
+      },
+      {
+        "id": "d",
+        "started_at": "2026-03-15T19:00:00Z"
+      }
     ],
-    "expected": { "x": 1, "y": 2 }
+    "expected": {
+      "a": 1,
+      "b": 2,
+      "d": 3
+    }
+  },
+  {
+    "sessions": [
+      {
+        "id": "y",
+        "started_at": "2026-03-01T19:00:00Z"
+      },
+      {
+        "id": "x",
+        "started_at": "2026-03-01T19:00:00Z"
+      }
+    ],
+    "expected": {
+      "x": 1,
+      "y": 2
+    }
+  },
+  {
+    "sessions": [
+      {
+        "id": "r1",
+        "started_at": "2026-03-08T19:00:00Z"
+      },
+      {
+        "id": "n1",
+        "started_at": "2026-03-01T12:00:00Z",
+        "kind": "notes"
+      },
+      {
+        "id": "n2",
+        "started_at": "2026-03-15T12:00:00Z",
+        "kind": "notes"
+      },
+      {
+        "id": "r2",
+        "started_at": "2026-03-22T19:00:00Z"
+      }
+    ],
+    "expected": {
+      "n1": 1,
+      "r1": 2,
+      "n2": 3,
+      "r2": 4
+    }
   }
 ]

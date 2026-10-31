@@ -110,3 +110,8 @@ export interface EntityCreate {
 
 /** Accept or reject by id: `accept_facts` / `reject_facts` are suggested-fact ids. */
 export type EntityReview = Partial<Schemas["ReviewIn"]>
+
+export type NotesSplit = Schemas["SplitOut"]
+export type NotesSplitSession = Schemas["SplitSession"]
+export type ImportRow = Schemas["ImportRow"]
+export type NotesSessionInput = Schemas["NotesSessionIn"]

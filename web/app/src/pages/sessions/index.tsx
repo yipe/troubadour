@@ -5,7 +5,8 @@ import { useLive } from "@troubadour/api/live"
 import { useSessions } from "@troubadour/api/sessions"
 import { RailLayout } from "@troubadour/ui/rail-layout"
 import { Spinner } from "@troubadour/ui/spinner"
-import { nextSessionNumber, sessionNumbers } from "../../lib/sessions.ts"
+import { sessionNumbers } from "../../lib/sessions.ts"
+import { NotesSessionDetail } from "./NotesSessionDetail.tsx"
 import { SessionDetail } from "./SessionDetail.tsx"
 import { SessionList } from "./SessionList.tsx"
 import { UpgradeBanner } from "./UpgradeBanner.tsx"
@@ -24,14 +25,12 @@ export function Component() {
 
   return (
     <RailLayout
-      railWidth={380}
       railToggleLabel="sessions"
       rail={
         <SessionList
           sessions={list}
           selectedId={selected?.id}
           writtenUp={campaign?.written_up ?? {}}
-          nextNumber={nextSessionNumber(list)}
           running={running}
         />
       }
@@ -40,7 +39,9 @@ export function Component() {
         <div className="px-5 pt-7 empty:hidden md:px-10">
           <UpgradeBanner />
         </div>
-        {selected ? (
+        {selected?.kind === "notes" ? (
+          <NotesSessionDetail key={selected.id} session={selected} numbers={numbers} />
+        ) : selected ? (
           <SessionDetail key={selected.id} session={selected} numbers={numbers} />
         ) : (
           <p className="p-5 text-ink-subtle md:p-10">No sessions yet. Prepare one to get started.</p>

@@ -80,6 +80,7 @@ export function session(s: Partial<Session> = {}): Session {
 
 export function savedSession(s: Partial<SavedSession> & { id: string }): SavedSession {
   return {
+    kind: "recording",
     started_at: 1_760_000_000,
     source: null,
     duration_s: 0,
@@ -119,7 +120,7 @@ export function sessionRecord(r: Partial<SessionRecord> & { id: string }): Sessi
   const { id, ...rest } = r
   return {
     version: 1,
-    session: { id, started_at: 1_760_000_000, source: null, duration_s: 0, lines: 0 },
+    session: { id, kind: "recording", started_at: 1_760_000_000, source: null, duration_s: 0, lines: 0 },
     players: [],
     voices: [],
     messages: [],

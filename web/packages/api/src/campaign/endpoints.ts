@@ -11,6 +11,9 @@ import type {
   Fact,
   FactCreate,
   FactEdit,
+  ImportRow,
+  NotesSessionInput,
+  NotesSplit,
 } from "./types.ts"
 
 const entityUrl = (name: string) => `/api/campaign/entities/${segment(name)}`
@@ -47,8 +50,17 @@ export const editCampaignFact = (b: FactEdit) => req<Fact[]>("PATCH", "/api/camp
 export const deleteCampaignFact = (factId: string) =>
   req<Fact[]>("DELETE", `/api/campaign/facts/${segment(factId)}`)
 
-export const importNotes = (title: string, text: string) =>
-  req<CampaignJob>("POST", "/api/campaign/import", { title, text })
+/** `sessions`: the parts of a split paste to add to the Timeline (by position in the preview). */
+export const importNotes = (title: string, text: string, sessions?: ImportRow[]) =>
+  req<CampaignJob>("POST", "/api/campaign/import", { title, text, ...(sessions ? { sessions } : {}) })
+
+/** The sessions a paste splits into by its headings; empty when it has no clear ones. */
+export const previewImport = (title: string, text: string) =>
+  req<NotesSplit>("POST", "/api/campaign/import/preview", { title, text })
+
+/** One session written down rather than recorded: a notes-only session on the Timeline. */
+export const addNotesSession = (session: NotesSessionInput) =>
+  req<CampaignJob>("POST", "/api/sessions/notes", session)
 
 export const writeUp = (sessionId: string) =>
   req<CampaignJob>("POST", `/api/campaign/writeup/${segment(sessionId)}`)

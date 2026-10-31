@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Ellipsis, GitMerge, Mic, Trash2 } from "lucide-react"
+import { Ellipsis, GitMerge, Mic, NotebookPen, Plus, Trash2 } from "lucide-react"
 import { Link } from "react-router"
 import type { SavedSession } from "@troubadour/api/sessions"
 import { Badge } from "@troubadour/ui/badge"
@@ -16,7 +16,7 @@ import { dateShort, durationShort } from "../../lib/format.ts"
 import { sessionStatus, type SessionStatus } from "../../lib/sessions.ts"
 import { paths } from "../../paths.ts"
 import { sessionTitle } from "./stats.ts"
-import { MergeDialog } from "./tools/index.ts"
+import { AddNotesDialog, MergeDialog } from "./tools/index.ts"
 import { useRemoveSessions } from "./useRemoveSessions.ts"
 
 /** Sessions shorter than this are probably a mic test or a false start. */
@@ -32,7 +32,6 @@ export type SessionListProps = {
   sessions: SavedSession[]
   selectedId: string | undefined
   writtenUp: Record<string, string>
-  nextNumber: number
   /** A session is running or paused. */
   running: boolean
 }
@@ -40,14 +39,17 @@ export type SessionListProps = {
 type Pending =
   { kind: "merge"; session: SavedSession; with: string } | { kind: "delete"; ids: string[] } | null
 
-export function SessionList({ sessions, selectedId, writtenUp, nextNumber, running }: SessionListProps) {
+export function SessionList({ sessions, selectedId, writtenUp, running }: SessionListProps) {
   const remove = useRemoveSessions()
   const [pending, setPending] = useState<Pending>(null)
   const [onlyShort, setOnlyShort] = useState(false)
+  const [addingNotes, setAddingNotes] = useState(false)
 
   // While a session runs it is saved as it goes, and is the newest in the list: it can't be deleted or merged yet.
-  const liveId = running ? sessions[0]?.id : undefined
-  const short = sessions.filter((s) => s.duration_s < VERY_SHORT_S && s.id !== liveId)
+  const liveId = running ? sessions.find((s) => s.kind === "recording")?.id : undefined
+  const short = sessions.filter(
+    (s) => s.kind === "recording" && s.duration_s < VERY_SHORT_S && s.id !== liveId,
+  )
   const shown = onlyShort && short.length > 0 ? short : sessions
 
   return (
@@ -61,7 +63,7 @@ export function SessionList({ sessions, selectedId, writtenUp, nextNumber, runni
           render={<Link to={running ? paths.live() : paths.ready()} />}
         >
           <Mic className="size-3.5" />
-          {running ? "Back to the session" : `Prepare session ${nextNumber}`}
+          {running ? "Back to the session" : "Prepare next session"}
         </Button>
         <Button size="lg" nativeButton={false} render={<Link to={paths.ready("file")} />}>
           Import audio
@@ -89,21 +91,31 @@ export function SessionList({ sessions, selectedId, writtenUp, nextNumber, runni
           const status = STATUS[sessionStatus(s, s.id in writtenUp)]
           // The list is newest first: the next session is the one above, the previous the one below.
           const at = sessions.indexOf(s)
-          const next = sessions[at - 1]
-          const previous = sessions[at + 1]
+          const isNotes = s.kind === "notes"
+          // Notes can't be merged with a recording, and a notes session is no merge partner either.
+          const next = isNotes || sessions[at - 1]?.kind === "notes" ? undefined : sessions[at - 1]
+          const previous = isNotes || sessions[at + 1]?.kind === "notes" ? undefined : sessions[at + 1]
           const busy = s.id === liveId
           return (
             <div key={s.id} className="group relative">
               <NavItem
                 selected={s.id === selectedId}
                 render={<Link to={paths.session(s.id)} />}
-                count={durationShort(s.duration_s)}
+                count={
+                  isNotes ? undefined : (
+                    <span className="group-focus-within:invisible group-hover:invisible">
+                      {durationShort(s.duration_s)}
+                    </span>
+                  )
+                }
                 sub={
                   <span className="flex items-center gap-2">
                     <span>{dateShort(s.started_at)}</span>
-                    {s.duration_s < VERY_SHORT_S && !busy && <Badge tone="warning">Very short</Badge>}
-                    <Badge tone={status.tone} className="ml-auto">
-                      {status.label}
+                    {!isNotes && s.duration_s < VERY_SHORT_S && !busy && (
+                      <Badge tone="warning">Very short</Badge>
+                    )}
+                    <Badge tone={isNotes ? "neutral" : status.tone} className="ml-auto">
+                      {isNotes ? "Notes" : status.label}
                     </Badge>
                   </span>
                 }
@@ -153,7 +165,17 @@ export function SessionList({ sessions, selectedId, writtenUp, nextNumber, runni
             </div>
           )
         })}
+        <button
+          type="button"
+          onClick={() => setAddingNotes(true)}
+          className="flex cursor-pointer items-center gap-2 rounded-control px-3 py-2.5 text-left text-14 text-ink-subtle hover:bg-elevated hover:text-ink"
+        >
+          <Plus className="size-4" />
+          <NotebookPen className="size-4" />
+          Add session notes
+        </button>
       </nav>
+      <AddNotesDialog open={addingNotes} onOpenChange={setAddingNotes} />
       {pending?.kind === "merge" && (
         <MergeDialog
           key={`${pending.session.id}-${pending.with}`}

@@ -8,7 +8,7 @@ import { Button } from "@troubadour/ui/button"
 import { PageHeading } from "@troubadour/ui/page-heading"
 import { obsidianUrl } from "../../lib/entities.ts"
 import { duration } from "../../lib/format.ts"
-import { nextSessionNumber, sessionNumbers } from "../../lib/sessions.ts"
+import { sessionNumbers } from "../../lib/sessions.ts"
 import { paths } from "../../paths.ts"
 import { UpgradeBanner } from "../sessions/UpgradeBanner.tsx"
 import { homeStats } from "./data.ts"
@@ -26,7 +26,7 @@ export function Component() {
 
   const numbers = sessionNumbers(sessions)
   const last = sessions
-    .filter((s) => numbers.has(s.id))
+    .filter((s) => s.kind === "recording" && numbers.has(s.id))
     .sort((a, b) => numbers.get(b.id)! - numbers.get(a.id)!)[0]
   const stats = homeStats(campaign, sessions, numbers.size)
   const name = campaigns?.campaigns.find((c) => c.id === campaigns.campaign)?.name
@@ -73,7 +73,7 @@ export function Component() {
               render={<Link to={running ? paths.live() : paths.ready()} />}
             >
               <Mic className="size-4" />
-              {running ? "Back to the session" : `Prepare session ${nextSessionNumber(sessions)}`}
+              {running ? "Back to the session" : "Prepare next session"}
             </Button>
           </>
         }

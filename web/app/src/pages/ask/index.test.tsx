@@ -35,6 +35,14 @@ describe("Ask page", () => {
     expect(screen.getByText(/Nobody/)).toBeInTheDocument()
   })
 
+  it("titles the page Ask, keeps the question box beside the answer and the rail to past questions", () => {
+    show()
+    expect(screen.getByRole("heading", { level: 1, name: "Ask" })).toBeInTheDocument()
+    const rail = screen.getByRole("navigation", { name: "Past questions" })
+    expect(rail).not.toContainElement(screen.getByRole("textbox", { name: "Ask about the campaign" }))
+    expect(screen.getByRole("region", { name: "Answer" })).toContainElement(screen.getByText("In the vault."))
+  })
+
   it("Enter submits the trimmed question and selects the new answer", async () => {
     const pending = campaignAnswer({ id: "a3", question: "Who is Orsa?", state: "queued", created: 3 })
     const m = mockFetch(() => pending)

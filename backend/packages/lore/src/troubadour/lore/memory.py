@@ -15,6 +15,7 @@ names, types and lengths are validated before anything is written.
 
 import collections
 import difflib
+import hashlib
 import json
 import logging
 import queue
@@ -674,6 +675,93 @@ class Memory:
             raise ValueError("Paste some notes first.")
         return self.submit("import", title, lambda job: self._import(job, title, text))
 
+    def import_sessions(self, campaign: str, title: str, rows: list[dict]) -> Job:
+        """Notes pasted with session headings: each row (`date` YYYY-MM-DD, `title`, `text`, `n`) becomes a
+        notes-only session on the Timeline, then the same notes pass reads it, crediting its facts to its own
+        page. A row whose text is already a notes session of this campaign is skipped, so pasting twice adds
+        nothing. ValueError when no row has text."""
+        rows = [r for r in rows if r["text"].strip()]
+        if not rows:
+            raise ValueError("Those sessions have no notes in them.")
+        title = safe_name(title or time.strftime("Notes %Y-%m-%d"))
+        return self.submit("import", title, lambda job: self._import_sessions(job, campaign, rows))
+
+    def _notes_fingerprints(self, campaign: str) -> set[str]:
+        out = set()
+        for path in self.sessions_dir().glob("*/meta.json"):
+            try:
+                meta = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(meta, dict) and meta.get("kind") == "notes" and meta.get("campaign") == campaign:
+                out.add(str(meta.get("fingerprint")))
+        return out
+
+    def _new_notes_folder(self, day: str) -> Path:
+        """A fresh `sessions/<YYYY-MM-DD_120000-xxxx>` (noon local time on `day`); never an existing one."""
+        root = self.sessions_dir()
+        root.mkdir(parents=True, exist_ok=True)
+        while True:
+            folder = root / f"{day}_120000-{uuid.uuid4().hex[:4]}"
+            try:
+                folder.mkdir()
+            except FileExistsError:
+                continue
+            return folder
+
+    def _import_sessions(self, job: Job, campaign: str, rows: list[dict]) -> None:
+        self.seed_known()
+        have = self._notes_fingerprints(campaign)
+        stamp = time.strftime("%Y-%m-%d")
+        made: list[tuple[str, str]] = []  # (page name, text)
+        for row in rows:
+            text, day = row["text"].strip(), row["date"]
+            fingerprint = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            if fingerprint in have:
+                continue
+            have.add(fingerprint)
+            label = row.get("title") or (f"Session {row['n']}" if row.get("n") else "Notes")
+            folder = self._new_notes_folder(day)
+            sid = folder.name
+            path = self.vault.write_note(
+                "Notes",
+                f"{day} {label}",
+                f"---\ntype: notes\nimported: {stamp}\nsession: {sid}\ntags: [troubadour/notes]\n---\n# {day} {label}\n\n{text}\n",
+            )
+            started = time.mktime(time.strptime(f"{day} 12:00:00", "%Y-%m-%d %H:%M:%S"))
+            meta = {
+                "id": sid,
+                "kind": "notes",
+                "campaign": campaign,
+                "started_at": started,
+                "title": row.get("title") or None,
+                "note": str(path.relative_to(self.vault.root)),
+                "duration": 0,
+                "duration_s": 0,
+                "lines": 0,
+                "pipeline": {},
+                "fingerprint": fingerprint,
+            }
+            write_atomic(folder / "meta.json", json.dumps(meta, ensure_ascii=False))
+            made.append((path.stem, text))
+        job.note = f"{len(made)} sessions"
+        parts = [(page, part) for page, text in made for part in chunks(text, CHUNK_CHARS)]
+        job.total = len(parts)
+        self.emit(job)
+        self.bus.emit("campaign.updated", {})
+        for page, part in parts:
+            out = self.llm.json(NOTES_SYSTEM, f"Existing glossary:\n{glossary_brief(self.vault)}\n\nNotes:\n{part}", NOTES_SCHEMA)
+            self._merge_notes(job, out, page)
+            job.done += 1
+            job.message = f"Read part {job.done} of {job.total}"
+            self.emit(job)
+            self.bus.emit("campaign.updated", {})
+        job.message = f"{len(made)} sessions added; {len(job.created)} new, {len(job.updated)} updated"
+        if len(made) < len(rows):
+            job.message += f"; {len(rows) - len(made)} already imported"
+        if job.skipped:
+            job.message += f"; left alone (fix in Obsidian first): {', '.join(job.skipped)}"
+
     def _import(self, job: Job, title: str, text: str) -> None:
         self.seed_known()
         stamp = time.strftime("%Y-%m-%d")
@@ -994,19 +1082,34 @@ class Memory:
         ]
         return "\n".join(out)
 
-    def _session_note(self, sid: str) -> Path | None:
-        """A session's existing write-up (re-running one replaces it instead of adding another)."""
-        for path in (self.vault.root / "Sessions").glob("*.md"):
+    def absorbed(self) -> dict[str, list[str]]:
+        """Surviving session id → ids of the sessions merged into it (their folders are in the trash)."""
+        out = {}
+        for path in self.sessions_dir().glob("*/meta.json"):
             try:
-                head = path.read_text(encoding="utf-8")[:400]
-            except OSError:
+                ids = json.loads(path.read_text(encoding="utf-8")).get("merged_from")
+            except (OSError, ValueError, AttributeError):
                 continue
-            if f"session_id: {sid}\n" in head:
-                return path
+            if isinstance(ids, list) and ids:
+                out[path.parent.name] = [i for i in ids if isinstance(i, str)]
+        return out
+
+    def _session_note(self, sid: str) -> Path | None:
+        """A session's existing write-up (re-running one replaces it instead of adding another). A merged
+        session without a page of its own takes over the page of a session merged into it."""
+        for want in (sid, *self.absorbed().get(sid, [])):
+            for path in (self.vault.root / "Sessions").glob("*.md"):
+                try:
+                    head = path.read_text(encoding="utf-8")[:400]
+                except OSError:
+                    continue
+                if f"session_id: {want}\n" in head:
+                    return path
         return None
 
     def written_up(self) -> dict[str, str]:
-        """session id → vault-relative path of its write-up."""
+        """session id → vault-relative path of its write-up. A session that other sessions were merged into
+        and has no page of its own shows the page of the first of them that has one."""
         out = {}
         for path in (self.vault.root / "Sessions").glob("*.md"):
             try:
@@ -1015,6 +1118,16 @@ class Memory:
                 continue
             if m:
                 out[m.group(1)] = str(path.relative_to(self.vault.root))
+        for path in (self.vault.root / "Notes").glob("*.md"):  # imported notes that stand in for a session
+            try:
+                m = re.search(r"^session: (\S+)$", path.read_text(encoding="utf-8")[:400], re.M)
+            except OSError:
+                continue
+            if m:
+                out.setdefault(m.group(1), str(path.relative_to(self.vault.root)))
+        for survivor, ids in self.absorbed().items():
+            if survivor not in out and (page := next((out[i] for i in ids if i in out), None)):
+                out[survivor] = page
         return out
 
 
@@ -1088,9 +1201,13 @@ class Word:
     example: str = ""
 
 
+# "Aww", "Mhm", "Ughh", "Hahaha": sounds people make, however many letters they hold.
+INTERJECTION = re.compile(r"(?:a+w+h?|m+h*m+|h+m+|u+g+h+|u+h+m*|o+h+|a+h+|e+w+|e+h+|(?:h+a+)+h*|h+e+h+|o+o+f+|p+h+e+w+)", re.I)
+
+
 def ordinary(word: str) -> bool:
-    """An everyday word (or a form of one, or a filler): never a name candidate."""
-    return word.casefold() in FILLERS or everyday(word)
+    """An everyday word (or a form of one, or a filler or interjection): never a name candidate."""
+    return word.casefold() in FILLERS or INTERJECTION.fullmatch(word) is not None or everyday(word)
 
 
 def scan_words(texts) -> dict[str, Word]:

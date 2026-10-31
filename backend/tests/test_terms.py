@@ -218,3 +218,9 @@ def test_a_file_without_a_terms_key_reads_as_empty_and_is_set_aside_on_write(fil
     assert len(list(mine.parent.glob("mine.corrupt-*.json"))) == 1
     mine.write_text("{}")
     assert client.delete("/api/terms/Zorbo").status_code == 409
+
+
+def test_like_lists_the_closest_spellings_first(client):
+    items = client.get("/api/terms", params={"like": "Halvard", "limit": 5}).json()["items"]
+    assert "Halberd" in [t["name"] for t in items]
+    assert client.get("/api/terms", params={"like": "qzxwvu"}).json()["items"] == []

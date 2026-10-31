@@ -275,6 +275,25 @@ def test_merge_appends_the_later_session(engine):
     assert _audio_seconds(engine.sessions_dir() / early / "audio.wav") == 2.0
 
 
+def test_merge_keeps_the_later_sessions_name_and_scenes_when_the_earlier_has_none(engine):
+    early = "2026-10-08_120000-aaaa"
+    late = "2026-10-08_120200-bbbb"
+    _saved(engine, early, 1_000, "A few words.")
+    late_dir = _saved(engine, late, 1_000 + 70, "The long session.")
+    meta = json.loads((late_dir / "meta.json").read_text())
+    (late_dir / "meta.json").write_text(json.dumps(meta | {"title": "The Drowned Abbey", "merged_from": ["older"]}))
+    (late_dir / "scenes.json").write_text(json.dumps([{"t": 3.0, "title": "Arrival", "place": None}]))
+    out = engine.merge_sessions([early, late])
+    assert out["title"] == "The Drowned Abbey"
+    assert out["merged_from"] == [late, "older"]
+    assert json.loads((engine.sessions_dir() / early / "scenes.json").read_text()) == [
+        {"t": 4.0, "title": "Arrival", "place": None}  # shifted by the 1s the earlier session lasts
+    ]
+    engine.unmerge_session(early)
+    assert not (engine.sessions_dir() / early / "scenes.json").exists()
+    assert (late_dir / "scenes.json").is_file()
+
+
 def test_merge_refuses_a_live_session(engine):
     early = "2026-10-08_120000-aaaa"
     _saved(engine, early, 1_000, "First half.")

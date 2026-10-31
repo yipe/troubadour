@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import AfterValidator, BaseModel, StringConstraints
-from troubadour.engine import SESSION_ID, pipeline
+from troubadour.engine import SESSION_ID, improve, pipeline
 from troubadour.lore import review as lore
 from troubadour.server import deps
 from troubadour.server.routers.campaign import EntityName, FactSuggestionOut, Kind, _Out, one_line
@@ -112,5 +112,9 @@ def review_item(sid: str, item_id: str, body: ReviewAction):
         it = deps._call(lore.act, ctx, item_id, body.action, body.text, body.about, "about" in body.model_fields_set)
     except lore.AlreadyDecided:
         raise HTTPException(409, "That item was already decided.") from None
+    if it.kind == "spelling" and it.status == "accepted" and it.heard and it.entity:
+        deps._call(
+            improve.replace_word, ctx.session_dir, deps.engine._transcript_lock, it.heard, it.entity
+        )  # the transcript shows the fix at once
     deps.memory.changed()
     return _item(it, _Out())

@@ -1,6 +1,7 @@
 """Saved sessions: list, merge, jobs over a recording, quality and audio."""
 
 import json
+import re
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Path
@@ -54,6 +55,7 @@ class SavedSession(BaseModel):
     """One saved session's summary."""
 
     id: str
+    kind: Literal["recording", "notes"]  # notes: imported notes standing in for a session (no audio, no transcript)
     n: int | None  # 1-based position among the campaign's sessions, oldest first (None: not listed)
     started_at: float  # epoch seconds
     source: Annotated[MicDesc | FileDesc | ReplayDesc, Field(discriminator="kind")] | None
@@ -117,6 +119,12 @@ def _conflict(fn, *args):
 SESSION_JOBS = ("improve", "retranscribe", "spelling", "incharacter", "refresh", "writeup", "recap")
 
 
+def _recorded(sid: str) -> None:
+    """409 for a notes-only session: it has no recording or transcript for a job to work on."""
+    if deps._call(deps.engine.session_kind, sid) == "notes":
+        raise HTTPException(409, "That session is imported notes: there is no recording or transcript to work on.")
+
+
 def _not_busy(*sids: str) -> None:
     """409 while a queued or running job works on one of these sessions: moving, merging or restoring
     its files under the job would lose either the job's result or the change."""
@@ -131,7 +139,7 @@ def merge_sessions(body: SessionMergeIn):
     sessions/.trash; `POST /api/sessions/{sid}/unmerge` undoes it."""
     with deps.campaign_gate:  # no job can start between the check and the move
         _not_busy(*body.ids)
-        kept = deps._call(deps.engine.merge_sessions, body.ids)
+        kept = _conflict(deps.engine.merge_sessions, body.ids)
     return _listed(kept["id"])
 
 
@@ -176,6 +184,7 @@ def saved_transcript(sid: str, fmt: Literal["md", "json"]):
 def improve_transcript(sid: str):
     """Re-transcribe a saved session with what the campaign knows now (a background job; it
     waits while a live session runs). The original is kept as transcript.orig.json."""
+    _recorded(sid)
     deps._call(deps.engine.session_file, sid, "json")
     deps._call(session_audio, sid)
     with deps.campaign_gate:
@@ -197,6 +206,7 @@ def improve_transcript(sid: str):
 def retranscribe(sid: str):
     """Re-assign who spoke each line from the recording. Words stay; hand-set speakers can move.
     The first original transcript is kept."""
+    _recorded(sid)
     deps._call(deps.engine.session_file, sid, "json")
     deps._call(session_audio, sid)
     with deps.campaign_gate:
@@ -213,6 +223,7 @@ def retranscribe(sid: str):
 @router.post("/api/sessions/{sid}/spelling", response_model=CampaignJob)
 def fix_spellings(sid: str):
     """The spelling cleanup over a saved session (a background job; the original is kept)."""
+    _recorded(sid)
     deps._call(deps.engine.session_file, sid, "json")
     with deps.campaign_gate:
         deps._require_open_campaign(sid)
@@ -229,6 +240,7 @@ def fix_spellings(sid: str):
 def estimate_in_character(sid: str):
     """Which of each player's lines were in character, read by the memory LLM (a background job;
     the original is kept)."""
+    _recorded(sid)
     deps._call(deps.engine.session_file, sid, "json")
     with deps.campaign_gate:
         deps._require_open_campaign(sid)
@@ -273,6 +285,7 @@ def refresh_session(sid: Annotated[str, Path(pattern=SESSION_PATTERN)]):
     listening, speakers, spellings, talk time, in-character lines, the write-up, the review list, the recap.
     Originals are kept; confirmed facts are never changed. 409 while a session runs."""
     _idle()
+    _recorded(sid)
     deps._call(deps.engine.session_file, sid, "json")
     _llm_ready(pipeline.make_plan(pipeline.Run(deps.engine, deps.memory, sid)))  # may ask the model server: not under the gate
     with deps.campaign_gate:
@@ -319,6 +332,7 @@ class Restored(BaseModel):
 @router.post("/api/sessions/{sid}/restore", response_model=Restored)
 def restore_transcript(sid: str):
     """Undo improvements: put the session's original transcript back."""
+    _recorded(sid)
     deps._call(deps.engine.session_file, sid, "json")
     with deps.campaign_gate:
         _not_busy(sid)
@@ -326,6 +340,28 @@ def restore_transcript(sid: str):
     if not restored:
         raise HTTPException(404, "this transcript was never improved")
     return {"restored": sid}
+
+
+class SessionNotes(BaseModel):
+    text: str
+
+
+@router.get("/api/sessions/{sid}/notes", response_model=SessionNotes)
+def session_notes(sid: Annotated[str, Path(pattern=SESSION_PATTERN)]):
+    """What a notes-only session says: its vault page without the front matter and heading. 404 for a recording."""
+    page = deps.memory.written_up().get(sid)
+    if deps._call(deps.engine.session_kind, sid) != "notes" or page is None:
+        raise HTTPException(404, f"not found: {sid}")
+    root = deps.vault.root.resolve()
+    path = (root / page).resolve()
+    if not path.is_relative_to(root):
+        raise HTTPException(404, f"not found: {sid}")
+    try:
+        body = path.read_text(encoding="utf-8")
+    except OSError:
+        raise HTTPException(404, f"not found: {sid}") from None
+    body = re.sub(r"\A---\n.*?\n---\n", "", body, count=1, flags=re.S)
+    return {"text": re.sub(r"\A\s*# .*\n", "", body, count=1).strip()}
 
 
 @router.get("/api/sessions/{sid}/quality", response_model=dict[str, Any])

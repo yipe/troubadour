@@ -19,6 +19,7 @@ const PLAYERS = [
 
 const tl = (n: number, over: Partial<TimelineSession> = {}): TimelineSession => ({
   id: `s${n}`,
+  kind: "recording",
   n,
   date: `2026-09-${String(((n - 1) % 28) + 1).padStart(2, "0")}`,
   title: `Title ${n}`,
@@ -62,6 +63,12 @@ it("orders who talked by share, biggest first, with no top-player line", () => {
   show([tl(1, { talk: { velis: 60, gm: 600, pip: 100 } })])
   expect(screen.getByRole("img", { name: /^Alex 79%, Pip 13%, Velis 8%/ })).toBeInTheDocument()
   expect(screen.queryByText(/Top player/)).not.toBeInTheDocument()
+})
+
+it("says From notes for a notes session, with no talk bar", () => {
+  show([tl(1, { kind: "notes", title: "Bells" }), tl(2, { talk: { gm: 600 } })])
+  expect(screen.getAllByText("From notes")).toHaveLength(1)
+  expect(screen.getAllByRole("img", { name: /Alex/ })).toHaveLength(1) // only the recorded session has a bar
 })
 
 it("links new faces to the codex and opens the session when its row is clicked", async () => {

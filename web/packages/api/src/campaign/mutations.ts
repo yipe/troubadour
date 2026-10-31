@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type { CampaignSuggestions } from "./types.ts"
 import {
   hideSuggestion,
@@ -21,7 +21,9 @@ import {
   editCampaignFact,
   editEntityFact,
   ignoreWords,
+  addNotesSession,
   importNotes,
+  previewImport,
   mergeEntity,
   reviewEntity,
   seekFacts,
@@ -29,7 +31,16 @@ import {
   updateEntity,
   writeUp,
 } from "./endpoints.ts"
-import type { Entity, EntityFactCreate, EntityPatch, EntityReview, FactCreate, FactEdit } from "./types.ts"
+import type {
+  Entity,
+  EntityFactCreate,
+  EntityPatch,
+  EntityReview,
+  FactCreate,
+  FactEdit,
+  ImportRow,
+  NotesSessionInput,
+} from "./types.ts"
 
 /*
  * Every campaign write here goes through `useCampaignWrite`: one at a time, each computed from the
@@ -247,8 +258,23 @@ export function useUnrejectMisheard() {
 /* ---- Background jobs: the response is the queued job, put into the campaign's job list ---- */
 
 export function useImportNotes() {
-  return useCampaignWrite((vars: { title: string; text: string }) => importNotes(vars.title, vars.text), {
+  return useCampaignWrite(
+    (vars: { title: string; text: string; sessions?: ImportRow[] }) =>
+      importNotes(vars.title, vars.text, vars.sessions),
+    { apply: (job) => withNewJob(job) },
+  )
+}
+
+export function useAddNotesSession() {
+  return useCampaignWrite((session: NotesSessionInput) => addNotesSession(session), {
     apply: (job) => withNewJob(job),
+  })
+}
+
+/** The split of a paste, asked for when the Import tab's text settles; a pure call, so it is a mutation only for its trigger. */
+export function usePreviewImport() {
+  return useMutation({
+    mutationFn: (vars: { title: string; text: string }) => previewImport(vars.title, vars.text),
   })
 }
 

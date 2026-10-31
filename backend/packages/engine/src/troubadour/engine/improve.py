@@ -10,6 +10,7 @@ as nothing keep their old text: an improvement never deletes what was said.
 """
 
 import json
+import re
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
@@ -270,6 +271,24 @@ def fix_spellings(job, engine: Engine, sid: str, emit: Callable[[], None]) -> No
     new["session"] = new["session"] | {"spelling": {"at": time.time(), "fixed": fixed}}
     save(folder, new, engine._transcript_lock)
     job.message = f"{fixed} spellings fixed"
+
+
+def replace_word(folder: Path, lock: AbstractContextManager, heard: str, name: str) -> int:
+    """Spell `heard` as `name` wherever it stands as a whole word in a saved session's transcript, any case,
+    keeping the original (like Improve) and recording each change as a fix. Returns the lines changed."""
+    record = json.loads((folder / "transcript.json").read_text(encoding="utf-8"))
+    word = re.compile(rf"(?<!\w){re.escape(heard)}(?!\w)", re.IGNORECASE)
+    changed, messages = 0, []
+    for m in record["messages"]:
+        edits = [(hit.start(), hit.end(), name) for hit in word.finditer(m["text"])]
+        if edits:
+            text, fixes = cleanup.apply(m["text"], m.get("fixes", []), edits)
+            m = m | {"text": text, "fixes": fixes}
+            changed += 1
+        messages.append(m)
+    if changed:
+        save(folder, record | {"messages": messages}, lock)
+    return changed
 
 
 def label_in_character(job, engine: Engine, sid: str, llm) -> None:

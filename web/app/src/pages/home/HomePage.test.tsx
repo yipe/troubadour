@@ -70,7 +70,10 @@ describe("Home", () => {
 
   it("offers the next session number", () => {
     home()
-    expect(screen.getByRole("button", { name: /Prepare session 3/ })).toHaveAttribute("href", "/sessions/new")
+    expect(screen.getByRole("button", { name: /Prepare next session/ })).toHaveAttribute(
+      "href",
+      "/sessions/new",
+    )
   })
 
   it("shows the review banner with open counts, and hides it once decided", () => {
@@ -102,7 +105,7 @@ describe("Home", () => {
     home()
     expect(screen.getByText("Pip")).toBeInTheDocument()
     expect(screen.getByText("Trained")).toBeInTheDocument()
-    expect(screen.getByText(/1 player · voices trained 1\/1/)).toBeInTheDocument()
+    expect(screen.queryByText(/voices trained/)).not.toBeInTheDocument()
   })
 
   it("says so when there are no sessions", () => {
@@ -113,7 +116,7 @@ describe("Home", () => {
       ],
     })
     expect(screen.getByText("No sessions yet")).toBeInTheDocument()
-    expect(screen.getAllByRole("button", { name: "Prepare session 1" }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole("button", { name: "Prepare next session" }).length).toBeGreaterThan(0)
   })
 
   it("points the primary button back to a running session", () => {

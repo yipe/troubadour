@@ -26,7 +26,6 @@ export const patterns = {
   live: "/sessions/live",
   session: "/sessions/:id",
   review: "/sessions/:id/review",
-  transcript: "/sessions/:id/transcript",
   recap: "/sessions/:id/recap",
   timeline: "/timeline",
   codex: "/codex",
@@ -40,6 +39,7 @@ export const patterns = {
   oldSession: "/session",
   oldHistory: "/history",
   oldHistoryEntry: "/history/:id",
+  oldTranscript: "/sessions/:id/transcript",
   oldCampaign: "/campaign",
   oldCampaignEntry: "/campaign/:entry",
 } as const
@@ -72,8 +72,8 @@ export const paths = {
   live: () => patterns.live,
   session: (id: string) => `/sessions/${seg(id)}`,
   review: (id: string) => `/sessions/${seg(id)}/review`,
-  /** `t`: session seconds to scroll to and highlight. */
-  transcript: (id: string, t?: number) => withQuery(`/sessions/${seg(id)}/transcript`, { t }),
+  /** The transcript is the end of the session page. `t`: session seconds to scroll to and highlight. */
+  transcript: (id: string, t?: number) => `${withQuery(`/sessions/${seg(id)}`, { t })}#transcript`,
   recap: (id: string) => `/sessions/${seg(id)}/recap`,
   timeline: () => patterns.timeline,
   codex: (entry?: string) => (entry === undefined ? patterns.codex : `/codex/${seg(entry)}`),

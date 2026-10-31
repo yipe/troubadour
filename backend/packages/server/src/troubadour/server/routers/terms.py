@@ -1,6 +1,7 @@
 """The D&D names the spelling cleanup knows: browse them, add your own, upload a list."""
 
 import csv
+import difflib
 import json
 from typing import Annotated, Literal
 
@@ -79,6 +80,7 @@ def _effective() -> list[TermOut]:
 @router.get("/api/terms", response_model=TermsOut)
 def list_terms(
     q: Annotated[str, Query(max_length=60)] = "",
+    like: Annotated[str, Query(max_length=60)] = "",
     source: Source | None = None,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
@@ -91,6 +93,10 @@ def list_terms(
     )
     needle = q.strip().casefold()
     hits = [t for t in everything if (source is None or t.source == source) and needle in t.name.casefold()]
+    if like.strip():  # the closest spellings first: "Halvard" finds Halberd
+        by_name = {t.name.casefold(): t for t in hits}
+        close = difflib.get_close_matches(like.strip().casefold(), list(by_name), n=MAX_PAGE, cutoff=0.6)
+        hits = [by_name[name] for name in close]
     return TermsOut(counts=counts, items=hits[offset : offset + limit], total=len(hits))
 
 

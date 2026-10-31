@@ -288,3 +288,42 @@ def test_an_autosave_keeps_the_reviewed_time(started, engine):
     engine.save_transcript(force=True)
     assert json.loads((folder / "meta.json").read_text())["reviewed_at"] == stamp
     assert json.loads((folder / "transcript.json").read_text())["session"]["reviewed_at"] == stamp
+
+
+def test_a_merged_session_shows_the_name_and_summary_of_the_session_merged_into_it(engine, client, tmp_path, monkeypatch):
+    early, late = "2026-01-01_000000-aaaa", "2026-01-01_010000-bbbb"
+    _write_saved(engine, early, 1.0, {"merged_from": [late]})  # unnamed, and the later session was merged into it
+    monkeypatch.setattr(deps.vault, "_root", tmp_path)
+    page = tmp_path / "Sessions" / "2026-01-01 The Abbey.md"
+    page.parent.mkdir()
+    page.write_text(PAGE.replace("session_id: x", f"session_id: {late}"))  # the write-up the later session had
+    monkeypatch.setattr(deps.memory, "sessions_dir", engine.sessions_dir)
+    row = client.get("/api/sessions").json()[0]
+    assert row["title"] == "The Abbey"
+    assert row["summary"] == "The party reached Saltreach at dusk."
+    assert client.get("/api/campaign").json()["written_up"][early] == "Sessions/2026-01-01 The Abbey.md"
+
+
+def test_a_notes_session_lists_on_the_timeline_and_refuses_audio_jobs(engine, client, tmp_path, monkeypatch):
+    monkeypatch.setattr(deps.vault, "_root", tmp_path)
+    monkeypatch.setattr(deps.memory, "sessions_dir", engine.sessions_dir)
+    rec, note = "2026-01-02_120000-aaaa", "2026-01-01_120000-bbbb"
+    _write_saved(engine, rec, 2_000_000_000.0, messages=[])
+    _write_saved(
+        engine, note, 1_990_000_000.0, {"kind": "notes", "note": "Notes/2026-01-01 Bells.md", "campaign": engine.campaign}
+    )
+    (tmp_path / "Notes").mkdir()
+    (tmp_path / "Notes" / "2026-01-01 Bells.md").write_text(
+        f"---\ntype: notes\nsession: {note}\n---\n# 2026-01-01 Bells\n\nWe rang them.\n"
+    )
+    rows = {r["id"]: r for r in client.get("/api/sessions").json()}
+    assert (rows[note]["kind"], rows[rec]["kind"], rows[note]["title"]) == ("notes", "recording", "Bells")
+    line = {s["id"]: s for s in client.get("/api/campaign/timeline").json()["sessions"]}
+    assert (line[note]["kind"], line[note]["n"], line[rec]["n"]) == ("notes", 1, 2)  # numbered in date order
+    for path in ("improve", "retranscribe", "spelling", "in-character", "refresh", "restore"):
+        assert client.post(f"/api/sessions/{note}/{path}").status_code == 409, path
+    assert client.get(f"/api/sessions/{note}/notes").json() == {"text": "We rang them."}
+    assert client.get(f"/api/sessions/{rec}/notes").status_code == 404
+    assert client.post("/api/sessions/merge", json={"ids": [note, rec]}).status_code == 409
+    assert client.post(f"/api/campaign/writeup/{note}").status_code == 409
+    assert client.delete(f"/api/sessions/{note}").status_code == 204

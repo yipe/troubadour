@@ -25,6 +25,7 @@ describe("old URLs", () => {
     ["/session", "/sessions/live"],
     ["/history", "/sessions"],
     ["/history/12", "/sessions/12"],
+    ["/sessions/12/transcript", "/sessions/12"],
     ["/campaign", "/codex"],
     ["/campaign/Captain%20Orsa%20Vell", "/codex/Captain%20Orsa%20Vell"],
   ]
@@ -36,7 +37,7 @@ describe("old URLs", () => {
       route: from,
     })
     await waitFor(() => expect(router.state.location.pathname).toBe(to))
-    await waitFor(() => expect(screen.getByRole("heading")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByRole("heading")[0]).toBeInTheDocument())
   })
 })
 

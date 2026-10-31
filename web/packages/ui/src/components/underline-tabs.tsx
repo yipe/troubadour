@@ -7,6 +7,11 @@ export type UnderlineTabsProps = {
   items: TabItem[]
   value: string
   onChange?: (id: string) => void
+  /**
+   * `nav` is the top bar: DPRcalc's UnderlinedTab (serif 18px, colour never changes, a 2px
+   * underline inset one corner radius from each edge that floats under the text, fades in on hover
+   * and stays on the active tab). `panel` is the in-page tab strip: smaller, state shown by weight and colour.
+   */
   size?: "nav" | "panel"
   /** Replaces the default button or link, for router links. Spread `props` onto the element. */
   renderItem?: (
@@ -32,11 +37,20 @@ export function UnderlineTabs({
         const props = {
           role: "tab" as const,
           "aria-selected": active,
-          className: cn(
-            "-mb-px flex items-center gap-1.5 border-b-2 pb-2",
-            size === "nav" ? "text-15" : "text-14",
-            active ? "text-ink border-accent-strong font-semibold" : "text-ink-subtle border-transparent",
-          ),
+          className:
+            size === "nav"
+              ? cn(
+                  "relative inline-flex items-center gap-1.5 rounded-lg px-2 font-serif text-18 font-medium text-ink",
+                  // The underline floats just below the text (not on the bar's edge), like DPRcalc's.
+                  "after:absolute after:inset-x-2 after:top-full after:mt-[1.5px] after:h-0.5 after:transition-colors after:duration-500 hover:after:bg-accent",
+                  active ? "after:bg-accent" : "after:bg-transparent",
+                )
+              : cn(
+                  "-mb-px flex items-center gap-1.5 border-b-2 pb-2 text-14",
+                  active
+                    ? "text-ink border-accent-strong font-semibold"
+                    : "text-ink-subtle border-transparent",
+                ),
         }
         const content = (
           <>

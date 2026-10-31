@@ -45,10 +45,20 @@ describe("TimestampLink", () => {
     expect(screen.getByTestId("where")).toHaveTextContent("/")
   })
 
-  it("opens the transcript at t when there is no audio", () => {
+  it("turns into a stop button while its moment plays, and stops it", () => {
+    setup(true)
+    fireEvent.click(screen.getByRole("button", { name: "S12 · 1:41:55" }))
+    const audio = document.querySelector("audio")!
+    audio.dispatchEvent(new Event("loadedmetadata"))
+    const stop = screen.getByRole("button", { name: "Stop S12 · 1:41:55" })
+    fireEvent.click(stop)
+    expect(screen.getByRole("button", { name: "S12 · 1:41:55" })).toBeInTheDocument()
+  })
+
+  it("opens the session at the transcript line at t when there is no audio", () => {
     const play = setup(false)
     fireEvent.click(screen.getByRole("button"))
     expect(play).not.toHaveBeenCalled()
-    expect(screen.getByTestId("where")).toHaveTextContent("/sessions/s12/transcript?t=6115")
+    expect(screen.getByTestId("where")).toHaveTextContent("/sessions/s12?t=6115")
   })
 })

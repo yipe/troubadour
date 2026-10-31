@@ -1,6 +1,6 @@
-import { Feather } from "lucide-react"
 import type { CSSProperties, Ref } from "react"
 import type { Recap } from "@troubadour/api/recap"
+import { LuteIcon } from "../../components/brand/LuteIcon.tsx"
 import { PlayerAvatar } from "../../components/people/PlayerAvatar.tsx"
 import { hms } from "../../lib/format.ts"
 
@@ -26,7 +26,7 @@ export function RecapCard({ recap, label, players, cardRef }: RecapCardProps) {
       className="w-[620px] overflow-hidden rounded-dialog border border-line-strong bg-canvas shadow-popover"
     >
       <div className="flex items-center gap-2.5 border-b border-line px-[30px] pt-[26px] pb-[18px]">
-        <Feather size={18} className="text-accent" aria-hidden />
+        <LuteIcon size={18} className="text-accent" />
         <span className="text-12 font-bold tracking-[0.1em] text-ink-subtle uppercase">{label}</span>
       </div>
       <div className="flex flex-col gap-3.5 px-[30px] pt-[22px] pb-1.5">

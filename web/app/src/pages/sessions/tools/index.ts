@@ -1,3 +1,4 @@
+export { AddNotesDialog } from "./AddNotesDialog.tsx"
 export { ExportMenu } from "./ExportMenu.tsx"
 export { ImproveDialog } from "./ImproveDialog.tsx"
 export { MergeDialog } from "./MergeDialog.tsx"

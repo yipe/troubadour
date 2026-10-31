@@ -1,0 +1,156 @@
+[
+  {
+    "name": "markdown headings with n and title",
+    "text": "# Session 1: The Road\nWe left town.\n\n# Session 2: The Abbey\nWe arrived.",
+    "expected": [
+      {
+        "n": 1,
+        "date": null,
+        "title": "The Road",
+        "text": "We left town."
+      },
+      {
+        "n": 2,
+        "date": null,
+        "title": "The Abbey",
+        "text": "We arrived."
+      }
+    ]
+  },
+  {
+    "name": "plain heading lines with dates",
+    "text": "Session 1 (Sept 14, 2026)\nFought a bear.\nSession 2 - 2026-09-21 - Debts\nPaid up.",
+    "expected": [
+      {
+        "n": 1,
+        "date": "2026-09-14",
+        "title": null,
+        "text": "Fought a bear."
+      },
+      {
+        "n": 2,
+        "date": "2026-09-21",
+        "title": "Debts",
+        "text": "Paid up."
+      }
+    ]
+  },
+  {
+    "name": "S3 - Oct 2 has a date but no year",
+    "text": "S3 - Oct 2\nRested.\nS4 - Oct 9\nTravelled.",
+    "expected": [
+      {
+        "n": 3,
+        "date": null,
+        "title": null,
+        "text": "Rested."
+      },
+      {
+        "n": 4,
+        "date": null,
+        "title": null,
+        "text": "Travelled."
+      }
+    ]
+  },
+  {
+    "name": "date-only headings",
+    "text": "2026-09-14\nOne.\nSept 21, 2026\nTwo.",
+    "expected": [
+      {
+        "n": null,
+        "date": "2026-09-14",
+        "title": null,
+        "text": "One."
+      },
+      {
+        "n": null,
+        "date": "2026-09-21",
+        "title": null,
+        "text": "Two."
+      }
+    ]
+  },
+  {
+    "name": "a markdown date heading may carry a title",
+    "text": "## 2026-09-14 - The Abbey\nOne.\n## 14 Sept 2026\nTwo.",
+    "expected": [
+      {
+        "n": null,
+        "date": "2026-09-14",
+        "title": "The Abbey",
+        "text": "One."
+      },
+      {
+        "n": null,
+        "date": "2026-09-14",
+        "title": null,
+        "text": "Two."
+      }
+    ]
+  },
+  {
+    "name": "text before the first heading is dropped",
+    "text": "Cast list.\n\nSession 1\nA.\nSession 2\nB.",
+    "expected": [
+      {
+        "n": 1,
+        "date": null,
+        "title": null,
+        "text": "A."
+      },
+      {
+        "n": 2,
+        "date": null,
+        "title": null,
+        "text": "B."
+      }
+    ]
+  },
+  {
+    "name": "a single heading is not a clear split",
+    "text": "Session 1\nOnly one.",
+    "expected": []
+  },
+  {
+    "name": "ordinary headings and a sentence that starts with a date are not session headings",
+    "text": "# NPCs\nBob.\n## Places\nOct 2, 2026: we met the queen.\nSession 12 was great.\nSession 13 was better.",
+    "expected": []
+  },
+  {
+    "name": "an impossible date is no date",
+    "text": "Session 1 (2026-02-30)\nA.\nSession 2\nB.",
+    "expected": [
+      {
+        "n": 1,
+        "date": null,
+        "title": null,
+        "text": "A."
+      },
+      {
+        "n": 2,
+        "date": null,
+        "title": null,
+        "text": "B."
+      }
+    ]
+  },
+  {
+    "name": "sub-headings stay in the session's text",
+    "text": "Session 1\n## Highlights\n- a\nSession 2\nb",
+    "expected": [
+      {
+        "n": 1,
+        "date": null,
+        "title": null,
+        "text": "## Highlights\n- a"
+      },
+      {
+        "n": 2,
+        "date": null,
+        "title": null,
+        "text": "b"
+      }
+    ]
+  }
+]

@@ -21,6 +21,7 @@ class NewEntity(BaseModel):
 
 class TimelineSession(BaseModel):
     id: str
+    kind: Literal["recording", "notes"]  # notes: imported notes (no talk data)
     n: int
     date: str  # YYYY-MM-DD, local time
     title: str | None  # the write-up's title, else the working title

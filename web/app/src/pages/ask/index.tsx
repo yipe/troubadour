@@ -66,42 +66,8 @@ export function Component() {
 
   return (
     <RailLayout
-      railWidth={340}
       rail={
         <div className="flex flex-col gap-4 p-4">
-          <form
-            className="flex flex-col gap-2"
-            onSubmit={(e) => {
-              e.preventDefault()
-              send(question)
-            }}
-          >
-            <Textarea
-              aria-label="Ask about the campaign"
-              rows={3}
-              maxLength={MAX_QUESTION}
-              value={question}
-              placeholder="Who did we suspect has the diamond?"
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  send(question)
-                }
-              }}
-            />
-            <Button type="submit" disabled={!question.trim() || ask.isPending}>
-              Ask
-            </Button>
-            {ask.isError ? (
-              <p role="alert" className="text-12 text-danger">
-                {ask.error.message}
-              </p>
-            ) : null}
-            <p className="text-12 text-ink-subtle">
-              Answers come from your transcripts and notes, on this Mac. They aren't saved as facts.
-            </p>
-          </form>
           <nav aria-label="Past questions" className="flex flex-col gap-0.5">
             {newestFirst.length === 0 ? (
               <p className="px-3 text-14 text-ink-subtle">No questions yet.</p>
@@ -131,10 +97,47 @@ export function Component() {
         </div>
       }
     >
-      <div className="mx-auto flex max-w-3xl flex-col gap-6 p-5 md:p-10">
+      <div className="flex max-w-3xl flex-col gap-6 p-5 md:p-10">
+        <PageHeading
+          title="Ask"
+          subtitle="Ask anything about the campaign and the answer cites its sources."
+        />
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            send(question)
+          }}
+        >
+          <Textarea
+            aria-label="Ask about the campaign"
+            rows={3}
+            maxLength={MAX_QUESTION}
+            value={question}
+            placeholder="Who did we suspect has the diamond?"
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                send(question)
+              }
+            }}
+          />
+          <Button type="submit" disabled={!question.trim() || ask.isPending}>
+            Ask
+          </Button>
+          {ask.isError ? (
+            <p role="alert" className="text-12 text-danger">
+              {ask.error.message}
+            </p>
+          ) : null}
+          <p className="text-12 text-ink-subtle">
+            Answers come from your transcripts and notes, on this Mac. They aren't saved as facts.
+          </p>
+        </form>
         {current ? (
-          <>
-            <PageHeading title={current.question} />
+          <section aria-label="Answer" className="flex flex-col gap-4 border-t border-line pt-6">
+            <h2 className="font-serif text-24 leading-tight font-bold text-ink">{current.question}</h2>
             <AskAnswer
               key={current.id}
               answer={current}
@@ -150,13 +153,8 @@ export function Component() {
                 </Button>
               }
             />
-          </>
-        ) : (
-          <PageHeading
-            title="Ask"
-            subtitle="Ask anything about the campaign and the answer cites its sources."
-          />
-        )}
+          </section>
+        ) : null}
       </div>
     </RailLayout>
   )

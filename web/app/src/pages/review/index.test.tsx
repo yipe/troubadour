@@ -5,6 +5,7 @@ import { Route, Routes } from "react-router"
 import { afterEach, expect, it, vi } from "vitest"
 import type { Fact } from "@troubadour/api/campaign"
 import type { Review, ReviewItem } from "@troubadour/api/review"
+import type { Term } from "@troubadour/api/terms"
 import {
   bodyOf,
   campaign,
@@ -93,7 +94,14 @@ const unknown: ReviewItem = {
 
 function open(
   items: ReviewItem[],
-  options: { writtenUp?: boolean; fail?: string; facts?: Fact[]; failReviewed?: boolean } = {},
+  options: {
+    writtenUp?: boolean
+    fail?: string
+    facts?: Fact[]
+    failReviewed?: boolean
+    terms?: Term[]
+    entries?: string[]
+  } = {},
 ) {
   const state = new Map(items.map((i) => [i.id, i]))
   const review = (): Review => {
@@ -116,7 +124,14 @@ function open(
     if (c.url === "/api/sessions/s1/transcript.json") return record
     if (c.url === "/api/sessions/s1/review") return review()
     if (c.url === "/api/campaign")
-      return campaign({ facts: options.facts, entities: [entity({ name: "Diamond of Ysolde" })] })
+      return campaign({
+        facts: options.facts,
+        entities: (options.entries ?? ["Diamond of Ysolde"]).map((name) => entity({ name })),
+      })
+    if (c.url.startsWith("/api/terms")) {
+      const items = options.terms ?? []
+      return { counts: { builtin: items.length, local: 0, custom: 0 }, items, total: items.length }
+    }
     if (c.url === "/api/sessions/s1/reviewed")
       return options.failReviewed ? httpError(500, "Disk full.") : { id: "s1", reviewed_at: 1 }
     if (c.method === "POST" && c.url.startsWith("/api/sessions/s1/review/")) {
@@ -132,7 +147,7 @@ function open(
     }
     return []
   })
-  renderWithProviders(
+  const view = renderWithProviders(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 900, itemHeight: 80 }}>
       <Routes>
         <Route path="/sessions/:id/review" element={<ReviewPage />} />
@@ -146,7 +161,7 @@ function open(
       .writes()
       .filter((c) => c.url.includes("/review/"))
       .map((c) => [decodeURIComponent(c.url.split("/review/")[1]!), c.body])
-  return { ...fetchMock, decisions }
+  return { ...fetchMock, decisions, container: view.container }
 }
 
 const click = (name: string | RegExp, index = 0) =>
@@ -201,14 +216,40 @@ it("accepts a known spelling", async () => {
   expect(t.decisions()).toEqual([["spelling:isolde", { action: "accept" }]])
 })
 
-it("asks for a name before adding an unknown word to the codex", async () => {
+it("lets you search the codex and the D&D terms for what an unknown word should be", async () => {
+  const t = open([unknown], { terms: [{ name: "Zorbo's Axe", type: "item", source: "builtin" }] })
+  await screen.findByText(/Unknown word/)
+  click("Choose the name")
+  expect(screen.getByRole("button", { name: "Fix spelling" })).toBeDisabled() // nothing chosen yet
+  fireEvent.click(screen.getByRole("button", { name: "Real name" }))
+  // Before anything is typed, the terms closest to what was heard are offered.
+  fireEvent.click(await screen.findByRole("option", { name: /Zorbo's Axe/ }))
+  expect(screen.getByRole("button", { name: "Real name" })).toHaveTextContent("Zorbo's Axe")
+  fireEvent.click(screen.getByRole("button", { name: "Fix spelling" }))
+  await screen.findByText("✓ Accepted")
+  expect(t.calls.some((c) => c.url.startsWith("/api/terms") && c.url.includes("like=Zorbo"))).toBe(true)
+  expect(t.decisions()).toEqual([["spelling:zorbo", { action: "accept", text: "Zorbo's Axe" }]])
+})
+
+it("lets a suggested spelling be pointed at a different entry", async () => {
+  const t = open([spelling], { entries: ["Ysolde", "Isold"] })
+  await screen.findByText(/Fixed in 2 lines/)
+  click("Change…")
+  fireEvent.click(screen.getByRole("button", { name: "Real name" }))
+  fireEvent.click(await screen.findByRole("option", { name: "Isold" })) // sounds like "Isolde"
+  fireEvent.click(screen.getByRole("button", { name: "Fix spelling" }))
+  await screen.findByText("✓ Accepted")
+  expect(t.decisions()).toEqual([["spelling:isolde", { action: "accept", text: "Isold" }]])
+})
+
+it("accepts a name typed by hand", async () => {
   const t = open([unknown])
   await screen.findByText(/Unknown word/)
-  click("Add to codex")
-  const input = screen.getByLabelText(/Name for the new codex entry/)
-  expect(input).toHaveValue("Zorbo")
-  fireEvent.change(input, { target: { value: "Zorbo the Bold" } })
-  fireEvent.click(screen.getAllByRole("button", { name: "Add to codex" }).at(-1)!)
+  click("Choose the name")
+  fireEvent.click(screen.getByRole("button", { name: "Real name" }))
+  fireEvent.change(await screen.findByRole("combobox"), { target: { value: "Zorbo the Bold" } })
+  fireEvent.click(await screen.findByRole("option", { name: "Use “Zorbo the Bold”" }))
+  fireEvent.click(screen.getByRole("button", { name: "Fix spelling" }))
   await screen.findByText("✓ Accepted")
   expect(t.decisions()).toEqual([["spelling:zorbo", { action: "accept", text: "Zorbo the Bold" }]])
 })
@@ -321,4 +362,21 @@ it("says the write-up is running and lists notebook-only items below the lines",
   expect(await screen.findByText("This session isn’t written up yet")).toBeInTheDocument()
   expect(screen.getByText("From the live notebook")).toBeInTheDocument()
   expect(screen.getByText("Kept from the notebook")).toBeInTheDocument()
+})
+
+it("Next to review steps through the lines that still have something open, and wraps", async () => {
+  const { container } = open([fact("1"), entryItem, spelling])
+  await screen.findByText("Fact 1")
+  const current = () =>
+    (container.querySelector('[aria-current="true"]') as HTMLElement | null)?.dataset.lineId
+  const next = () => fireEvent.click(screen.getByRole("button", { name: /Next to review/ }))
+  expect(screen.getByRole("button", { name: /Next to review/ })).toHaveTextContent("(3)")
+  next()
+  expect(current()).toBe("a")
+  next()
+  expect(current()).toBe("b")
+  next()
+  expect(current()).toBe("c")
+  next()
+  expect(current()).toBe("a") // back to the first
 })

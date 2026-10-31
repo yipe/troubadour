@@ -6,7 +6,7 @@ import { useWriteUp } from "@troubadour/api/campaign"
 import { useLive } from "@troubadour/api/live"
 import { useSessionRecord, type SavedSession } from "@troubadour/api/sessions"
 import { Button } from "@troubadour/ui/button"
-import { SectionLabel } from "@troubadour/ui/section-label"
+import { SectionHeading } from "@troubadour/ui/section-heading"
 import { TimestampLink } from "../../components/audio/TimestampLink.tsx"
 import { JobStatus } from "../../components/jobs/JobStatus.tsx"
 import { useJob } from "../../components/jobs/useJob.ts"
@@ -15,6 +15,7 @@ import { dateLong, duration, durationShort, timeRange } from "../../lib/format.t
 import { sessionStatus } from "../../lib/sessions.ts"
 import { paths } from "../../paths.ts"
 import { StatTile } from "./StatTile.tsx"
+import { SessionTranscript } from "./transcript/SessionTranscript.tsx"
 import { openSuggestions, sceneLengths, sessionGains, sessionTitle } from "./stats.ts"
 import { ExportMenu, ImproveDialog, MergeDialog, QualityDialog, SessionMenu } from "./tools/index.ts"
 
@@ -59,14 +60,19 @@ export function SessionDetail({ session, numbers }: SessionDetailProps) {
     <div className="flex flex-col gap-5 px-5 py-7 md:px-10">
       <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
         <div className="min-w-[16rem] flex-1">
-          <div className="text-13 text-ink-subtle">
+          <h1 className="font-serif text-32 font-bold text-accent">{sessionTitle(session)}</h1>
+          <div className="mt-0.5 text-13 text-ink-subtle">
             {session.n === null ? "Session" : `Session ${session.n}`} · {dateLong(session.started_at)} ·{" "}
             {timeRange(session.started_at, session.started_at + session.duration_s)}
           </div>
-          <h1 className="mt-0.5 font-serif text-32 font-bold">{sessionTitle(session)}</h1>
         </div>
         <ExportMenu session={session} />
-        <SessionMenu session={session} onMerge={() => setDialog("merge")} />
+        <SessionMenu
+          session={session}
+          onMerge={() => setDialog("merge")}
+          onImprove={() => setDialog("improve")}
+          {...(writtenUp ? { onWriteUp: () => writeUp.mutate(session.id) } : {})}
+        />
         <Button size="lg" nativeButton={false} render={<Link to={paths.transcript(session.id)} />}>
           <ScrollText className="size-3.5" />
           Transcript
@@ -87,6 +93,24 @@ export function SessionDetail({ session, numbers }: SessionDetailProps) {
         ) : null}
       </div>
 
+      {session.merged_from.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-card border border-line bg-surface px-4 py-3 text-13 text-ink-muted">
+          <span className="min-w-[16rem] flex-1">
+            Merged with{" "}
+            {session.merged_from.length === 1 ? "another session" : `${session.merged_from.length} sessions`}.
+            The facts and names below come from before the merge: improve the transcript and write it up again
+            to refresh them.
+          </span>
+          <Button onClick={() => setDialog("improve")}>Improve transcript</Button>
+          <Button
+            disabled={writeUp.isPending || job?.state === "queued" || job?.state === "running"}
+            onClick={() => writeUp.mutate(session.id)}
+          >
+            {writtenUp ? "Write up again" : "Write up"}
+          </Button>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {stats.map(([value, label]) => (
           <StatTile key={label} value={value} label={label} />
@@ -95,7 +119,7 @@ export function SessionDetail({ session, numbers }: SessionDetailProps) {
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-3">
-          <SectionLabel>Recap</SectionLabel>
+          <SectionHeading>Recap</SectionHeading>
           {session.summary ? (
             <p className="font-serif text-[17px] leading-[1.6] text-ink-muted">{session.summary}</p>
           ) : (
@@ -113,12 +137,12 @@ export function SessionDetail({ session, numbers }: SessionDetailProps) {
               )}
             </div>
           )}
-          <SectionLabel className="mt-2">Who talked</SectionLabel>
+          <SectionHeading className="mt-2">Who talked</SectionHeading>
           <TalkShareBar talk={session.talk} players={players} />
         </div>
 
         <div className="flex flex-col gap-2">
-          <SectionLabel>Scenes</SectionLabel>
+          <SectionHeading>Scenes</SectionHeading>
           {scenes.length === 0 ? (
             <p className="text-ink-subtle">Scenes appear after the write-up.</p>
           ) : (
@@ -129,7 +153,12 @@ export function SessionDetail({ session, numbers }: SessionDetailProps) {
                   className="flex items-center gap-3 border-b border-line bg-surface px-3.5 py-2.5 last:border-b-0"
                 >
                   <span className="w-20 shrink-0">
-                    <TimestampLink sessionId={session.id} t={scene.t} hasAudio={session.audio} />
+                    <TimestampLink
+                      sessionId={session.id}
+                      t={scene.t}
+                      hasAudio={session.audio}
+                      revealOnHover
+                    />
                   </span>
                   <span className="flex-1">{scene.title}</span>
                   <span className="text-12 text-ink-subtle">{duration(lengths[i] ?? 0)}</span>
@@ -148,15 +177,12 @@ export function SessionDetail({ session, numbers }: SessionDetailProps) {
                   <span className={`size-2 rounded-full ${quality.dot}`} />
                   {quality.label}
                 </button>
-                <span aria-hidden>·</span>
               </>
             )}
-            <Button variant="link" className="text-12 font-normal" onClick={() => setDialog("improve")}>
-              Improve transcript
-            </Button>
           </div>
         </div>
       </div>
+      <SessionTranscript session={session} onImprove={() => setDialog("improve")} />
       <QualityDialog session={session} open={dialog === "quality"} onOpenChange={setOpen("quality")} />
       <ImproveDialog session={session} open={dialog === "improve"} onOpenChange={setOpen("improve")} />
       <MergeDialog session={session} open={dialog === "merge"} onOpenChange={setOpen("merge")} />

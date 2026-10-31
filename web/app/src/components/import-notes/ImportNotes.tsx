@@ -1,7 +1,8 @@
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Upload } from "lucide-react"
-import { useCampaign, useImportNotes } from "@troubadour/api/campaign"
+import { useCampaign, useImportNotes, usePreviewImport } from "@troubadour/api/campaign"
 import { Button } from "@troubadour/ui/button"
+import { Checkbox } from "@troubadour/ui/checkbox"
 import { Chip } from "@troubadour/ui/chip"
 import { Field } from "@troubadour/ui/field"
 import { Input } from "@troubadour/ui/input"
@@ -10,6 +11,7 @@ import { EntityLink } from "../entity/EntityLink.tsx"
 import { JobStatus } from "../jobs/JobStatus.tsx"
 import { jobActive } from "../jobs/progress.ts"
 import { appendFiles } from "./appendFiles.ts"
+import { SplitRows, type SplitRow } from "./SplitRows.tsx"
 
 export type ImportNotesProps = { onDone?: () => void }
 
@@ -23,9 +25,42 @@ export function ImportNotes({ onDone }: ImportNotesProps) {
   const [fileError, setFileError] = useState<string | null>(null)
   const picker = useRef<HTMLInputElement>(null)
   const importNotes = useImportNotes()
+  const preview = usePreviewImport()
+  const [rows, setRows] = useState<SplitRow[]>([])
+  const [onTimeline, setOnTimeline] = useState(true)
   const queued = importNotes.data
   const job =
     useCampaign().data?.jobs.find((j) => j.id === jobId) ?? (queued?.id === jobId ? queued : undefined)
+
+  // Notes with clear session headings can join the Timeline: look for them once typing pauses.
+  const { mutate: findSessions } = preview
+  useEffect(() => {
+    if (!text.trim()) {
+      setRows([])
+      return
+    }
+    const timer = setTimeout(
+      () =>
+        findSessions(
+          { title: "", text },
+          {
+            onSuccess: (found) =>
+              setRows(
+                (found.sessions ?? []).map((s, index) => ({
+                  index,
+                  n: s.n,
+                  include: s.date !== null,
+                  date: s.date ?? "",
+                  title: s.title ?? "",
+                  preview: s.preview,
+                })),
+              ),
+          },
+        ),
+      400,
+    )
+    return () => clearTimeout(timer)
+  }, [text, findSessions])
 
   const dismiss = () => {
     setJobId(null)
@@ -36,8 +71,18 @@ export function ImportNotes({ onDone }: ImportNotesProps) {
     dismiss()
   }
 
+  const chosen = onTimeline ? rows.filter((r) => r.include && r.date) : []
   const submit = () =>
-    importNotes.mutate({ title: title.trim() || DEFAULT_TITLE, text }, { onSuccess: (j) => setJobId(j.id) })
+    importNotes.mutate(
+      {
+        title: title.trim() || DEFAULT_TITLE,
+        text,
+        ...(rows.length > 0 && chosen.length > 0
+          ? { sessions: chosen.map((r) => ({ index: r.index, date: r.date, title: r.title.trim() || null })) }
+          : {}),
+      },
+      { onSuccess: (j) => setJobId(j.id) },
+    )
 
   const pickFiles = async (files: FileList | null) => {
     if (!files?.length) return
@@ -109,6 +154,20 @@ export function ImportNotes({ onDone }: ImportNotesProps) {
           className="max-h-[50vh] min-h-48 font-mono"
         />
       </Field>
+      {rows.length > 0 && (
+        <div className="flex flex-col gap-2" data-testid="split-found">
+          <p className="text-14 font-medium">Found {rows.length} sessions. They'll appear on the Timeline.</p>
+          <label className="flex items-center gap-2 text-13">
+            <Checkbox
+              checked={onTimeline}
+              onCheckedChange={(v) => setOnTimeline(v === true)}
+              aria-label="Add them to the Timeline"
+            />
+            Add them to the Timeline
+          </label>
+          {onTimeline && <SplitRows rows={rows} onChange={setRows} />}
+        </div>
+      )}
       {job?.state === "error" && <JobStatus job={job} variant="inline" onDismiss={dismiss} />}
       <div className="flex items-center gap-2">
         <Button type="submit" variant="primary" disabled={!text.trim() || importNotes.isPending}>

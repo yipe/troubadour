@@ -33,6 +33,10 @@ export function useReviewAction(id: string) {
     {
       onSuccess: (item) => {
         client.setQueryData<Review>(keys.review(id), (review) => (review ? withItem(review, item) : review))
+        // Accepting a spelling rewrites the word in the saved transcript.
+        if (item.kind === "spelling" && item.status === "accepted") {
+          void client.invalidateQueries({ queryKey: keys.record(id) })
+        }
       },
       onError: () => void client.invalidateQueries({ queryKey: keys.review(id) }),
     },

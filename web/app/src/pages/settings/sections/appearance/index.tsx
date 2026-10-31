@@ -43,7 +43,6 @@ export function Component() {
   return (
     <div className="flex max-w-[960px] flex-col gap-8 p-5 md:p-8">
       <PageHeading
-        tone="accent"
         title="Appearance"
         subtitle="How Troubadour looks on this computer. The choice applies at once and is remembered in this browser."
       />

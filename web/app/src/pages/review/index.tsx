@@ -1,6 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react"
 import { Link, useNavigate, useParams } from "react-router"
-import { FileX } from "lucide-react"
+import { ArrowDown, FileX } from "lucide-react"
 import { useCampaign } from "@troubadour/api/campaign"
 import { useClasses } from "@troubadour/api/players"
 import { useReview, useReviewAction } from "@troubadour/api/review"
@@ -43,6 +43,8 @@ const LINE_STYLES = [
   "[&_[data-line-id]:has([data-review=accepted])>div:first-child]:shadow-[inset_3px_0_0_var(--color-success)]",
 ].join(" ")
 
+const LOOSE = "__loose__" // the suggestions below the transcript, tied to no line
+
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`
 
 export function Component() {
@@ -60,6 +62,10 @@ export function Component() {
   const [filter, setFilter] = useState<Filter>("all")
   const [confirming, setConfirming] = useState(false)
   const [accepting, setAccepting] = useState<{ at: number; of: number } | null>(null)
+  // Where the GM is: the line of the last suggestion they decided or jumped to. "Next" goes on from here.
+  const [focus, setFocus] = useState<string | null>(null)
+  // The line "Next" last scrolled to; `n` lets it scroll again to the same line.
+  const [jump, setJump] = useState<{ id: string | null; n: number }>({ id: null, n: 0 })
 
   const data = review.data
   const lines = useMemo(
@@ -111,7 +117,27 @@ export function Component() {
   const counts = filterCounts(data.items)
   const gmOpen = gmStatedOpen(data.items)
 
-  const act = (itemId: string, body: ReviewAction) => action.mutateAsync({ itemId, ...body })
+  const act = (itemId: string, body: ReviewAction) => {
+    const lineId = data.items.find((i) => i.id === itemId)?.line_id
+    if (lineId) setFocus(lineId)
+    return action.mutateAsync({ itemId, ...body })
+  }
+
+  // Lines with something still open, in transcript order; suggestions tied to no line come last.
+  const openIds = [
+    ...lines
+      .filter((l) => placement.byLine.get(l.id)?.some((i) => i.status === "open" && matchesFilter(i, filter)))
+      .map((l) => l.id),
+    ...(placement.loose.some((i) => i.status === "open" && matchesFilter(i, filter)) ? [LOOSE] : []),
+  ]
+  function jumpToNext() {
+    const order = [...lines.map((l) => l.id), LOOSE]
+    const from = focus === null ? -1 : order.indexOf(focus)
+    const next = openIds.find((id) => order.indexOf(id) > from) ?? openIds[0]
+    if (!next) return
+    setFocus(next)
+    setJump((j) => ({ id: next, n: j.n + 1 }))
+  }
 
   async function acceptAllGm() {
     for (const [i, item] of gmOpen.entries()) {
@@ -174,7 +200,7 @@ export function Component() {
             Review · {label}
             {typeof started === "number" ? ` · ${reviewDate(started)}` : ""}
           </div>
-          <h1 className="font-serif text-22 leading-tight font-bold text-ink">{title}</h1>
+          <h1 className="font-serif text-22 leading-tight font-bold text-accent">{title}</h1>
         </div>
         <div className="flex w-[220px] flex-col gap-1.5 lg:ml-6">
           <div className="flex text-12 text-ink-subtle">
@@ -192,13 +218,17 @@ export function Component() {
           items={FILTERS.map((f) => ({ ...f, count: counts[f.id] }))}
         />
         <div className="ml-auto flex items-center gap-2">
+          <Button variant="primary" disabled={openIds.length === 0} onClick={jumpToNext}>
+            Next to review{open > 0 ? ` (${open})` : ""}
+            <ArrowDown className="size-4" />
+          </Button>
           <Button disabled={gmOpen.length === 0 || accepting !== null} onClick={() => void acceptAllGm()}>
             {accepting
               ? `Accepting ${accepting.at} of ${accepting.of}…`
               : `Accept all GM-stated (${gmOpen.length})`}
           </Button>
           <Button
-            variant="primary"
+            {...(open === 0 ? { variant: "primary" as const } : {})}
             disabled={markReviewed.isPending}
             onClick={() => (open > 0 ? setConfirming(true) : void finish())}
           >
@@ -234,6 +264,9 @@ export function Component() {
           <TranscriptList
             lines={lines}
             mode="static"
+            highlightId={jump.id === LOOSE ? null : jump.id}
+            scrollToId={jump.id === LOOSE ? lines.at(-1)?.id : jump.id}
+            scrollNonce={jump.n}
             renderAside={renderAside}
             asideWidth={ASIDE_WIDTH}
             footer={footer}

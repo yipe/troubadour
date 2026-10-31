@@ -1,4 +1,4 @@
-import type { ViewLine } from "../../components/transcript/viewLines.ts"
+import type { ViewLine } from "../../../components/transcript/viewLines.ts"
 
 /** The line being spoken at `t` seconds: the last one that starts at or before it, else the first. */
 export function lineAt(lines: ViewLine[], t: number): ViewLine | null {

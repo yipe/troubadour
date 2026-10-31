@@ -12,7 +12,6 @@ export function Component() {
   return (
     <div className="flex max-w-3xl flex-col gap-8 p-5 md:p-8">
       <PageHeading
-        tone="accent"
         title="Obsidian vault"
         subtitle="Your campaign is a folder of plain Markdown notes you can open in Obsidian."
       />

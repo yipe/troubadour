@@ -4,6 +4,7 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
+from troubadour.core.transcript import build
 from troubadour.lore.facts import Fact, Source
 from troubadour.server import deps
 from troubadour.server.app import app
@@ -32,8 +33,20 @@ def save_session(sid, lines, started_at):
     folder = deps.engine.sessions_dir() / sid
     folder.mkdir(parents=True)
     (folder / "meta.json").write_text(json.dumps({"id": sid, "started_at": started_at}))
-    messages = [{"id": f"m{i}", "t_start": i * 10.0, "t_end": i * 10.0 + 8, "text": t} for i, t in enumerate(lines)]
-    (folder / "transcript.json").write_text(json.dumps({"messages": messages}))
+    messages = [
+        {
+            "id": f"m{i}",
+            "t_start": i * 10.0,
+            "t_end": i * 10.0 + 8,
+            "voice_id": None,
+            "provisional": False,
+            "confidence": 1,
+            "text": t,
+        }
+        for i, t in enumerate(lines)
+    ]
+    session = {"id": sid, "started_at": started_at, "source": None, "duration_s": len(lines) * 10}
+    (folder / "transcript.json").write_text(json.dumps(build(session, [], [], messages)))
     return folder
 
 
@@ -268,6 +281,39 @@ def test_unknown_word_accept_creates_the_entry_the_client_names(api, world):
     e = deps.vault.get("Zorblax the Stone")
     assert e.status == "confirmed"
     assert e.heard_as == ["Zorblax"]
+
+
+def test_unknown_word_can_be_pointed_at_a_known_term_or_an_existing_entry(api, world):
+    unknown = find(get(api), "spelling", lambda i: i["spelling"]["entity"] is None)
+    # "Halberd" is in the SRD list as an item, so the new entry gets that type.
+    assert act(api, unknown, action="accept", text="halberd").json()["status"] == "accepted"
+    e = deps.vault.get("Halberd")
+    assert (e.type, e.heard_as) == ("item", ["Zorblax"])
+
+
+def test_unknown_word_accept_on_an_existing_entry_adds_a_spelling(api, world):
+    unknown = find(get(api), "spelling", lambda i: i["spelling"]["entity"] is None)
+    assert act(api, unknown, action="accept", text="Mudge").json()["status"] == "accepted"
+    assert "Zorblax" in deps.vault.get("Mudge").heard_as
+
+
+def test_a_suggested_spelling_can_be_pointed_at_another_entry(api, world):
+    misheard = find(get(api), "spelling", lambda i: i["spelling"]["entity"] == "Elara")
+    assert act(api, misheard, action="accept", text="Mudge").json()["status"] == "accepted"
+    assert "Dilara" in deps.vault.get("Mudge").heard_as
+    assert deps.vault.get("Elara").heard_as == []
+    assert deps.vault.get("Elara").heard_as_rejected == ["Dilara"]  # not suggested for Elara again
+
+
+def test_an_accepted_spelling_says_what_it_became_and_fixes_the_transcript(api, world):
+    unknown = find(get(api), "spelling", lambda i: i["spelling"]["entity"] is None)
+    heard = unknown["spelling"]["heard"]
+    done = act(api, unknown, action="accept", text="Mudge").json()
+    assert done["spelling"]["entity"] == "Mudge"  # the card reads "heard -> Mudge"
+    assert get(api)["items"][[i["id"] for i in get(api)["items"]].index(unknown["id"])]["spelling"]["entity"] == "Mudge"
+    texts = [m["text"] for m in api.get(f"/api/sessions/{SID}/transcript.json").json()["messages"]]
+    assert any("Mudge" in t for t in texts)
+    assert not any(heard in t for t in texts)
 
 
 def test_entry_accept_and_reject(api, world):

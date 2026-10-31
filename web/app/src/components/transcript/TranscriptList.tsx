@@ -5,13 +5,17 @@ import { Button } from "@troubadour/ui/button"
 import { TranscriptLine, type TranscriptLineProps } from "./TranscriptLine.tsx"
 import type { ViewLine } from "./viewLines.ts"
 
-export type TranscriptListProps = Pick<TranscriptLineProps, "onTimestamp" | "onSpeakerClick"> & {
+export type TranscriptListProps = Pick<TranscriptLineProps, "onTimestamp" | "onSpeakerClick" | "onStop"> & {
+  /** Session seconds of the timestamp that is playing; its line shows a stop button. */
+  playingT?: number | null
   lines: ViewLine[]
   /** live follows the newest line; static (a saved session) starts at the top. */
   mode: "live" | "static"
   highlightId?: string | null
   /** Scrolls to this line and centres it. */
   scrollToId?: string | null
+  /** Change it to scroll to `scrollToId` again, e.g. when the line is already the target. */
+  scrollNonce?: number
   /** Content on the same row as its line, in a column `asideWidth` wide. */
   renderAside?: (line: ViewLine) => ReactNode
   asideWidth?: number
@@ -34,10 +38,13 @@ export function TranscriptList({
   mode,
   highlightId,
   scrollToId,
+  scrollNonce,
   renderAside,
   asideWidth = 460,
   footer,
   onTimestamp,
+  onStop,
+  playingT,
   onSpeakerClick,
 }: TranscriptListProps) {
   const ref = useRef<VirtuosoHandle>(null)
@@ -58,7 +65,7 @@ export function TranscriptList({
     if (index >= 0) ref.current?.scrollToIndex({ index, align: "center" })
     // Only a new target scrolls; new lines arriving must not drag the view back.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scrollToId])
+  }, [scrollToId, scrollNonce])
 
   return (
     <div className="relative min-h-0 flex-1">
@@ -83,6 +90,8 @@ export function TranscriptList({
               line={line}
               highlighted={line.id === highlightId}
               onTimestamp={onTimestamp}
+              onStop={onStop}
+              playing={playingT != null && line.t === playingT}
               onSpeakerClick={onSpeakerClick}
             />
           )

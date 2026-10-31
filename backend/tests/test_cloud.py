@@ -264,6 +264,13 @@ def test_account_shows_a_gif_avatar(client, service):
     assert client.account()["avatar"] == "data:image/gif;base64," + base64.b64encode(b"GIF89a fake").decode()
 
 
+def test_account_shows_an_animated_gif_avatar_over_the_old_200kb_limit(client, service):
+    connect(client, service)
+    gif = b"GIF89a" + b"x" * 900_000
+    service.avatar = ("image/gif", gif)
+    assert client.account()["avatar"] == "data:image/gif;base64," + base64.b64encode(gif).decode()
+
+
 def test_account_without_a_profile_or_with_a_picture_it_wont_show(client, service):
     connect(client, service)
     service.me = {"email": "gm@example.com", "name": None, "image_url": None}

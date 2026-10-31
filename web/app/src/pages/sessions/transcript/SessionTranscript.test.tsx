@@ -1,11 +1,10 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react"
 import { forwardRef, type ComponentProps } from "react"
 import { VirtuosoMockContext, type VirtuosoHandle } from "react-virtuoso"
-import { Route, Routes } from "react-router"
-import { afterEach, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { mockFetch, recordMessage, savedSession, sessionRecord } from "@troubadour/api/testing"
-import { renderWithProviders } from "../../test/render.tsx"
-import { Component as TranscriptPage } from "./index.tsx"
+import { renderWithProviders } from "../../../test/render.tsx"
+import { SessionTranscript } from "./SessionTranscript.tsx"
 
 // jsdom has no layout, so `initialTopMostItemIndex` renders no rows; strip it.
 vi.mock("react-virtuoso", async (importOriginal) => {
@@ -44,39 +43,51 @@ const record = sessionRecord({
   ],
 })
 
-function open(route: string, audio = true) {
+const scrollIntoView = vi.fn()
+
+beforeEach(() => {
+  scrollIntoView.mockClear()
+  Element.prototype.scrollIntoView = scrollIntoView
+})
+
+function open(route = "/sessions/s1", audio = true, fail = false) {
   mockFetch((c) =>
-    c.url === "/api/sessions"
-      ? [savedSession({ id: "s1", title: "The Cave", n: 4, audio })]
-      : c.url === "/api/sessions/s1/transcript.json"
-        ? record
-        : [],
+    c.url === "/api/sessions/s1/transcript.json"
+      ? fail
+        ? new Response("nope", { status: 500 })
+        : record
+      : [],
   )
   return renderWithProviders(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 600, itemHeight: 60 }}>
-      <Routes>
-        <Route path="/sessions/:id/transcript" element={<TranscriptPage />} />
-      </Routes>
+      <SessionTranscript
+        session={savedSession({ id: "s1", title: "The Cave", n: 4, audio })}
+        onImprove={() => {}}
+      />
     </VirtuosoMockContext.Provider>,
     { route },
   )
 }
 
-it("shows the title, speakers with talk share, links and the lines", async () => {
-  open("/sessions/s1/transcript")
-  expect(await screen.findByRole("heading", { name: "The Cave" })).toBeInTheDocument()
+it("shows the lines under a Transcript heading, with playback for a recorded session", async () => {
+  open()
   expect(await screen.findByText("A dragon stirs")).toBeInTheDocument()
-  expect(screen.getByText("67%")).toBeInTheDocument()
-  expect(screen.getByRole("link", { name: "Session page" })).toHaveAttribute("href", "/sessions/s1")
-  expect(screen.getByRole("link", { name: "Review the write-up" })).toHaveAttribute(
-    "href",
-    "/sessions/s1/review",
-  )
+  expect(screen.getByRole("region", { name: "Transcript" })).toBeInTheDocument()
   expect(screen.getByRole("button", { name: "Play session audio" })).toBeInTheDocument()
 })
 
+it("scrolls itself into view for #transcript or ?t=, and not otherwise", async () => {
+  const { unmount } = open("/sessions/s1")
+  await screen.findByText("A dragon stirs")
+  expect(scrollIntoView).not.toHaveBeenCalled()
+  unmount()
+  open("/sessions/s1#transcript")
+  await screen.findByText("A dragon stirs")
+  expect(scrollIntoView).toHaveBeenCalled()
+})
+
 it("?t= highlights the line being spoken at that time", async () => {
-  const { container } = open("/sessions/s1/transcript?t=35")
+  const { container } = open("/sessions/s1?t=35")
   await screen.findByText("A dragon stirs")
   await waitFor(() => {
     const current = container.querySelector('[aria-current="true"]') as HTMLElement
@@ -86,7 +97,7 @@ it("?t= highlights the line being spoken at that time", async () => {
 })
 
 it("search narrows the lines", async () => {
-  open("/sessions/s1/transcript")
+  open()
   await screen.findByText("A dragon stirs")
   fireEvent.change(screen.getByRole("searchbox", { name: "Search transcript" }), {
     target: { value: "SWORD" },
@@ -101,22 +112,13 @@ it("search narrows the lines", async () => {
 })
 
 it("offers no playback for a session without a recording", async () => {
-  open("/sessions/s1/transcript", false)
+  open("/sessions/s1", false)
   await screen.findByText("A dragon stirs")
   expect(screen.queryByRole("button", { name: "Play session audio" })).toBeNull()
   expect(screen.queryByTitle("Play from here")).toBeNull()
 })
 
 it("shows an error when the record can't load", async () => {
-  mockFetch(() => new Response("nope", { status: 500 }))
-  renderWithProviders(
-    <Routes>
-      <Route path="/sessions/:id/transcript" element={<TranscriptPage />} />
-    </Routes>,
-    { route: "/sessions/s1/transcript" },
-  )
+  open("/sessions/s1", true, true)
   expect(await screen.findByText("Couldn't load this transcript", {}, { timeout: 4000 })).toBeInTheDocument()
-  const back = screen.getByRole("link", { name: "Back to sessions" })
-  expect(back).toHaveAttribute("href", "/sessions")
-  expect(back.querySelector("button, a")).toBeNull()
 })

@@ -76,8 +76,32 @@ def _scan(text: str, needles: _Needles) -> Mentions:
     return Mentions(counts, first)
 
 
-def session_mentions(sessions_dir: Path, sid: str, needles: _Needles) -> Mentions:
+def _notes_page(vault: Vault, sessions_dir: Path, sid: str) -> Path | None:
+    """The vault page of a notes-only session (imported notes standing in for a recording), if `sid` is one."""
+    try:
+        meta = json.loads((sessions_dir / sid / "meta.json").read_text(encoding="utf-8"))
+        if meta.get("kind") != "notes":
+            return None
+        root = vault.root.resolve()
+        path = (root / str(meta["note"])).resolve()
+    except (OSError, ValueError, KeyError, AttributeError):
+        return None
+    return path if path.is_relative_to(root) else None
+
+
+def _page_text(path: Path) -> str | None:
+    try:
+        return re.sub(r"\A---\n.*?\n---\n", "", path.read_text(encoding="utf-8"), count=1, flags=re.S).casefold()
+    except OSError:
+        return None
+
+
+def session_mentions(vault: Vault, sessions_dir: Path, sid: str, needles: _Needles) -> Mentions:
+    """Names in a session: its transcript, or for a notes-only session its notes page."""
     path = sessions_dir / sid / "transcript.json"
+    read = _transcript_text
+    if not path.is_file() and (page := _notes_page(vault, sessions_dir, sid)) is not None:
+        path, read = page, _page_text
     try:
         mtime = path.stat().st_mtime_ns
     except OSError:
@@ -87,7 +111,7 @@ def session_mentions(sessions_dir: Path, sid: str, needles: _Needles) -> Mention
         hit = _cache.get(sid)
     if hit is not None and hit[0] == mtime and hit[1] == key:
         return hit[2]
-    text = _transcript_text(path)
+    text = read(path)
     found = _scan(text, needles) if text is not None else Mentions({}, {})
     with _lock:
         _cache[sid] = (mtime, key, found)
@@ -123,7 +147,7 @@ def timeline(
     places = {e.name for e in confirmed if e.type == "place"}
     ordered = [r for r in _oldest_first(rows) if r["id"] in numbers]
 
-    mentions = {r["id"]: session_mentions(sessions_dir, r["id"], needles) for r in ordered}
+    mentions = {r["id"]: session_mentions(vault, sessions_dir, r["id"], needles) for r in ordered}
     first_session: dict[str, str] = {}
     for r in ordered:
         for name in mentions[r["id"]].counts:
@@ -152,6 +176,7 @@ def timeline(
                 "date": datetime.fromtimestamp(r.get("started_at") or 0).strftime("%Y-%m-%d"),
                 "title": titles.get(sid) or r.get("title") or None,
                 "places": session_places,
+                "kind": r.get("kind") or "recording",
                 "talk": r.get("talk") or {},
                 "new_entities": [{"name": e.name, "type": e.type} for e in confirmed if first_session.get(e.name) == sid],
                 "facts_accepted": accepted.get(sid, 0),
@@ -167,7 +192,7 @@ def appearances(vault: Vault, sessions_dir: Path, rows: list[dict], numbers: dic
         {
             "session_id": r["id"],
             "n": numbers[r["id"]],
-            "count": session_mentions(sessions_dir, r["id"], needles).counts.get(name, 0),
+            "count": session_mentions(vault, sessions_dir, r["id"], needles).counts.get(name, 0),
         }
         for r in _oldest_first(rows)
         if r["id"] in numbers
@@ -179,7 +204,7 @@ def all_appearances(vault: Vault, sessions_dir: Path, rows: list[dict], numbers:
     cached scans. Entries never mentioned are left out (the caller treats a missing entry as all zeros)."""
     needles = _needles(vault.entities())
     ordered = [r for r in _oldest_first(rows) if r["id"] in numbers]
-    per_session = [session_mentions(sessions_dir, r["id"], needles).counts for r in ordered]
+    per_session = [session_mentions(vault, sessions_dir, r["id"], needles).counts for r in ordered]
     names = {name for counts in per_session for name in counts}
     return {
         "sessions": [{"id": r["id"], "n": numbers[r["id"]]} for r in ordered],

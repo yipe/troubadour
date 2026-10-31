@@ -3,11 +3,11 @@ import { Link } from "react-router"
 import type { Fact } from "@troubadour/api/campaign"
 import type { ReviewAction, ReviewItem } from "@troubadour/api/review"
 import { Button } from "@troubadour/ui/button"
-import { Input } from "@troubadour/ui/input"
 import { Textarea } from "@troubadour/ui/textarea"
 import { SuggestionCard, type SuggestionCardProps } from "../../components/suggestion/SuggestionCard.tsx"
 import { paths } from "../../paths.ts"
 import { AboutPicker } from "./AboutPicker.tsx"
+import { NamePicker } from "./NamePicker.tsx"
 import { replacedText } from "./items.ts"
 
 export type ReviewCardProps = {
@@ -56,7 +56,7 @@ export function ReviewCard({ item, entryNames, facts, act }: ReviewCardProps) {
   const [error, setError] = useState<string | null>(null)
   const [text, setText] = useState(item.fact?.text ?? "")
   const [about, setAbout] = useState<string | null | undefined>(undefined)
-  const [name, setName] = useState(item.spelling?.heard ?? "")
+  const [name, setName] = useState("")
 
   async function decide(body: ReviewAction) {
     setBusy(true)
@@ -117,7 +117,14 @@ export function ReviewCard({ item, entryNames, facts, act }: ReviewCardProps) {
   } else if (item.kind === "spelling") {
     actions = (
       <>
-        {item.spelling?.entity ? primary("Accept", accept) : primary("Add to codex", () => setMode("name"))}
+        {item.spelling?.entity
+          ? primary("Accept", accept)
+          : primary("Choose the name", () => setMode("name"))}
+        {item.spelling?.entity ? (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setMode("name")}>
+            Change…
+          </Button>
+        ) : null}
         {rejectButton}
       </>
     )
@@ -179,13 +186,18 @@ export function ReviewCard({ item, entryNames, facts, act }: ReviewCardProps) {
             if (name.trim()) void decide({ action: "accept", text: name.trim() })
           }}
         >
-          <label className="flex flex-col gap-1 text-13 text-ink-muted">
-            Name for the new codex entry
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </label>
+          <div className="flex flex-col gap-1 text-13 text-ink-muted">
+            What “{item.spelling?.heard}” should be
+            <NamePicker
+              heard={item.spelling?.heard ?? ""}
+              entryNames={entryNames}
+              value={name}
+              onChange={setName}
+            />
+          </div>
           <div className="flex gap-2">
             <Button size="sm" variant="primary" type="submit" disabled={busy || !name.trim()}>
-              Add to codex
+              Fix spelling
             </Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => setMode("view")}>
               Cancel

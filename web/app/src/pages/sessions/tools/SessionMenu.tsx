@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router"
-import { Ellipsis, GitMerge, Trash2 } from "lucide-react"
+import { Ellipsis, GitMerge, NotebookPen, Trash2, Wand2 } from "lucide-react"
 import type { SavedSession } from "@troubadour/api/sessions"
 import { Button } from "@troubadour/ui/button"
 import { ConfirmDialog } from "@troubadour/ui/confirm-dialog"
@@ -16,10 +16,13 @@ import { useRemoveSessions } from "../useRemoveSessions.ts"
 export type SessionMenuProps = {
   session: SavedSession
   onMerge: () => void
+  onImprove: () => void
+  /** Run the write-up again (it replaces the session's page); only offered once there is a page to replace. */
+  onWriteUp?: () => void
 }
 
-/** The detail header's "…": merge with another session, or delete this one (to the trash, with Undo). */
-export function SessionMenu({ session, onMerge }: SessionMenuProps) {
+/** The detail header's "…": improve the transcript, write it up again, merge with another session, or delete this one. */
+export function SessionMenu({ session, onMerge, onImprove, onWriteUp }: SessionMenuProps) {
   const [deleting, setDeleting] = useState(false)
   const remove = useRemoveSessions()
   const navigate = useNavigate()
@@ -35,6 +38,14 @@ export function SessionMenu({ session, onMerge }: SessionMenuProps) {
           }
         />
         <DropdownMenuContent>
+          <DropdownMenuItem icon={<Wand2 />} onClick={onImprove}>
+            Improve transcript…
+          </DropdownMenuItem>
+          {onWriteUp ? (
+            <DropdownMenuItem icon={<NotebookPen />} onClick={onWriteUp}>
+              Write up again
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem icon={<GitMerge />} onClick={onMerge}>
             Merge with…
           </DropdownMenuItem>

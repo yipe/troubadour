@@ -24,6 +24,7 @@ from typing import Literal
 
 from troubadour.core.fsutil import write_atomic
 
+from . import dnd_terms
 from .campaign import Vault, same_fact
 from .facts import Fact, Source, norm
 from .memory import spelling_suggestions
@@ -413,7 +414,8 @@ def act(
             if it.kind == "fact":
                 _fact_action(ctx.vault, it, action, text, about, about_given)
             elif it.kind == "spelling":
-                _spelling_action(ctx.vault, it, action, text)
+                if name := _spelling_action(ctx.vault, it, action, text):
+                    it.entity = name  # the card, and the saved list, say what the word became
             else:
                 _entry_action(ctx.vault, it, action)
         it.status = "accepted" if action == "accept" else "rejected"
@@ -481,22 +483,36 @@ def _fact_action(vault: Vault, it: Item, action: str, text: str | None, about: s
     it.fact = replace(f, about=target)
 
 
-def _spelling_action(vault: Vault, it: Item, action: str, text: str | None) -> None:
+def _spelling_action(vault: Vault, it: Item, action: str, text: str | None) -> str | None:
+    """Decide a spelling. Returns the entry the word now stands for (None when rejected)."""
     heard = it.heard or ""
-    if it.entity:
-        if action == "accept":
-            vault.review(it.entity, accept_spellings=[heard])
-        else:
+    chosen = (text or "").strip()
+    if action == "reject":
+        if it.entity:
             vault.review(it.entity, reject_spellings=[heard])
-    elif action == "reject":
-        vault.ignore([heard])
-    else:
-        name = (text or "").strip()
-        if not name:
-            raise ValueError("Name the entry for this word.")
-        e = vault.create(name, "term")
-        if norm(name) != norm(heard):
-            vault.update(e.name, heard_as=[heard])
+        else:
+            vault.ignore([heard])
+        return None
+    if it.entity and not chosen:
+        vault.review(it.entity, accept_spellings=[heard])
+        return it.entity
+    if not chosen:
+        raise ValueError("Name the entry for this word.")
+    if it.entity and norm(chosen) != norm(it.entity):
+        vault.review(it.entity, reject_spellings=[heard])  # the suggested entry was wrong: don't suggest it again
+    return _hear_as(vault, heard, chosen)
+
+
+def _hear_as(vault: Vault, heard: str, name: str) -> str:
+    """Make `heard` a way `name` is heard, and return the entry's name. An entry that already goes by that
+    name just learns the spelling; otherwise a new entry is made, typed as the D&D term of that name if any."""
+    e = vault.find(name)
+    if e is None:
+        kinds = {n.casefold(): kind for n, kind in dnd_terms.terms()}
+        e = vault.create(name, kinds.get(name.casefold(), "term"))
+    if norm(name) != norm(heard) and norm(heard) not in {norm(h) for h in e.heard_as}:
+        vault.update(e.name, heard_as=[*e.heard_as, heard])
+    return e.name
 
 
 def _entry_action(vault: Vault, it: Item, action: str) -> None:

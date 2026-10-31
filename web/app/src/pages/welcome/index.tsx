@@ -1,9 +1,11 @@
 import { useState } from "react"
 import { Link, Navigate, useNavigate, useParams } from "react-router"
-import { ArrowRight, Feather, Info } from "lucide-react"
+import { ArrowRight, Info } from "lucide-react"
 import { useCampaigns } from "@troubadour/api/campaigns"
 import type { Source } from "@troubadour/api/session"
 import { Button } from "@troubadour/ui/button"
+import { LuteIcon } from "../../components/brand/LuteIcon.tsx"
+import { Wordmark } from "../../components/brand/Wordmark.tsx"
 import { ImportNotes } from "../../components/import-notes/ImportNotes.tsx"
 import { MicCard } from "../../components/mic/MicCard.tsx"
 import { ModelsSettings } from "../../components/models/ModelsSettings.tsx"
@@ -56,8 +58,8 @@ export function Component() {
   return (
     <div className="flex min-h-dvh flex-col bg-canvas text-ink lg:h-dvh">
       <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-line px-4 md:px-5">
-        <Feather size={20} className="text-accent" />
-        <span className="font-serif text-[18px] font-bold">Troubadour</span>
+        <LuteIcon size={28} />
+        <Wordmark />
         <span className="ml-2 text-ink-subtle max-sm:hidden">New campaign</span>
         <span className="ml-auto text-right text-13 text-ink-subtle">
           Saved as you go ·{" "}
@@ -75,7 +77,7 @@ export function Component() {
             <div className="text-12 font-bold tracking-[0.08em] text-ink-subtle uppercase">
               Step {index + 1} of {WELCOME_STEPS.length}
             </div>
-            <h1 className="mt-1.5 mb-1 font-serif text-30 font-bold">{info.heading}</h1>
+            <h1 className="mt-1.5 mb-1 font-serif text-30 font-bold text-accent">{info.heading}</h1>
             <p className="max-w-[640px] text-ink-muted">{info.explainer}</p>
           </div>
           <StepBody key={step} step={step} onBusy={setSaving} />

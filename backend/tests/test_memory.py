@@ -1,7 +1,9 @@
 """Campaign memory jobs with a scripted LLM: what reaches the vault, and what's refused."""
 
 import json
+import re
 import time
+from pathlib import Path
 
 import httpx
 import pytest
@@ -144,6 +146,32 @@ def test_import_merges_into_existing_entries(setup):
     assert len(vault.entities()) == 3  # + Elara from Setup
 
 
+def test_import_sessions_makes_notes_only_sessions_and_credits_their_facts(setup):
+    vault, sessions, make = setup
+    note = lambda who: {"entities": [{"name": who, "type": "npc", "description": "", "facts": [f"{who} waved."]}]}  # noqa: E731
+    llm = FakeLLM(notes=[note("Zorbo"), note("Quill")])
+    rows = [
+        {"n": 1, "date": "2026-09-14", "title": "The Abbey", "text": "Zorbo waved."},
+        {"n": 2, "date": "2026-09-21", "title": None, "text": "Quill waved."},
+        {"n": 3, "date": "2026-09-28", "title": "Blank", "text": "   "},
+    ]
+    m = make(llm)
+    wait(m.import_sessions("main", "Notes", rows))
+    metas = [json.loads(p.read_text()) for p in sorted(sessions.glob("*/meta.json"))]
+    assert [(x["kind"], x["title"], x["campaign"]) for x in metas] == [("notes", "The Abbey", "main"), ("notes", None, "main")]
+    assert not list(sessions.glob("*/transcript.json"))
+    assert not list(sessions.glob("*/audio.wav"))
+    assert all(re.fullmatch(r"\d{4}-\d{2}-\d{2}_120000-[0-9a-f]{4}", x["id"]) for x in metas)
+    pages = m.written_up()
+    assert {sid: Path(rel).stem for sid, rel in pages.items()} == {
+        metas[0]["id"]: "2026-09-14 The Abbey",
+        metas[1]["id"]: "2026-09-21 Session 2",
+    }
+    assert lines(vault.get("Zorbo").facts) == ["Zorbo waved. ([[2026-09-14 The Abbey]])"]  # credited to its own page
+    wait(m.import_sessions("main", "Notes", rows))  # the same paste again adds nothing
+    assert len(list(sessions.glob("*/meta.json"))) == 2
+
+
 def test_import_refuses_empty_notes(setup):
     _, _, make = setup
     with pytest.raises(ValueError, match="Paste"):
@@ -272,6 +300,25 @@ def test_empty_notes_fail_the_job_and_write_nothing(setup):
     assert job.state == "error"
     assert "came back empty" in job.message
     assert not (vault.root / "Sessions").exists() or not list((vault.root / "Sessions").glob("*.md"))
+
+
+def test_a_merged_session_takes_over_the_page_of_the_session_merged_into_it(setup):
+    vault, sessions, make = setup
+    big = _session(sessions)
+    m = make(FakeLLM(read={"beats": [{"at": "00:05", "text": "x"}]}))
+    wait(m.write_up(big))
+    page = m.written_up()[big]
+    anemic = "2026-10-08_120000-aaaa"  # the earlier, unnamed session that survives the merge
+    (sessions / anemic).mkdir()
+    (sessions / anemic / "meta.json").write_text(json.dumps({"id": anemic, "merged_from": [big]}))
+    assert m.absorbed() == {anemic: [big]}
+    assert m.written_up()[anemic] == page
+    # A re-run on the survivor replaces that page instead of adding a second one.
+    record = json.loads((sessions / big / "transcript.json").read_text())
+    (sessions / anemic / "transcript.json").write_text(json.dumps(record | {"session": record["session"] | {"id": anemic}}))
+    wait(m.write_up(anemic))
+    assert len(list((vault.root / "Sessions").glob("*.md"))) == 1
+    assert m.written_up()[anemic] == page
 
 
 def test_write_up_suggests_spellings_found_in_the_transcript(setup):
@@ -476,7 +523,7 @@ def test_ignored_words_are_never_suggested(tmp_path):
     assert out["misheard"] == []
 
 
-def test_unknown_names_skip_vocabulary_acronyms_and_fillers(tmp_path):
+def test_unknown_names_skip_vocabulary_acronyms_fillers_and_interjections(tmp_path):
     vault = Vault(tmp_path / "campaign")
     sessions = tmp_path / "sessions"
     lines = [
@@ -486,6 +533,9 @@ def test_unknown_names_skip_vocabulary_acronyms_and_fillers(tmp_path):
         "Another NPC here.",
         "Bye-bye now.",
         "Bye-bye.",
+        "Aww, that's sad.",
+        "Awww. Mhm. Mhmm.",
+        "Ughh, Hahaha, Ooof.",
         "Olly waves.",
         "Olly again.",
     ]

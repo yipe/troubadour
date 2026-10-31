@@ -213,8 +213,8 @@ describe("review page", () => {
         entry: null,
       },
     ])
-    await userEvent.click(page.getByRole("button", { name: "Add to codex" }))
-    await expect.element(page.getByLabelText(/Name for the new codex entry/)).toBeVisible()
+    await userEvent.click(page.getByRole("button", { name: "Choose the name" }))
+    await expect.element(page.getByRole("button", { name: "Real name" })).toBeVisible()
     await shot("review-unknown-word")
   })
 

@@ -39,7 +39,7 @@ function Entry({ entity }: { entity: Entity }) {
         </div>
       ) : null}
       <header className="flex flex-wrap items-start gap-3">
-        <h1 className="font-serif text-32 leading-tight font-bold text-ink">{entity.name}</h1>
+        <h1 className="font-serif text-32 leading-tight font-bold text-accent">{entity.name}</h1>
         <span className="mt-2">
           <TypeBadge type={entity.type} />
         </span>

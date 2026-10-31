@@ -5,6 +5,7 @@ import type { Terms, TermsAdded, TermsQuery } from "./types.ts"
 export function terms(query: TermsQuery) {
   const params = new URLSearchParams({ offset: String(query.offset), limit: String(query.limit) })
   if (query.q) params.set("q", query.q)
+  if (query.like) params.set("like", query.like)
   if (query.source) params.set("source", query.source)
   return req<Terms>("GET", `/api/terms?${params}`)
 }

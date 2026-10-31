@@ -35,7 +35,7 @@ export function LastSession({ session, n, writtenUp, players }: LastSessionProps
         <p className="text-ink-muted">Record the first one and it shows up here with its write-up.</p>
         <div>
           <Button variant="primary" size="lg" nativeButton={false} render={<Link to={paths.ready()} />}>
-            Prepare session {n}
+            Prepare next session
           </Button>
         </div>
       </Card>

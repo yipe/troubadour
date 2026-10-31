@@ -3,6 +3,9 @@ import { req, segment } from "../http/index.ts"
 import { transcriptUrl } from "../session/endpoints.ts"
 import type { RecordingQuality, ReviewedResult, SavedSession, SessionRecord, Upgrades } from "./types.ts"
 
+/** What a notes-only session says (imported notes). */
+export const sessionNotes = (id: string) => req<{ text: string }>("GET", `/api/sessions/${segment(id)}/notes`)
+
 export const sessions = () => req<SavedSession[]>("GET", "/api/sessions")
 
 /** Append the later saved session onto the earlier one. Returns the session that remains. */

@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { keys } from "@troubadour/api/query"
-import { bodyOf, httpError, mockFetch, savedSession, session } from "@troubadour/api/testing"
+import { bodyOf, campaign, httpError, mockFetch, savedSession, session } from "@troubadour/api/testing"
 import { renderApp } from "../../test/render.tsx"
 
 const ONE = { campaign: "main", campaigns: [{ id: "main", name: "Blank", table_name: "" }] }
@@ -18,6 +18,7 @@ function setup(route: string, sessions: unknown[] = []) {
     if (c.method === "PATCH" && c.url === "/api/campaigns/main")
       return { id: "main", name: bodyOf<{ name: string }>(c).name ?? "Blank", table_name: "" }
     if (c.url === "/api/sessions") return sessions
+    if (c.url === "/api/campaign") return campaign()
     return []
   })
   const app = renderApp({

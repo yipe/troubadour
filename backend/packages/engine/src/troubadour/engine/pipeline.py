@@ -447,8 +447,8 @@ def upgradable(engine: "Engine", memory: "Memory") -> list[tuple[str, list[Step]
     written = memory.written_up()
     out = []
     for folder in sorted(engine.campaign_sessions(), key=lambda f: f.name):
-        if not SESSION_ID.fullmatch(folder.name):
-            continue
+        if not SESSION_ID.fullmatch(folder.name) or engine.session_kind(folder.name) == "notes":
+            continue  # imported notes have no audio or transcript to be out of date
         todo = stale(Run(engine, memory, folder.name, written))
         if todo:
             out.append((folder.name, todo))

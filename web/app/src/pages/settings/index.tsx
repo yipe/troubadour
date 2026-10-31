@@ -36,7 +36,6 @@ export function Component() {
   const Section = sections[current]
   return (
     <RailLayout
-      railWidth={260}
       rail={
         <nav aria-label="Settings" className="p-3">
           <div className="px-3 pt-2 pb-3 text-12 font-bold tracking-[0.08em] text-ink-subtle uppercase">

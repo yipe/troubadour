@@ -17,7 +17,7 @@ export type RailLayoutProps = {
 // as one.
 export function RailLayout({
   rail,
-  railWidth = 300,
+  railWidth = 340,
   aside,
   asideWidth = 300,
   railToggleLabel,

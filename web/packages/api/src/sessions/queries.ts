@@ -10,6 +10,7 @@ import {
   markReviewed,
   mergeSessions,
   refreshSession,
+  sessionNotes,
   restoreSession,
   retranscribeSession,
   sessionQuality,
@@ -24,6 +25,14 @@ import {
 /** The open campaign's saved sessions, newest first. The bridge refetches when a live session ends. */
 export function useSessions() {
   return useQuery({ queryKey: keys.sessions(), queryFn: sessions })
+}
+
+export function useSessionNotes(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["notes", id ?? ""] as const,
+    queryFn: () => sessionNotes(id!),
+    enabled: !!id && enabled,
+  })
 }
 
 export function useSessionRecord(id: string | undefined) {

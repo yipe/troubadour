@@ -51,7 +51,6 @@ export function createRoutes(): RouteObject[] {
             },
             { path: patterns.session, ...page(() => import("./pages/sessions/index.tsx")) },
             { path: patterns.review, ...page(() => import("./pages/review/index.tsx")) },
-            { path: patterns.transcript, ...page(() => import("./pages/transcript/index.tsx")) },
             { path: patterns.recap, ...page(() => import("./pages/recap/index.tsx")) },
             { path: patterns.timeline, ...page(() => import("./pages/timeline/index.tsx")) },
             { path: patterns.codex, ...page(() => import("./pages/codex/index.tsx")) },
@@ -64,6 +63,17 @@ export function createRoutes(): RouteObject[] {
             { path: patterns.oldSession, element: <Redirect to={() => paths.live()} /> },
             { path: patterns.oldHistory, element: <Redirect to={() => paths.sessions()} /> },
             { path: patterns.oldHistoryEntry, element: <Redirect to={(p) => paths.session(p.id!)} /> },
+            {
+              path: patterns.oldTranscript,
+              element: (
+                <Redirect
+                  to={(p, search) => {
+                    const t = Number(search.get("t"))
+                    return paths.transcript(p.id!, search.has("t") && Number.isFinite(t) ? t : undefined)
+                  }}
+                />
+              ),
+            },
             { path: patterns.oldCampaign, element: <Redirect to={() => paths.codex()} /> },
             { path: patterns.oldCampaignEntry, element: <Redirect to={(p) => paths.codex(p.entry!)} /> },
             { path: "*", element: <NotFound /> },

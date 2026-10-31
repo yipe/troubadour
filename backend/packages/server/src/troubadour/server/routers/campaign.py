@@ -2,13 +2,14 @@
 
 import json
 import re
+from datetime import date
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 from troubadour.engine import SESSION_ID
-from troubadour.lore import obsidian, timeline
+from troubadour.lore import notes_split, obsidian, timeline
 from troubadour.lore.campaign import TYPES, Entity, SessionIndex, mention_counts
 from troubadour.lore.facts import Confidence, Source, fact_id
 from troubadour.lore.facts import Fact as FactModel
@@ -118,9 +119,52 @@ class MergeIn(BaseModel):
     into: EntityName
 
 
+MAX_IMPORT_SESSIONS = 50
+
+
+def _real_date(v: str) -> str:
+    try:
+        ok = notes_split.YEAR_RANGE[0] <= date.fromisoformat(v).year <= notes_split.YEAR_RANGE[1]
+    except ValueError:
+        ok = False
+    if not ok:
+        raise ValueError("That isn't a date between 1970 and 2100.")
+    return v
+
+
+DateText = Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$"), AfterValidator(_real_date)]
+
+
+class ImportRow(BaseModel):
+    """One session of a split paste to add to the Timeline, with the date and title the user settled on."""
+
+    index: int = Field(ge=0, le=MAX_IMPORT_SESSIONS * 20)  # its place in what /import/preview listed
+    date: DateText
+    title: str | None = Field(None, max_length=120)
+
+
+class NotesSessionIn(BaseModel):
+    date: DateText
+    title: str = Field("", max_length=120)
+    text: str = Field(min_length=1, max_length=500_000)
+
+
 class ImportIn(BaseModel):
     title: str = Field("", max_length=120)
     text: str = Field(min_length=1, max_length=2_000_000)
+    # Rows of the split to add as notes-only sessions; null imports the paste as one set of notes.
+    sessions: list[ImportRow] | None = Field(None, max_length=MAX_IMPORT_SESSIONS)
+
+
+class SplitSession(BaseModel):
+    n: int | None
+    date: str | None  # YYYY-MM-DD; null when the heading has none (it must be filled in before importing)
+    title: str | None
+    preview: str  # the first 200 characters of its notes
+
+
+class SplitOut(BaseModel):
+    sessions: list[SplitSession]  # empty: no clear session headings, so the paste imports as plain notes
 
 
 class SaidByOut(BaseModel):
@@ -209,8 +253,10 @@ def _session_index() -> SessionIndex:
         except (OSError, ValueError, KeyError, TypeError):
             continue
     page_for = {sid: Path(rel).stem for sid, rel in deps.memory.written_up().items()}
+    # A fact's page may belong to a session that was merged into another: it counts for the survivor.
+    survivor = {gone: kept for kept, ids in deps.memory.absorbed().items() for gone in ids}
     return SessionIndex(
-        ids_for={page: sid for sid, page in page_for.items()},
+        ids_for={page: survivor.get(sid, sid) for sid, page in page_for.items()},
         numbers=session_numbers(metas),
         page_for=page_for,
     )
@@ -435,11 +481,37 @@ def delete_campaign_fact(fact_id: str):
     return _facts_out(facts)
 
 
+@router.post("/api/campaign/import/preview", response_model=SplitOut)
+def preview_import(body: ImportIn):
+    """The sessions a paste splits into by its headings (a pure function: no job, nothing is written)."""
+    found = notes_split.split_sessions(body.text)[:MAX_IMPORT_SESSIONS]
+    return {"sessions": [{"n": s.n, "date": s.date, "title": s.title, "preview": s.text[:200]} for s in found]}
+
+
+@router.post("/api/sessions/notes", response_model=CampaignJob)
+def add_notes_session(body: NotesSessionIn):
+    """One session written down rather than recorded: a notes-only session on the Timeline, read into the codex."""
+    row = {"n": None, "date": body.date, "title": body.title.strip() or None, "text": body.text}
+    with deps.campaign_gate:
+        return deps._call(deps.memory.import_sessions, deps.engine.campaign, body.title, [row]).to_json()
+
+
 @router.post("/api/campaign/import", response_model=CampaignJob)
 def import_notes(body: ImportIn):
-    """Pasted notes → a background job (progress arrives as campaign.job events)."""
+    """Pasted notes → a background job (progress arrives as campaign.job events). With `sessions`, each
+    chosen part of the paste becomes a notes-only session on the Timeline first."""
+    if body.sessions is None:
+        with deps.campaign_gate:
+            return deps._call(deps.memory.import_notes, body.title, body.text).to_json()
+    found = notes_split.split_sessions(body.text)
+    if any(r.index >= len(found) for r in body.sessions) or len({r.index for r in body.sessions}) != len(body.sessions):
+        raise HTTPException(400, "Those sessions don't match the notes. Preview them again.")
+    rows = [
+        {"n": found[r.index].n, "date": r.date, "title": (r.title or "").strip() or None, "text": found[r.index].text}
+        for r in body.sessions
+    ]
     with deps.campaign_gate:
-        return deps._call(deps.memory.import_notes, body.title, body.text).to_json()
+        return deps._call(deps.memory.import_sessions, deps.engine.campaign, body.title, rows).to_json()
 
 
 def _queue_write_up(sid: str):
@@ -456,6 +528,8 @@ def write_up(sid: str):
         raise HTTPException(404, "not found")
     with deps.campaign_gate:
         deps._require_open_campaign(sid)
+    if deps.engine.session_kind(sid) == "notes":
+        raise HTTPException(409, "That session is imported notes: there is no transcript to write up.")
     if not (deps.memory.sessions_dir() / sid / "transcript.json").is_file():
         raise HTTPException(404, f"not found: {sid}")
     # Fail now, not minutes into the job, when the write-up's model can't answer.

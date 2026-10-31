@@ -9,7 +9,7 @@ export function Component() {
   const [device, setDevice] = useState<Source>({ kind: "mic", device: null })
   return (
     <div className="flex max-w-[760px] flex-col gap-6 p-5 md:p-8">
-      <PageHeading tone="accent" title="Microphone" subtitle="How Troubadour hears the table." />
+      <PageHeading title="Microphone" subtitle="How Troubadour hears the table." />
       <MicCard mode="settings" device={device} onDeviceChange={setDevice} />
       <MicDetails device={device.kind === "mic" ? (device.device ?? null) : null} />
     </div>

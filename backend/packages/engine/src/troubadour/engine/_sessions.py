@@ -32,7 +32,7 @@ log = logging.getLogger("troubadour")
 
 TRASH = ".trash"  # sessions/.trash/<id>: deleted or merged-away sessions, kept so they can come back
 PREMERGE = ".premerge"  # <kept>/.premerge: what a merge replaced, for unmerge
-RESTORED = ("transcript.json", "transcript.md", "meta.json", "quality.json", "transcript.orig.json")
+RESTORED = ("transcript.json", "transcript.md", "meta.json", "quality.json", "transcript.orig.json", "scenes.json")
 _structure_lock = threading.Lock()  # one delete, merge or unmerge at a time
 
 _talk_cache: dict[str, tuple[int, dict[str, float]]] = {}  # session id → (transcript mtime_ns, talk), for old sessions
@@ -203,6 +203,7 @@ class SessionsMixin:
             s.setdefault("duration_s", 0)
             s.setdefault("lines", 0)
             s.setdefault("merged_from", [])
+            s.setdefault("kind", "recording")  # "notes": imported notes standing in for a session; no audio or transcript
             s.setdefault("title", None)
             s.setdefault("present_player_ids", None)
             s.setdefault("reviewed_at", None)
@@ -248,6 +249,12 @@ class SessionsMixin:
             return {}
         _talk_cache[folder.name] = (mtime, talk)
         return talk
+
+    def session_kind(self, sid: str) -> str:
+        """ "notes" for a notes-only session (see Memory.import_sessions), else "recording"."""
+        if not SESSION_ID.fullmatch(sid):
+            raise KeyError(sid)
+        return "notes" if self._read_meta(self.sessions_dir() / sid).get("kind") == "notes" else "recording"
 
     def _check_removable(self, sid: str) -> Path:
         """The folder of a saved session that may be merged away or deleted; KeyError if unknown,
@@ -329,6 +336,8 @@ class SessionsMixin:
         """
         if len(ids) != 2 or len(set(ids)) != 2:
             raise ValueError("Pick two different saved sessions.")
+        if any(self.session_kind(sid) == "notes" for sid in ids):
+            raise FileExistsError("Imported notes can't be merged with a recording.")
         with _structure_lock:
             return self._merge(ids)
 
@@ -367,13 +376,18 @@ class SessionsMixin:
         session["talk"] = talk_seconds(messages)
         session["reviewed_at"] = None  # new content to review
         merged_from = list(session.get("merged_from") or [])
-        merged_from.append(drop["session"]["id"])
+        drop_meta = self._read_meta(drop_dir)
+        merged_from += [drop["session"]["id"], *(drop_meta.get("merged_from") or drop["session"].get("merged_from") or [])]
         session["merged_from"] = merged_from
         record = keep | {"session": session, "players": players, "voices": voices, "messages": messages}
         # meta.json holds fields the transcript's session dict may lack (campaign, title,
         # present_player_ids); keep them, overlay what the merge changed.
         changed = {k: session[k] for k in ("duration_s", "lines", "talk", "reviewed_at", "merged_from")}
         meta = {**session, **self._read_meta(keep_dir), **changed, "campaign": campaign}
+        if not meta.get("title"):  # an unnamed earlier session must not hide the later one's name
+            meta["title"] = drop_meta.get("title")
+        scenes = self._scenes_of(keep_dir) or []
+        scenes += [s | {"t": s["t"] + offset} for s in self._scenes_of(drop_dir) or []]
 
         # Everything the merge replaces is set aside first, so any failure (or a later unmerge) can put it back.
         # merge.json is complete (with the trash name) before anything moves, so a restore always has it.
@@ -403,6 +417,7 @@ class SessionsMixin:
                     "transcript.json": json.dumps(record, ensure_ascii=False, indent=1),
                     "transcript.md": transcript.markdown(record),
                     "meta.json": json.dumps(meta),
+                    **({"scenes.json": json.dumps(scenes)} if scenes else {}),
                 },
             )
             for name in ("quality.json", "transcript.orig.json"):  # both describe the old content

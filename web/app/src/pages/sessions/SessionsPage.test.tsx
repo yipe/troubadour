@@ -1,9 +1,10 @@
-import { screen, within } from "@testing-library/react"
+import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, expect, it, vi } from "vitest"
 import { keys } from "@troubadour/api/query"
 import {
   campaign,
+  bodyOf,
   campaignJob,
   entity,
   factSuggestion,
@@ -69,7 +70,7 @@ it("lists each session with its status and defaults to the newest", async () => 
   expect(list.getByText("Needs review")).toBeInTheDocument()
   expect(list.getByText("Not written up")).toBeInTheDocument()
   expect(list.getByText(/^Untitled · /)).toBeInTheDocument()
-  expect(screen.getByRole("button", { name: /Prepare session 4/ })).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: /Prepare next session/ })).toBeInTheDocument()
   expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(/^Untitled/)
 })
 
@@ -131,4 +132,66 @@ it("explains scenes before a write-up and starts the write-up job", async () => 
       expect.objectContaining({ method: "POST", url: "/api/campaign/writeup/s3" }),
     ),
   )
+})
+
+it("offers to improve and write up again on a session that was merged into", async () => {
+  const merged = { ...s2, merged_from: ["s9"] }
+  renderWithProviders(
+    <Routes>
+      <Route path="/sessions/:id" element={<SessionsPage />} />
+    </Routes>,
+    {
+      route: "/sessions/s2",
+      queryData: [
+        [keys.sessions(), [merged, s1]],
+        [keys.campaign(), campaign({ written_up: written })],
+        [keys.record("s2"), sessionRecord({ id: "s2" })],
+      ],
+    },
+  )
+  expect(screen.getByText(/Merged with another session/)).toBeInTheDocument()
+  expect(screen.getAllByRole("button", { name: "Improve transcript" })).toHaveLength(2) // the notice and the transcript header
+  expect(screen.getByRole("button", { name: "Write up again" })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole("button", { name: "More for this session" }))
+  expect(await screen.findByRole("menuitem", { name: "Improve transcript…" })).toBeInTheDocument()
+  expect(screen.getByRole("menuitem", { name: "Write up again" })).toBeInTheDocument()
+})
+
+it("badges a notes session, offers no merge for it, and adds session notes from the list", async () => {
+  const notes = savedSession({ id: "n1", kind: "notes", n: 1, started_at: 1_759_000_000, title: "Bells" })
+  const api = mockFetch((c) =>
+    c.url === "/api/sessions/notes"
+      ? campaignJob({ id: "j9", state: "queued" })
+      : c.url === "/api/sessions/upgrades"
+        ? { sessions: [], current: {} }
+        : [],
+  )
+  renderWithProviders(
+    <Routes>
+      <Route path="/sessions" element={<SessionsPage />} />
+    </Routes>,
+    {
+      route: "/sessions",
+      queryData: [
+        [keys.sessions(), [s2, notes]],
+        [keys.campaign(), campaign({ written_up: written })],
+        [keys.record("s2"), sessionRecord({ id: "s2" })],
+      ],
+    },
+  )
+  expect(
+    within(screen.getByRole("navigation", { name: "Saved sessions" })).getByText("Notes"),
+  ).toBeInTheDocument()
+  await userEvent.click(screen.getByRole("button", { name: /Add session notes/ }))
+  fireEvent.change(await screen.findByLabelText("Date"), { target: { value: "2026-10-01" } })
+  fireEvent.change(screen.getByLabelText("Title"), { target: { value: "The Fair" } })
+  fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "We went to the fair." } })
+  await userEvent.click(screen.getByRole("button", { name: "Add session" }))
+  await waitFor(() => expect(api.writes()).toHaveLength(1))
+  expect(api.writes()[0]).toMatchObject({ url: "/api/sessions/notes" })
+  expect(bodyOf(api.writes()[0]!)).toEqual({
+    date: "2026-10-01",
+    title: "The Fair",
+    text: "We went to the fair.",
+  })
 })

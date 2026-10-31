@@ -14,6 +14,7 @@ import { Input } from "@troubadour/ui/input"
 import { NativeSelect } from "@troubadour/ui/native-select"
 import { SearchInput } from "@troubadour/ui/search-input"
 import { notify } from "@troubadour/ui/toast"
+import { SrdAttribution } from "./SrdAttribution.tsx"
 
 const PAGE = 50
 const MAX_NAME = 60
@@ -31,7 +32,7 @@ const TYPES = [
 
 const SOURCES: { id: TermSource | ""; label: string }[] = [
   { id: "", label: "All" },
-  { id: "builtin", label: "Built-in" },
+  { id: "builtin", label: "SRD (built-in)" },
   { id: "local", label: "Your local list" },
   { id: "custom", label: "Added by you" },
 ]
@@ -88,7 +89,7 @@ export function TermsSection() {
       </p>
       {counts && (
         <p className="text-13 text-ink-subtle">
-          {counts.builtin} built-in
+          {counts.builtin} SRD
           {counts.local > 0 && <> · {counts.local} in your local list</>} · {counts.custom} added by you
         </p>
       )}
@@ -193,6 +194,7 @@ export function TermsSection() {
       <p className="text-12 text-ink-subtle">
         A list is one term per line, optionally <code>name,type</code>, or JSON. Up to 1 MB.
       </p>
+      <SrdAttribution />
 
       {result && (
         <div role="status" className="rounded-card border border-line bg-surface px-4 py-3 text-13">
