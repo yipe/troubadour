@@ -10,7 +10,7 @@ Everything runs locally on one Apple Silicon Mac (M5 Max, 128 GB).
 1. Local LLM: LM Studio server with `google/gemma-4-26b-a4b-qat` loaded
    (`lms server start && lms load google/gemma-4-26b-a4b-qat --yes`; it serves on
    port 1235 here). Override with `TROUBADOUR_LLM_URL` / `TROUBADOUR_LLM_MODEL`.
-2. `yarn setup` (once: `uv sync` + `pnpm install`), then `yarn build` after UI changes.
+2. `./install.sh` (checks prerequisites, `uv sync` + `pnpm install` + build; `yarn setup` for development), then `yarn build` after UI changes.
 3. `HF_TOKEN=… yarn start` → http://127.0.0.1:8765. Needs a Hugging Face
    token with access to `pyannote/speaker-diarization-community-1`
    (`HUGGING_FACE_TOKEN` is also accepted).

@@ -4,12 +4,12 @@ Live transcription for an in-person D&D table, from one shared microphone. Troub
 speaking and what they said as the game happens, and keeps a campaign wiki (plain Markdown, an
 Obsidian vault) that grows every session.
 
-**Everything runs locally** on one Apple Silicon Mac by default: speech-to-text, speaker recognition and
+**Everything runs locally** on one computer by default: speech-to-text, speaker recognition and
 the LLM. No audio or text leaves the machine unless you opt in to a hosted language model or cloud backup.
 
 ## What it does
 
-- **Live transcript** with speaker labels. Whisper (`mlx-whisper`, large-v3-turbo) transcribes;
+- **Live transcript** with speaker labels. Whisper (large-v3-turbo; `mlx-whisper` on a Mac, `faster-whisper` elsewhere) transcribes;
   voiceprints from pyannote's speaker-embedding model tell the voices apart.
 - **No setup recording needed.** Unknown voices show up as "Voice 1", "Voice 2"…; tap a name once
   and every past and future line from that voice is relabeled. Optional 15–30 s training helps
@@ -27,9 +27,11 @@ the LLM. No audio or text leaves the machine unless you opt in to a hosted langu
 
 ## Requirements
 
-- A Mac with Apple Silicon (mlx-whisper and torch on MPS) and `ffmpeg` (`brew install ffmpeg`).
-- [uv](https://docs.astral.sh/uv/) (Python 3.12 is installed for you), Node 24 with Corepack
-  (`corepack enable` gives Yarn 4 and pnpm).
+- macOS on Apple Silicon (the most tested), Linux, or Windows (new: tell us what breaks). An NVIDIA GPU
+  helps on Linux and Windows; without one Whisper runs on the CPU with the smaller `small` model, which
+  misses more names. Voice clones need Apple Silicon. `./install.sh` (macOS, Linux) or `.\install.ps1`
+  (Windows) checks for the rest (`uv`, `ffmpeg`, Node 24+ with Corepack, PortAudio on Linux) and offers to
+  install whatever is missing.
 - [LM Studio](https://lmstudio.ai/) serving an OpenAI-compatible API (default
   `http://127.0.0.1:1235/v1`, model `google/gemma-4-26b-a4b-qat`). Transcription works without it;
   spelling cleanup and the campaign write-ups need it. Or, in **Models**, use a hosted model instead:
@@ -41,9 +43,10 @@ the LLM. No audio or text leaves the machine unless you opt in to a hosted langu
 
 ## Quick start
 
+Step-by-step instructions for Mac, Linux and Windows, with troubleshooting: **[INSTALL.md](INSTALL.md)**.
+
 ```sh
-yarn setup                         # uv sync + pnpm install
-yarn build                         # build the web UI
+./install.sh                       # or .\install.ps1 on Windows: checks prerequisites, installs packages, builds the web UI
 lms server start --port 1235 && lms load google/gemma-4-26b-a4b-qat --yes   # or use the LM Studio app
 HF_TOKEN=hf_… yarn start           # → http://127.0.0.1:8765
 ```
@@ -63,8 +66,8 @@ Environment variables (see `backend/packages/core/src/troubadour/core/config.py`
 | `TROUBADOUR_VAULT` | `$TROUBADOUR_DATA/campaign` | campaign wiki; point it at a folder in an existing Obsidian vault |
 | `TROUBADOUR_LLM_URL` / `TROUBADOUR_LLM_MODEL` | LM Studio, gemma | LLM for spelling cleanup |
 | `TROUBADOUR_MEMORY_MODEL` / `TROUBADOUR_MEMORY_REASONING` | same model / `none` | LLM for notes and write-ups |
-| `TROUBADOUR_WHISPER` | `mlx-community/whisper-large-v3-turbo` | Whisper model for the live session |
-| `TROUBADOUR_WHISPER_IMPROVE` | `mlx-community/whisper-large-v3-mlx` | Whisper model for Improve transcript |
+| `TROUBADOUR_WHISPER` | turbo (`mlx-community/whisper-large-v3-turbo` on a Mac; `large-v3-turbo` with an NVIDIA GPU, else `small`) | Whisper model for the live session |
+| `TROUBADOUR_WHISPER_IMPROVE` | large-v3 (`mlx-community/whisper-large-v3-mlx` on a Mac; `large-v3` with an NVIDIA GPU, else `large-v3-turbo`) | Whisper model for Improve transcript |
 | `TROUBADOUR_RECORD=0`, `TROUBADOUR_CLEANUP=0`, `TROUBADOUR_ASR_PROMPT=0` | on | turn off recording, spelling cleanup, name prompting |
 
 Troubadour was called Bard before. Setups from then keep working: a `BARD_*` variable is read when its
@@ -80,6 +83,7 @@ Troubadour was called Bard before. Setups from then keep working: a `BARD_*` var
 ## Development
 
 ```sh
+yarn setup        # = ./install.sh --dev: all Python groups, web packages, Playwright Chromium
 yarn check        # format check, lint, typecheck, tests, build: run before every commit
 yarn test         # backend pytest + web vitest (no models, GPU or network needed)
 yarn dev:web      # Vite dev server, proxies the API to :8765
@@ -110,3 +114,8 @@ Reference Document 5.1 and 5.2 by Wizards of the Coast LLC, available at
 <https://www.dndbeyond.com/srd>, licensed under
 [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/legalcode). Troubadour is unofficial and not
 affiliated with or endorsed by Wizards of the Coast.
+
+Also bundled: Whisper's tokenizer vocabulary (`backend/packages/sound/src/troubadour/sound/whisper-multilingual.tiktoken`)
+from [openai/whisper](https://github.com/openai/whisper), MIT license, Copyright (c) 2022 OpenAI; and
+Webster's Second International word list (`backend/packages/lore/src/troubadour/lore/web2.txt.gz`, 1934,
+public domain, as distributed by BSD as `/usr/share/dict/web2`).

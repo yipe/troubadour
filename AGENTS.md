@@ -2,7 +2,7 @@
 
 Troubadour live-transcribes an in-person D&D table from one shared mic: who is speaking, what they
 said, and a campaign wiki that grows every session. **Everything runs
-locally** on one Mac (Apple Silicon): Python engine + FastAPI in `backend/`, React UI in `web/`,
+locally** on one computer (Apple Silicon Mac first; Linux and Windows via faster-whisper, `docs/adr/0011`): Python engine + FastAPI in `backend/`, React UI in `web/`,
 LLMs in LM Studio. No cloud calls at runtime, ever.
 
 Design, measurements and history: `PLAN.md` (read the relevant section before changing a subsystem; it
@@ -12,7 +12,7 @@ records why things are the way they are). Layout and decisions: `docs/architectu
 
 | Task | Command |
 |---|---|
-| Install everything | `yarn setup` (uv + pnpm) |
+| Install everything | `yarn setup` (= `./install.sh --dev`: checks prerequisites, uv + pnpm + Playwright Chromium; safe to re-run) |
 | Run the app | `yarn start` → http://127.0.0.1:8765 (serves `web/dist`; `yarn build` first) |
 | API + Vite, with fast refresh | `yarn dev` |
 | UI dev server only | `yarn dev:web` (Vite, proxies to :8765) |
