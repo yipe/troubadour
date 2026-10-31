@@ -138,7 +138,8 @@ def test_a_note_locked_only_for_its_facts_layout_still_names_things_for_transcri
     people.mkdir(parents=True)
     (people / "Orsa.md").write_text("---\ntype: npc\n---\n# Orsa\n\n## Facts\n1. Captain of the Gull.\n")
     (people / "Pip.md").write_text("---\ntype: [unclosed\n---\n# Pip\n")
-    assert vault.get("Orsa").read_only and not vault.get("Orsa").unreadable
+    assert vault.get("Orsa").read_only
+    assert not vault.get("Orsa").unreadable
     names = {e.name for e in vault.glossary()}
     assert "Orsa" in names  # locked against writes, but its name is fine
     assert "Pip" not in names  # frontmatter unreadable: nothing about it can be trusted
