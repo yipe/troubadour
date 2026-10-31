@@ -3,21 +3,25 @@
 Goal: check feasibility of near-real-time, speaker-labeled transcription of an
 in-person D&D 5e table (one shared mic). Game-mechanics highlighting (regex + LLM tags)
 was built, then removed on 2026-10-16 at the owner's request: transcript and audio quality only.
-Everything runs locally on one Apple Silicon Mac (M5 Max, 128 GB).
+Everything runs locally. Every measurement here is from one Apple Silicon Mac (M5 Max, 128 GB) on MLX;
+Linux and Windows run Whisper on faster-whisper instead (`docs/adr/0011`).
 
 ## Run
 
-1. Local LLM: LM Studio server with `google/gemma-4-26b-a4b-qat` loaded
-   (`lms server start && lms load google/gemma-4-26b-a4b-qat --yes`; it serves on
-   port 1235 here). Override with `TROUBADOUR_LLM_URL` / `TROUBADOUR_LLM_MODEL`.
-2. `./install.sh` (checks prerequisites, `uv sync` + `pnpm install` + build; `yarn setup` for development), then `yarn build` after UI changes.
+Full instructions: [INSTALL.md](INSTALL.md). In short:
+
+1. `./install.sh` (or `.\install.ps1` on Windows): checks prerequisites, `uv sync`, `pnpm install`, builds the UI.
+   `yarn setup` is the developer version; `yarn build` after UI changes.
+2. Optional local LLM: LM Studio serving `google/gemma-4-26b-a4b-qat` on port 1235
+   (`lms server start --port 1235 && lms load google/gemma-4-26b-a4b-qat --yes`). Override with
+   `TROUBADOUR_LLM_URL` / `TROUBADOUR_LLM_MODEL`.
 3. `HF_TOKEN=… yarn start` → http://127.0.0.1:8765. Needs a Hugging Face
    token with access to `pyannote/speaker-diarization-community-1`
    (`HUGGING_FACE_TOKEN` is also accepted).
 
 Sample files for replay live in `backend/samples/eval/` (built by
 `spike/dataset.py`). Players, campaigns and named/trained voiceprints persist in
-`backend/data/state.json`. UI dev server: `yarn dev:web` (proxies to 8765).
+`~/troubador/state.json` (`TROUBADOUR_DATA`). UI dev server: `yarn dev:web` (proxies to 8765).
 
 ## Develop
 
@@ -502,12 +506,12 @@ use, like Whisper, then run locally. Code: `tts.py` (audio, text, `Clones`: the 
   Facts and Suggested facts are skipped). `chunks` packs whole sentences up to 280 characters, never across a paragraph
   (Chatterbox drifts or stops early on long input); pauses 0.25 s between chunks, 0.6 s between
   paragraphs. A reading of 40+ characters outside 6–30 characters per second is redone once.
-- **GPU.** Each model call holds `asr.mlx_lock` (one MLX model at a time). Clone, say and read
+- **GPU.** Each model call holds `asr.model_lock` (one audio model at a time). Clones are Apple Silicon only (`config.VOICE_CLONES`). Clone, say and read
   jobs are refused while a session runs, and before every model call they wait out one that started
   since (`Engine.wait_idle`, "Paused while a session runs"; improve uses it too), so a session that
   starts mid-call waits for that one call (a few seconds).
 - Jobs (`campaign.job`, `player_id` set): `profile`, `clone`, `say`, `read` (titled with the page;
-  `note` is its vault path). API: `GET /api/clones` (`{voices, profiles, clips}`, voices and
+  `note` is its vault path). API: `GET /api/clones` (`{voices, profiles, clips, available}`, voices and
   profiles by player id), `POST /api/players/{id}/profile`, `POST /api/players/{id}/clone`,
   `POST /api/players/{id}/clone/say {text ≤ 2000, in_their_words, persona}`,
   `POST /api/players/{id}/clone/read {session, in_their_words, persona}` (that session's write-up page),

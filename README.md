@@ -4,13 +4,14 @@ Live transcription for an in-person D&D table, from one shared microphone. Troub
 speaking and what they said as the game happens, and keeps a campaign wiki (plain Markdown, an
 Obsidian vault) that grows every session.
 
-**Everything runs locally** on one computer by default: speech-to-text, speaker recognition and
-the LLM. No audio or text leaves the machine unless you opt in to a hosted language model or cloud backup.
+**Everything runs locally** on one computer: speech-to-text, speaker recognition and the language model.
+No audio or text leaves the machine unless you opt in to a hosted language model or cloud backup.
+Runs best on a Mac with Apple Silicon; Linux and Windows work too (an NVIDIA GPU helps).
 
 ## What it does
 
-- **Live transcript** with speaker labels. Whisper (large-v3-turbo; `mlx-whisper` on a Mac, `faster-whisper` elsewhere) transcribes;
-  voiceprints from pyannote's speaker-embedding model tell the voices apart.
+- **Live transcript** with speaker labels. Whisper (large-v3-turbo) transcribes; voiceprints from pyannote's
+  speaker-embedding model tell the voices apart.
 - **No setup recording needed.** Unknown voices show up as "Voice 1", "Voice 2"…; tap a name once
   and every past and future line from that voice is relabeled. Optional 15–30 s training helps
   quiet players.
@@ -24,35 +25,25 @@ the LLM. No audio or text leaves the machine unless you opt in to a hosted langu
   transcript and note, knows who's a player, a PC or an NPC, and answers with its sources.
 - **Sessions.** Every session autosaves its transcript, recording and setup, with Markdown/JSON
   export, an audio-quality report and an "Improve transcript" pass.
+- **Voice clones** (Mac only, with each player's consent): speak typed lines or read a session page aloud in
+  a player's voice.
 
-## Requirements
+## Install
 
-- macOS on Apple Silicon (the most tested), Linux, or Windows (new: tell us what breaks). An NVIDIA GPU
-  helps on Linux and Windows; without one Whisper runs on the CPU with the smaller `small` model, which
-  misses more names. Voice clones need Apple Silicon. `./install.sh` (macOS, Linux) or `.\install.ps1`
-  (Windows) checks for the rest (`uv`, `ffmpeg`, Node 24+ with Corepack, PortAudio on Linux) and offers to
-  install whatever is missing.
-- [LM Studio](https://lmstudio.ai/) serving an OpenAI-compatible API (default
-  `http://127.0.0.1:1235/v1`, model `google/gemma-4-26b-a4b-qat`). Transcription works without it;
-  spelling cleanup and the campaign write-ups need it. Or, in **Models**, use a hosted model instead:
-  your ChatGPT Go/Plus/Pro plan (Continue with ChatGPT), OpenRouter (sign in), or an Anthropic or
-  DeepSeek API key. Transcripts and notes then go to that provider; audio and voices never do.
-- A [Hugging Face token](https://huggingface.co/settings/tokens) with access to
-  [`pyannote/speaker-diarization-community-1`](https://huggingface.co/pyannote/speaker-diarization-community-1)
-  (accept its terms once). Models download on first start.
-
-## Quick start
-
-Step-by-step instructions for Mac, Linux and Windows, with troubleshooting: **[INSTALL.md](INSTALL.md)**.
+**[INSTALL.md](INSTALL.md)** has step-by-step instructions for Mac, Linux and Windows. In short:
 
 ```sh
-./install.sh                       # or .\install.ps1 on Windows: checks prerequisites, installs packages, builds the web UI
-lms server start --port 1235 && lms load google/gemma-4-26b-a4b-qat --yes   # or use the LM Studio app
-HF_TOKEN=hf_… yarn start           # → http://127.0.0.1:8765
+git clone https://github.com/yipe/troubadour && cd troubadour
+./install.sh                 # Windows: .\install.ps1. Checks prerequisites and offers to install them
+HF_TOKEN=hf_… yarn start     # → http://127.0.0.1:8765
 ```
 
-Then: the first-run wizard adds your players and campaign; pick the microphone on the ready check and start a session. An omnidirectional
-or boundary mic in the middle of the table works best; Troubadour's mic check tells you if yours isn't.
+You need a free [Hugging Face token](https://huggingface.co/settings/tokens) with access to
+[`pyannote/speaker-diarization-community-1`](https://huggingface.co/pyannote/speaker-diarization-community-1).
+Transcription works without a language model; spelling cleanup, write-ups and questions use
+[LM Studio](https://lmstudio.ai/) on port 1235, or a hosted model you pick in **Settings → Models**
+(ChatGPT plan, OpenRouter, Anthropic, DeepSeek). Transcripts and notes then go to that provider; audio and
+voices never do.
 
 ## Configuration
 
@@ -77,16 +68,16 @@ Troubadour was called Bard before. Setups from then keep working: a `BARD_*` var
 
 - Troubadour binds to `127.0.0.1` with no auth, by design; Host and Origin checks stop other websites in
   your browser from reaching the API.
-- Everything Troubadour stores lives in `~/troubador/` (git-ignored): voiceprints and recordings of the
-  people at your table. Ask before you record people.
+- Everything Troubadour stores lives in `~/troubador/` (`%USERPROFILE%\troubador` on Windows): voiceprints
+  and recordings of the people at your table. Ask before you record people.
 
 ## Development
 
 ```sh
 yarn setup        # = ./install.sh --dev: all Python groups, web packages, Playwright Chromium
+yarn dev          # API + Vite with fast refresh
 yarn check        # format check, lint, typecheck, tests, build: run before every commit
 yarn test         # backend pytest + web vitest (no models, GPU or network needed)
-yarn dev:web      # Vite dev server, proxies the API to :8765
 yarn format
 ```
 

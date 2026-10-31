@@ -1,9 +1,9 @@
 # Troubadour: agent guide
 
 Troubadour live-transcribes an in-person D&D table from one shared mic: who is speaking, what they
-said, and a campaign wiki that grows every session. **Everything runs
-locally** on one computer (Apple Silicon Mac first; Linux and Windows via faster-whisper, `docs/adr/0011`): Python engine + FastAPI in `backend/`, React UI in `web/`,
-LLMs in LM Studio. No cloud calls at runtime, ever.
+said, and a campaign wiki that grows every session. **Everything runs locally** on one computer: Python
+engine + FastAPI in `backend/`, React UI in `web/`, LLMs in LM Studio. No cloud calls at runtime, ever.
+Apple Silicon is the main target (MLX); Linux and Windows run Whisper on faster-whisper (`docs/adr/0011`).
 
 Design, measurements and history: `PLAN.md` (read the relevant section before changing a subsystem; it
 records why things are the way they are). Layout and decisions: `docs/architecture.md`, `docs/adr/`.
