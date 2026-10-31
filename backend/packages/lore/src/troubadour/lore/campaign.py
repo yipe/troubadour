@@ -38,6 +38,7 @@ frontmatter doesn't parse is shown read-only and never rewritten.
 """
 
 import difflib
+import glob
 import re
 import shutil
 import threading
@@ -154,12 +155,62 @@ def english() -> frozenset[str]:
     return _DICT
 
 
+def _unique_trash_path(root: Path, path: Path, stamped: bool) -> Path:
+    """A free name in .trash: the note's own (unless `stamped`), then with the time, then with a counter."""
+    trash = root / ".trash"
+    trash.mkdir(parents=True, exist_ok=True)
+    when = f"{path.stem} {time.strftime('%Y%m%d-%H%M%S')}"
+    dest = trash / (f"{when}{path.suffix}" if stamped else path.name)
+    n = 1
+    while dest.exists():
+        n += 1
+        dest = trash / f"{when}{path.suffix if n == 2 else f'-{n}{path.suffix}'}"
+    return dest
+
+
+def trash_move(root: Path, path: Path) -> Path:
+    """Move a note into the vault's .trash (Obsidian's own convention); never overwrites what is there."""
+    dest = _unique_trash_path(root, path, stamped=False)
+    shutil.move(str(path), dest)
+    return dest
+
+
+def trash_copy(root: Path, path: Path) -> Path | None:
+    """A copy of a note in .trash, kept when the note is about to be rewritten in place. If the newest
+    copy is already identical (a refresh copies, then the write-up copies again) there is no second one."""
+    try:
+        body = path.read_bytes()
+    except OSError:
+        return None
+    for old in sorted((root / ".trash").glob(f"{glob.escape(path.stem)} *{path.suffix}")):
+        try:
+            if old.read_bytes() == body:
+                return old
+        except OSError:
+            continue
+    dest = _unique_trash_path(root, path, stamped=True)
+    write_atomic(dest, body)
+    return dest
+
+
+def unreadable(e: "Entity") -> str:
+    return (
+        f"{e.name}.md has something Troubadour can't read without changing it (frontmatter that doesn't parse, "
+        "or a list under Facts that isn't plain bullets); fix it in Obsidian first."
+    )
+
+
 def safe_name(name: str) -> str:
     """A note title that is a valid file name wherever Obsidian runs; ValueError if empty."""
     clean = re.sub(r"\s+", " ", _BAD_NAME.sub("-", str(name))).strip().lstrip(".").strip()[:120]
     if not norm(clean):
         raise ValueError("A name is required.")
     return clean
+
+
+def _one_line(text: str) -> str:
+    """A fact is one bullet: a line break in it would end the bullet and strand the rest as prose."""
+    return re.sub(r"\s*[\r\n]+\s*", " ", text.strip())
 
 
 def unique(items) -> list[str]:
@@ -173,10 +224,22 @@ def unique(items) -> list[str]:
     return out
 
 
+_NEGATION = re.compile(r"\b(?:no|not|never|none|nobody|nothing|neither|nor|without|cannot)\b|n['\u2019]t\b")
+
+
+def _numbers_and_negations(text: str) -> tuple[list[str], int]:
+    return re.findall(r"\d+", text), len(_NEGATION.findall(text.casefold()))
+
+
 def same_fact(a: Fact, b: Fact) -> bool:
-    """Equal or nearly so, ignoring where each came from."""
+    """Equal after norm(), or nearly so with the same numbers and negations. "Owes 20 gold" and "Owes 200
+    gold", or "is the king" and "is not the king", are one character apart and opposite facts."""
     x, y = norm(a.text), norm(b.text)
-    return x == y or difflib.SequenceMatcher(None, x, y).ratio() > 0.9
+    if x == y:
+        return True
+    if difflib.SequenceMatcher(None, x, y).ratio() < 0.9:
+        return False
+    return _numbers_and_negations(a.text) == _numbers_and_negations(b.text)
 
 
 def add_unique(existing: list[Fact], new: list[Fact]) -> list[Fact]:
@@ -318,6 +381,29 @@ def bullets(text: str) -> list[str]:
     return [i for i in items if i]
 
 
+_FACT_LINE = re.compile(r"^[-*+]\s+\S")
+_HISTORY_LINE = re.compile(r"^\s+[-*+]\s+~~.+~~")
+_STRUCTURE = re.compile(r"^\s*(?:[-*+](?:\s|$)|\d+[.)]\s|#|>|```|~~~|\|)")
+
+
+def lists_round_trip(content: str) -> bool:
+    """True if a Facts section is fact bullets, their struck-through history, and wrapped continuation lines
+    (joined into the bullet, nothing lost): what parse_bullets and render_bullets give back. A numbered list,
+    a sub-heading, a nested bullet, a quote, a table, or prose set apart from a bullet would be flattened or
+    reordered by a rewrite, so a note holding one is left alone."""
+    following = False  # the previous line was a bullet or its continuation, with no blank line since
+    for line in content.splitlines():
+        if not line.strip():
+            following = False
+        elif _FACT_LINE.match(line):
+            following = True
+        elif _HISTORY_LINE.match(line) and following or following and not _STRUCTURE.match(line):
+            pass
+        else:
+            return False
+    return True
+
+
 def _strings(value) -> list[str]:
     if value is None:
         return []
@@ -337,15 +423,18 @@ def parse(name: str, text: str) -> Entity:
     if lines and lines[0].startswith("# "):
         lines = lines[1:]
     e = Entity(name=name, description="\n".join(lines).strip())
+    # A section may appear twice (a person pasted one in): read them as one list, and save them as one.
+    mine: dict[str, list[str]] = {FACTS.casefold(): [], SUGGESTED.casefold(): []}
     for heading, content in found:
-        if heading.casefold() == FACTS.casefold():
-            e.facts = parse_bullets(content.splitlines(), name)
-        elif heading.casefold() == SUGGESTED.casefold():
-            e.suggested_facts = parse_bullets(content.splitlines(), name)
+        if heading.casefold() in mine:
+            mine[heading.casefold()].append(content)
         else:
             e.extra_sections.append((heading, content))
+    facts_text, suggested_text = "\n".join(mine[FACTS.casefold()]), "\n".join(mine[SUGGESTED.casefold()])
+    e.facts = parse_bullets(facts_text.splitlines(), name)
+    e.suggested_facts = parse_bullets(suggested_text.splitlines(), name)
+    e.read_only = meta is None or not (lists_round_trip(facts_text) and lists_round_trip(suggested_text))
     if meta is None:
-        e.read_only = True
         return e
     kind = str(meta.get("type") or "term").casefold()
     status = str(meta.get("status") or "confirmed").casefold()
@@ -391,7 +480,12 @@ def _accepted(facts: list[Fact], suggestion: Fact) -> list[Fact]:
     old_id = fact_id(suggestion.about, suggestion.replaces) if suggestion.replaces else None
     at = next((i for i, f in enumerate(facts) if f.id == old_id), None)
     if at is None:
-        return facts if any(same_fact(fact, f) for f in facts) else [*facts, fact]
+        near = next((i for i, f in enumerate(facts) if same_fact(fact, f)), None)
+        if near is None:
+            return [*facts, fact]
+        if norm(facts[near].text) == norm(fact.text):
+            return facts
+        at = near  # the same fact worded differently: the accepted wording wins, the old one stays as history
     old = facts[at]
     fact.history = [Version(old.text, old.said_by, old.source, old.confidence), *old.history]
     return [*facts[:at], fact, *facts[at + 1 :]]
@@ -424,6 +518,18 @@ def edited(
         if any(f.id == fact.id for i, f in enumerate(facts) if i != at):
             raise ValueError("That is already a fact.")
     return [*facts[:at], fact, *facts[at + 1 :]]
+
+
+def _joined_sections(keep: list[tuple[str, str]], add: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """`keep`'s sections, then `add`'s; a section with a heading already there is appended under it."""
+    out = list(keep)
+    for heading, content in add:
+        at = next((i for i, (h, _) in enumerate(out) if h.casefold() == heading.casefold()), None)
+        if at is None:
+            out.append((heading, content))
+        else:
+            out[at] = (out[at][0], f"{out[at][1]}\n\n{content}".strip("\n"))
+    return out
 
 
 class Vault:
@@ -514,12 +620,14 @@ class Vault:
 
     def _save(self, e: Entity) -> Entity:
         if e.read_only:
-            raise ValueError(f"{e.name}.md has frontmatter Troubadour can't read; fix it in Obsidian first.")
+            raise ValueError(unreadable(e))
         path = self.root / TYPES[e.type] / f"{safe_name(e.name)}.md"
         old = e.path
         write_atomic(path, render(e, self.index()))
         if old is not None and old != path and old.exists():
-            old.unlink()
+            # A case-only rename is the same file on a case-insensitive disk: it must stay.
+            if not old.samefile(path):
+                trash_move(self.root, old)
             self._cache.pop(old, None)
         self._cache.pop(path, None)
         return self._read(path) or e
@@ -541,7 +649,7 @@ class Vault:
         with self.lock:
             e = self.get(current)
             if e.read_only:
-                raise ValueError(f"{e.name}.md has frontmatter Troubadour can't read; fix it in Obsidian first.")
+                raise ValueError(unreadable(e))
             if "name" in fields:
                 new = safe_name(fields.pop("name"))
                 clash = self.find(new)
@@ -569,7 +677,10 @@ class Vault:
                 setattr(e, key, unique(fields[key]))
         for key in ("facts", "suggested_facts"):
             if key in fields:
-                setattr(e, key, [replace(f, text=f.text.strip()) for f in fields[key] if f.text.strip()])
+                setattr(e, key, [replace(f, text=_one_line(f.text)) for f in fields[key] if f.text.strip()])
+        for key in ("tags", "extra_meta", "extra_sections"):
+            if key in fields:
+                setattr(e, key, fields[key])
         if "description" in fields:
             e.description = str(fields["description"] or "").strip()
         e.aliases = [a for a in e.aliases if norm(a) != norm(e.name)]
@@ -584,12 +695,8 @@ class Vault:
         """Moves the note to the vault's .trash (Obsidian's own convention); never destroys it."""
         with self.lock:
             e = self.get(name)
-            trash = self.root / ".trash"
-            trash.mkdir(parents=True, exist_ok=True)
-            dest = trash / e.path.name
-            if dest.exists():
-                dest = trash / f"{e.path.stem} {time.strftime('%Y%m%d-%H%M%S')}.md"
-            shutil.move(str(e.path), dest)
+            assert e.path is not None  # entities come from files
+            trash_move(self.root, e.path)
             self._cache.pop(e.path, None)
 
     def merge(self, name: str, into: str) -> Entity:
@@ -599,10 +706,13 @@ class Vault:
             if src.path == dst.path:
                 raise ValueError("Can't merge a note into itself.")
             if src.read_only or dst.read_only:
-                raise ValueError("One of these notes has frontmatter Troubadour can't read; fix it in Obsidian first.")
+                raise ValueError(unreadable(src if src.read_only else dst))
             merged = self.update(
                 dst.name,
                 aliases=[*dst.aliases, *src.names()],
+                tags=unique([*dst.tags, *src.tags]),
+                extra_meta={**src.extra_meta, **dst.extra_meta},
+                extra_sections=_joined_sections(dst.extra_sections, src.extra_sections),
                 heard_as=[*dst.heard_as, *src.heard_as],
                 heard_as_suggested=[*dst.heard_as_suggested, *src.heard_as_suggested],
                 facts=add_unique(dst.facts, src.facts),
@@ -681,17 +791,31 @@ class Vault:
             except OSError:
                 return []
             _, found = sections(body)
-            return next((parse_bullets(c.splitlines(), None) for h, c in found if h.casefold() == FACTS.casefold()), [])
+            same = [c for h, c in found if h.casefold() == FACTS.casefold()]
+            return parse_bullets("\n".join(same).splitlines(), None)
 
     def set_campaign_facts(self, facts: list[Fact]) -> list[Fact]:
+        """Replace the bullets under `## Facts` in Facts.md and nothing else: the frontmatter, the intro and
+        any other section stay as written. No Facts section yet: one is added at the end."""
         with self.lock:
-            facts = [replace(f, text=f.text.strip(), about=None) for f in facts if f.text.strip()]
+            facts = [replace(f, text=_one_line(f.text), about=None) for f in facts if f.text.strip()]
             index = self.index()
-            write_atomic(
-                self.facts_path,
-                "---\ntags: [troubadour/facts]\n---\n# Campaign facts\n\nThings that hold across the whole campaign.\n\n"
-                f"## {FACTS}\n" + "".join(f"{line}\n" for line in render_bullets(facts, index.numbers, index.page_for)),
-            )
+            bullets_ = [f"{line}\n" for line in render_bullets(facts, index.numbers, index.page_for)]
+            try:
+                old = self.facts_path.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                write_atomic(
+                    self.facts_path,
+                    "---\ntags: [troubadour/facts]\n---\n# Campaign facts\n\nThings that hold across the whole campaign.\n\n"
+                    f"## {FACTS}\n" + "".join(bullets_),
+                )
+                return facts
+            except (OSError, UnicodeDecodeError) as e:
+                raise ValueError(f"Facts.md can't be read ({e}); fix it before Troubadour changes it.") from None
+            meta, _ = split_frontmatter(old)
+            if meta is None:
+                raise ValueError("Facts.md has frontmatter Troubadour can't read; fix it in Obsidian first.")
+            write_atomic(self.facts_path, _with_facts(old, bullets_))
             return facts
 
     def add_campaign_fact(self, fact: Fact) -> list[Fact]:
@@ -788,6 +912,40 @@ class Vault:
                     out.append("| " + " | ".join(c.replace("|", "\\|") for c in cells) + " |")
                 out.append("")
             write_atomic(self.root / "Glossary.md", "\n".join(out))
+
+
+def _with_facts(text: str, bullets_: list[str]) -> str:
+    """`text` (a Facts.md) with the lines under its `## Facts` heading replaced by `bullets_`. A second Facts
+    section was read as part of the first, so it is folded in. ValueError if a Facts section holds anything
+    but fact bullets: rewriting it would flatten what the person wrote."""
+    lines = text.splitlines(keepends=True)
+    start = 0
+    if lines and lines[0].rstrip() == "---":
+        start = next((i + 1 for i in range(1, len(lines)) if lines[i].rstrip() == "---"), 0)
+    heads = [i for i in range(start, len(lines)) if lines[i].startswith("## ")]
+    spans = [
+        (i, next((j for j in heads if j > i), len(lines))) for i in heads if lines[i][3:].strip().casefold() == FACTS.casefold()
+    ]
+    if not spans:
+        gap = "" if not text.strip() else ("\n" if text.endswith("\n") else "\n\n")
+        return f"{text}{gap}## {FACTS}\n" + "".join(bullets_)
+    if not lists_round_trip("".join(line for i, j in spans for line in lines[i + 1 : j])):
+        raise ValueError(
+            "Facts.md has a list under Facts that isn't plain bullets (numbered, nested or prose lines); "
+            "Troubadour won't rewrite it. Tidy it in Obsidian first."
+        )
+    (first, end), rest = spans[0], spans[1:]
+    body = lines[first + 1 : end]
+    trailing = 0
+    while trailing < len(body) and not body[len(body) - 1 - trailing].strip():
+        trailing += 1
+    heading = lines[first] if lines[first].endswith("\n") else lines[first] + "\n"
+    out = [*lines[:first], heading, *bullets_, *body[len(body) - trailing :], *lines[end:]]
+    # Dropping the folded sections last keeps the earlier indexes valid.
+    for i, j in reversed(rest):
+        shift = len(bullets_) + trailing - (end - first - 1)
+        del out[i + shift : j + shift]
+    return "".join(out)
 
 
 class Corrector:
