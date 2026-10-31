@@ -65,9 +65,9 @@ jobs:
           done
           cat /tmp/scratch.log
           exit 1
-      - run: pnpm -C web/app smoke --port 8790
-        env:
-          COREPACK_ENABLE_STRICT: "0"
+      # From web/, where packageManager pins pnpm; at the root (yarn) corepack fetches the newest pnpm.
+      - run: pnpm -C app smoke --port 8790
+        working-directory: web
       - uses: actions/upload-artifact@v4
         if: always()
         with:
