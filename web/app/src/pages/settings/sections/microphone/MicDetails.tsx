@@ -90,7 +90,7 @@ function SpecsForm({ mic }: { mic: MicInfo }) {
               className={cn(
                 "rounded-full px-2.5 py-0.5 text-12 transition-colors",
                 patterns.includes(p.value)
-                  ? "bg-accent-strong text-white"
+                  ? "bg-accent-strong text-ink-on-accent"
                   : "bg-sunken text-ink-subtle hover:text-ink",
               )}
             >

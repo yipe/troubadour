@@ -6,7 +6,15 @@
 export const WELCOME_STEPS = ["campaign", "table", "microphone", "notes", "privacy"] as const
 export type WelcomeStep = (typeof WELCOME_STEPS)[number]
 
-export const SETTINGS_SECTIONS = ["models", "microphone", "players", "content", "vault", "cloud"] as const
+export const SETTINGS_SECTIONS = [
+  "models",
+  "microphone",
+  "players",
+  "content",
+  "appearance",
+  "vault",
+  "cloud",
+] as const
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]
 
 /** Route patterns (React Router syntax). */
