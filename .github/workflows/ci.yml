@@ -27,6 +27,8 @@ jobs:
       - run: corepack enable
       - run: yarn install --immutable
       - run: yarn setup
+      - run: pnpm exec playwright install chromium # the browser tests (*.browser.test.tsx) run in yarn check
+        working-directory: web/app
       - run: yarn check
 
   smoke:
