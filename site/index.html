@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Troubadour (ALPHA): live transcripts and a campaign wiki for your table</title>
-<meta name="description" content="Troubadour transcribes your in-person tabletop game from one microphone, shows who said what, and keeps a campaign wiki. Everything runs on your Mac.">
+<meta name="description" content="Troubadour transcribes your in-person tabletop game from one microphone, shows who said what, and keeps a campaign wiki. Everything runs on your computer.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/styles.css">
 </head>
@@ -13,7 +13,7 @@
   <header class="hero">
     <h1>Troubadour (ALPHA)</h1>
     <p class="lead">Live transcripts and a growing campaign wiki for your in-person D&amp;D table, from one shared microphone.</p>
-    <p class="sub">Everything runs on your Mac: speech-to-text, speaker recognition and the AI. No audio or text leaves the machine.</p>
+    <p class="sub">Everything runs on your computer: speech-to-text, speaker recognition and the AI. No audio or text leaves the machine.</p>
     <p class="actions">
       <a class="button primary" href="https://github.com/yipe/troubadour">Get Troubadour on GitHub</a>
       <a class="button" href="https://cloud.5eapps.com">Troubadour Cloud backup</a>
@@ -66,8 +66,8 @@
   <section aria-labelledby="private-heading">
     <h2 id="private-heading">Private by design</h2>
     <ul>
-      <li>Runs on one Apple Silicon Mac. No account, no cloud or subscription required.</li>
-      <li>Recordings and voiceprints stay in a folder on your Mac. Ask your table before you record.</li>
+      <li>Runs on one computer: a Mac with Apple Silicon, Linux or Windows. No account, no cloud or subscription required.</li>
+      <li>Recordings and voiceprints stay in a folder on your computer. Ask your table before you record.</li>
       <li>Troubadour Cloud backup is optional and off until you connect it.</li>
     </ul>
   </section>
@@ -75,7 +75,7 @@
   <section aria-labelledby="need-heading">
     <h2 id="need-heading">What you need</h2>
     <ul>
-      <li>A Mac with Apple Silicon</li>
+      <li>A Mac with Apple Silicon (best), or Linux or Windows (an NVIDIA GPU helps)</li>
       <li><a href="https://lmstudio.ai/">LM Studio</a> for spelling cleanup and write-ups (transcription works without it)</li>
       <li>A free <a href="https://huggingface.co/">Hugging Face</a> account (speaker-recognition model)</li>
       <li>A microphone in the middle of the table (an omnidirectional or boundary mic works best)</li>
@@ -86,8 +86,7 @@
     <h2 id="install-heading">Install</h2>
     <p>Troubadour is open source and installs from the command line:</p>
     <pre tabindex="0"><code>git clone https://github.com/yipe/troubadour &amp;&amp; cd troubadour
-yarn setup                         # uv sync + pnpm install
-yarn build                         # build the web UI
+./install.sh                       # checks prerequisites, installs packages, builds the web UI
 lms server start --port 1235 &amp;&amp; lms load google/gemma-4-26b-a4b-qat --yes   # or use the LM Studio app
 HF_TOKEN=hf_… yarn start           # → http://127.0.0.1:8765</code></pre>
     <p>Full instructions: <a href="https://github.com/yipe/troubadour#readme">README on GitHub</a></p>

@@ -6,11 +6,11 @@ import { cn } from "@troubadour/ui/cn"
 interface Row {
   what: string
   answer: string
-  /** True when something does leave this Mac. */
+  /** True when something does leave this computer. */
   leaves: boolean
 }
 
-/** What goes off this Mac, from the language model in use and the cloud backup. The LLM and backup state come
+/** What goes off this computer, from the language model in use and the cloud backup. The LLM and backup state come
  * from the server; audio and voiceprints are fixed because nothing can send them. */
 function whatLeaves(hostedLabel: string | null, cloud: { on: boolean; transcripts: boolean }): Row[] {
   const text: Row = hostedLabel
@@ -43,7 +43,7 @@ export function WhatLeavesList() {
   return (
     <section aria-labelledby="what-leaves">
       <h2 id="what-leaves" className="mb-3 font-serif text-18 font-bold text-ink">
-        What leaves this Mac
+        What leaves this computer
       </h2>
       <ul className="divide-y divide-line rounded-card border border-line bg-surface">
         {rows.map((r) => (

@@ -1,7 +1,16 @@
 import numpy as np
 import pytest
 from conftest import SR, FakeEmbedder, tone
-from troubadour.sound.voices import VoiceMatcher, centroid, embed_span, normalize
+from troubadour.sound.voices import VoiceMatcher, centroid, embed_span, normalize, torch_device
+
+
+@pytest.mark.parametrize(("cuda", "mps", "expected"), [(True, True, "cuda"), (False, True, "mps"), (False, False, "cpu")])
+def test_the_embedder_runs_on_the_best_device_there_is(monkeypatch, cuda, mps, expected):
+    import torch
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: cuda)
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: mps)
+    assert torch_device() == expected
 
 
 @pytest.fixture

@@ -3,7 +3,7 @@ import { cn } from "@troubadour/ui/cn"
 import { useThemeChoice, type ThemeChoice } from "../../../../lib/theme.ts"
 
 const OPTIONS: { id: ThemeChoice; label: string; hint: string }[] = [
-  { id: "system", label: "System", hint: "Follows your Mac, light by day and dark by night." },
+  { id: "system", label: "System", hint: "Follows your system, light by day and dark by night." },
   { id: "dark", label: "Dark", hint: "The default." },
   { id: "light", label: "Light", hint: "For a bright room." },
   { id: "midnight", label: "Midnight", hint: "Darker still, for a dim table." },

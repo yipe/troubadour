@@ -9,7 +9,7 @@ Each phase ships on its own and leaves the app working. Don't start a phase unti
 2. Add font stacks: sans = system stack; add a `--font-heading` serif (Georgia stack) and use it for page titles, card titles and table headers.
 3. Replace the header in `App.tsx` with the new nav:
    - Wordmark, campaign switcher, underlined tabs **Home · Sessions · Timeline · Codex · Facts · Ask**.
-   - Right side: recording pill, cloud chip (wired to `useCloud`, replacing the `CloudBackupButton` trigger), "On this Mac · AI ready" status (opens `ModelsDialog`), and the account menu.
+   - Right side: recording pill, cloud chip (wired to `useCloud`, replacing the `CloudBackupButton` trigger), "On this computer · AI ready" status (opens `ModelsDialog`), and the account menu.
 4. Extend `lib/route.ts` with the views `home`, `timeline` and `facts`. `codex` is today's `campaign` view; keep the old URL as an alias.
 5. Player color: add a class field to players (`backend` player model + `lib/types.ts`), defaulting from the current color. Use `--color-class-<class>` for avatars and names. Keep the custom color as an override.
 
@@ -83,9 +83,9 @@ Screenshots: 1k, 1n, 1o.
 
 ## Phase 6: Recap, settings, cloud
 1. **Recap (1p):** a recap generator built from **reviewed** facts only. Voice and length options. "Copy for Discord" (Markdown), "Save image" (render the card to PNG), and `ReadAloud`.
-2. **Models & privacy (1q):** move `ModelsDialog` content into a settings page and add the "What leaves this Mac" summary and storage usage.
+2. **Models & privacy (1q):** move `ModelsDialog` content into a settings page and add the "What leaves this computer" summary and storage usage.
 3. **Cloud (2a–2c):** keep `cloudStore`/the API as they are, and add:
-   - a **main device** field. A backup from a different device shows "newest backup wins" and makes that device the main Mac;
+   - a **main device** field. A backup from a different device shows "newest backup wins" and makes that device the main computer;
    - backups paused while a session is live;
    - a backup history list with restore points (a snapshot list from the service);
    - the first-connect modal (2a), the nav popover (2b) and the settings page (2c).

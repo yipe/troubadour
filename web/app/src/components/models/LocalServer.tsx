@@ -33,7 +33,7 @@ export type LocalServerProps = {
   onRescan: (address: string) => void
 }
 
-/** This Mac's model server: its address (a known server reads by name, its address while editing), the
+/** This computer's model server: its address (a known server reads by name, its address while editing), the
  * usual servers to pick from, a rescan, and the API key for a server that asks for one. */
 export function LocalServer({
   url,

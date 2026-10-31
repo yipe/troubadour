@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "yarn@4.9.1",
   "scripts": {
-    "setup": "cd backend && uv sync --all-groups && cd ../web && pnpm install",
+    "setup": "sh install.sh --dev",
     "start": "cd backend && uv run troubadour",
     "dev": "sh scripts/dev.sh",
     "dev:web": "cd web && pnpm dev",

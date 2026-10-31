@@ -7,7 +7,7 @@ on:
 
 jobs:
   check:
-    # Apple Silicon: mlx-whisper only installs on arm64 macOS. Tests need no models or network.
+    # The full gate on Apple Silicon (MLX). The linux and windows jobs install and run the backend tests there.
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -26,10 +26,46 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - run: corepack enable
       - run: yarn install --immutable
-      - run: yarn setup
-      - run: pnpm exec playwright install chromium # the browser tests (*.browser.test.tsx) run in yarn check
-        working-directory: web/app
+      - run: yarn setup # also installs Playwright Chromium for the browser tests in yarn check
       - run: yarn check
+
+  linux:
+    # faster-whisper instead of MLX, no voice clones (docs/adr/0011). Tests need no models or network.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg libportaudio2
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: ./install.sh # the user path: prerequisites, packages, built UI
+      - run: uv run pytest
+        working-directory: backend
+
+  windows:
+    # Not proven on Windows yet: report, don't block. Make it required once it's green.
+    runs-on: windows-2025
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: choco install ffmpeg -y --no-progress
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: .\install.ps1
+        shell: pwsh
+      - run: uv run pytest
+        working-directory: backend
 
   smoke:
     # Visits every route of the built UI against a seeded throwaway server: no models, no LLM, no audio.
@@ -52,10 +88,9 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - run: corepack enable
       - run: yarn install --immutable
-      - run: yarn setup
+      - run: ./install.sh # the user path: packages + built web/dist, which the scratch server serves
       - run: pnpm exec playwright install chromium
         working-directory: web/app
-      - run: yarn build # the scratch server serves web/dist
       - name: Start the scratch server
         run: |
           scripts/scratch.sh 8790 > /tmp/scratch.log 2>&1 &

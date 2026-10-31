@@ -1,6 +1,6 @@
 import type { CSSProperties, Ref } from "react"
 import type { Recap } from "@troubadour/api/recap"
-import { LuteIcon } from "../../components/brand/LuteIcon.tsx"
+import { LuteIcon } from "@troubadour/ui/lute-icon"
 import { PlayerAvatar } from "../../components/people/PlayerAvatar.tsx"
 import { hms } from "../../lib/format.ts"
 

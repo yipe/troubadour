@@ -152,7 +152,7 @@ describe("live transcript", () => {
       "Who guards the abbey stairs?",
     )
     await userEvent.keyboard("{Enter}")
-    await expect.element(page.getByText("Answered on this Mac", { exact: false })).toBeVisible()
+    await expect.element(page.getByText("Answered on this computer", { exact: false })).toBeVisible()
     await shot("live-transcript-answer")
   })
 

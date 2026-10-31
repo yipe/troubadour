@@ -2,8 +2,8 @@ import type { LlmModel, LlmProvider } from "@troubadour/api/llm"
 
 export type LocalServerInfo = { port: number; name: string; url: string; running: boolean; models: number }
 
-export const LOCAL_LABEL = "This Mac (LM Studio or another server)"
-export const LOCAL_PRICE_NOTE = "Runs on this Mac: no per-token cost."
+export const LOCAL_LABEL = "This computer (LM Studio or another server)"
+export const LOCAL_PRICE_NOTE = "Runs on this computer: no per-token cost."
 
 /** The known options, plus any chosen id the list no longer offers, so a saved choice still shows. */
 export function withExtra(known: { id: string; label: string }[], ...extra: string[]) {

@@ -1,4 +1,4 @@
-"""Troubadour Cloud: which Mac is main, backups paused while live, the attempt history, restore points.
+"""Troubadour Cloud: which computer is main, backups paused while live, the attempt history, restore points.
 Uses test_cloud's in-process fake of the service (httpx.MockTransport): no network."""
 
 # The fixtures are imported from test_cloud, so each test names them as a parameter.
@@ -95,7 +95,7 @@ def test_a_head_without_a_device_is_another_mac(client, service, vault):
     service.snapshots[head] = []
     client.clock = lambda: time.monotonic() + 61
     status = client.status("main")
-    assert (status["is_main"], status["main_device"]) == (False, "another Mac")
+    assert (status["is_main"], status["main_device"]) == (False, "another computer")
 
 
 def test_the_main_check_is_reused_for_a_minute_and_skipped_when_offline(client, service, vault, monkeypatch):

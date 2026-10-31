@@ -29,7 +29,7 @@ export function AiStatus() {
       {llm && (
         <span className="flex items-center gap-1.5">
           {!hosted && <Lock size={12} />}
-          {hosted ? hosted.label : "On this Mac"}
+          {hosted ? hosted.label : "On this computer"}
         </span>
       )}
       <span className="flex items-center gap-1.5">

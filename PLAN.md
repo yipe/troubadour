@@ -3,21 +3,25 @@
 Goal: check feasibility of near-real-time, speaker-labeled transcription of an
 in-person D&D 5e table (one shared mic). Game-mechanics highlighting (regex + LLM tags)
 was built, then removed on 2026-10-16 at the owner's request: transcript and audio quality only.
-Everything runs locally on one Apple Silicon Mac (M5 Max, 128 GB).
+Everything runs locally. Every measurement here is from one Apple Silicon Mac (M5 Max, 128 GB) on MLX;
+Linux and Windows run Whisper on faster-whisper instead (`docs/adr/0011`).
 
 ## Run
 
-1. Local LLM: LM Studio server with `google/gemma-4-26b-a4b-qat` loaded
-   (`lms server start && lms load google/gemma-4-26b-a4b-qat --yes`; it serves on
-   port 1235 here). Override with `TROUBADOUR_LLM_URL` / `TROUBADOUR_LLM_MODEL`.
-2. `yarn setup` (once: `uv sync` + `pnpm install`), then `yarn build` after UI changes.
+Full instructions: [INSTALL.md](INSTALL.md). In short:
+
+1. `./install.sh` (or `.\install.ps1` on Windows): checks prerequisites, `uv sync`, `pnpm install`, builds the UI.
+   `yarn setup` is the developer version; `yarn build` after UI changes.
+2. Optional local LLM: LM Studio serving `google/gemma-4-26b-a4b-qat` on port 1235
+   (`lms server start --port 1235 && lms load google/gemma-4-26b-a4b-qat --yes`). Override with
+   `TROUBADOUR_LLM_URL` / `TROUBADOUR_LLM_MODEL`.
 3. `HF_TOKEN=… yarn start` → http://127.0.0.1:8765. Needs a Hugging Face
    token with access to `pyannote/speaker-diarization-community-1`
    (`HUGGING_FACE_TOKEN` is also accepted).
 
 Sample files for replay live in `backend/samples/eval/` (built by
 `spike/dataset.py`). Players, campaigns and named/trained voiceprints persist in
-`backend/data/state.json`. UI dev server: `yarn dev:web` (proxies to 8765).
+`~/troubador/state.json` (`TROUBADOUR_DATA`). UI dev server: `yarn dev:web` (proxies to 8765).
 
 ## Develop
 
@@ -55,8 +59,8 @@ train length); replay files must live in `samples/eval/`. State writes are
 atomic; Train recordings live in `backend/data/voices/` and are deleted with
 their voice.
 
-Long sessions: a session holds a `caffeinate -i` assertion so the Mac doesn't
-idle-sleep mid-game (closing the lid still sleeps it). If a mic delivers no
+Long sessions: a session holds off idle sleep (`caffeinate -i` on macOS, `systemd-inhibit` on Linux,
+`SetThreadExecutionState` on Windows) so the computer doesn't idle-sleep mid-game (closing the lid still sleeps it). If a mic delivers no
 frames for `MIC_STALL_S` (5 s), the UI gets an error toast once. Session audio
 costs ~230 MB/hour of RAM.
 
@@ -502,12 +506,12 @@ use, like Whisper, then run locally. Code: `tts.py` (audio, text, `Clones`: the 
   Facts and Suggested facts are skipped). `chunks` packs whole sentences up to 280 characters, never across a paragraph
   (Chatterbox drifts or stops early on long input); pauses 0.25 s between chunks, 0.6 s between
   paragraphs. A reading of 40+ characters outside 6–30 characters per second is redone once.
-- **GPU.** Each model call holds `asr.mlx_lock` (one MLX model at a time). Clone, say and read
+- **GPU.** Each model call holds `asr.model_lock` (one audio model at a time). Clones are Apple Silicon only (`config.VOICE_CLONES`). Clone, say and read
   jobs are refused while a session runs, and before every model call they wait out one that started
   since (`Engine.wait_idle`, "Paused while a session runs"; improve uses it too), so a session that
   starts mid-call waits for that one call (a few seconds).
 - Jobs (`campaign.job`, `player_id` set): `profile`, `clone`, `say`, `read` (titled with the page;
-  `note` is its vault path). API: `GET /api/clones` (`{voices, profiles, clips}`, voices and
+  `note` is its vault path). API: `GET /api/clones` (`{voices, profiles, clips, available}`, voices and
   profiles by player id), `POST /api/players/{id}/profile`, `POST /api/players/{id}/clone`,
   `POST /api/players/{id}/clone/say {text ≤ 2000, in_their_words, persona}`,
   `POST /api/players/{id}/clone/read {session, in_their_words, persona}` (that session's write-up page),
@@ -565,7 +569,7 @@ clone's own (`clone_wpm`, measured on the preview at build), clamped to 0.85–1
 
 ## Troubadour Cloud (opt-in backup)
 
-Besides an opt-in hosted language model (next section), the one thing Troubadour sends off the Mac, and only
+Besides an opt-in hosted language model (next section), the one thing Troubadour sends off the computer, and only
 after the user connects: a copy of the open campaign's vault, kept as snapshots by a separate service
 (Troubadour Cloud: Next.js on Vercel, Clerk, Neon, private Vercel Blob) that shows it read-only in a browser.
 Troubadour works the same without it.
@@ -592,7 +596,7 @@ Troubadour works the same without it.
   left alone (no empty vault). An automatic backup that fails (offline at the table) doesn't put
   an error chip in the header; the Cloud backup panel shows it and the next attempt retries.
 - **Restore** (a job, kind `restore`): the newest snapshot of any of the account's vaults into the campaign
-  with the vault's id (one this Mac lacks is created, so it joins the picker). Each file is checked
+  with the vault's id (one this computer lacks is created, so it joins the picker). Each file is checked
   against its sha256 before it's written; a note that differs is moved to
   `.trash/Before restore <time>/` first; files the snapshot doesn't have are left alone (a restore
   never deletes). Paths go through the same rules as backups and must land inside the folder (no
@@ -612,17 +616,17 @@ Troubadour works the same without it.
 
 ## Hosted language models (opt-in)
 
-Account menu → **Models** → **Language model**: this Mac (LM Studio or any OpenAI-compatible server, the
+Account menu → **Models** → **Language model**: this computer (LM Studio or any OpenAI-compatible server, the
 default) or a hosted provider. The choice covers every LLM call (live spelling, Improve's spelling pass,
-write-ups, note import, Ask); Whisper and voices always stay on the Mac. Nothing is sent to a provider until
-the user signs in or adds a key **and** picks it. Signing out of the provider in use switches back to this Mac.
+write-ups, note import, Ask); Whisper and voices always stay on the computer. Nothing is sent to a provider until
+the user signs in or adds a key **and** picks it. Signing out of the provider in use switches back to this computer.
 
 - `troubadour.core.providers`. Secrets in `data/llm_accounts.json` (mode 600), never in API responses (`key …abcd` only).
   `settings.json` keeps `provider` and each hosted provider's own `{llm, memory}` pair (`hosted`), so
   switching back and forth loses nothing. `MemoryLLM.wire` picks the API: `chat`, `anthropic`, `responses`.
 - **ChatGPT plan** (`openai`): Sign in with ChatGPT with plan usage, the only way a subscription can pay
   (https://developers.openai.com/siwc/token-sharing-open-source). Dynamic client registration
-  (`dynamic_agent_client` → an issued `oaiapp_…` id, kept), a per-Mac `ext_agent_host_id` (`urn:uuid:`,
+  (`dynamic_agent_client` → an issued `oaiapp_…` id, kept), a per-computer `ext_agent_host_id` (`urn:uuid:`,
   kept across sign-outs), PKCE + nonce, loopback `http://127.0.0.1:8765/auth/callback`. The ID token is
   verified against OpenAI's JWKS (PyJWT). No `chatgpt.tokens.use.direct` in the granted scopes: not
   connected, and the next sign-in asks again (`prompt=consent`). Access tokens last 1 h; refreshes are

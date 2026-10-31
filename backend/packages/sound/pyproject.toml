@@ -5,8 +5,11 @@ description = "Troubadour sound: audio, ASR, voices, TTS"
 requires-python = ">=3.12"
 dependencies = [
     "troubadour-core",
-    "mlx-whisper>=0.4.3",
-    "mlx-audio>=0.6.3",
+    # Whisper and the voice clones on Apple Silicon; faster-whisper everywhere else (docs/adr/0011).
+    "mlx-whisper>=0.4.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-audio>=0.6.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "faster-whisper>=1.2; sys_platform != 'darwin'",
+    "tiktoken>=0.9",  # counts Whisper prompt tokens (asr.py) on every machine
     "pyannote-audio>=4.0.7",
     "silero-vad>=6.2.3",
     "sounddevice>=0.5.6",

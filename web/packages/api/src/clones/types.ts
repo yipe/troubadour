@@ -54,4 +54,5 @@ export interface Clones {
   voices: Record<string, CloneVoice> /* by player id */
   profiles: Record<string, SpeechProfile> /* by player id */
   clips: CloneClip[] /* newest first */
+  available: boolean /* voice clones run here (Apple Silicon only); speech profiles work everywhere */
 }

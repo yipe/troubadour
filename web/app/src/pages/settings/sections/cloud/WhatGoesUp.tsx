@@ -58,10 +58,14 @@ export function WhatGoesUp() {
           onCheckedChange={(include_transcripts) => options.mutate({ include_transcripts })}
         />
       </Row>
-      <Row icon={<AudioLines size={18} aria-hidden />} title="Audio recordings" detail="Stay on this Mac">
+      <Row
+        icon={<AudioLines size={18} aria-hidden />}
+        title="Audio recordings"
+        detail="Stay on this computer"
+      >
         <Badge tone="neutral">Never</Badge>
       </Row>
-      <Row icon={<Fingerprint size={18} aria-hidden />} title="Voiceprints" detail="Stay on this Mac">
+      <Row icon={<Fingerprint size={18} aria-hidden />} title="Voiceprints" detail="Stay on this computer">
         <Badge tone="neutral">Never</Badge>
       </Row>
     </section>

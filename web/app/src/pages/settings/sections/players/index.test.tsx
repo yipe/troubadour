@@ -26,7 +26,7 @@ const CLASSES: DndClass[] = [
   { id: "bard", label: "Bard", color: null, builtin: true },
   { id: "tinkerer", label: "Tinkerer", color: "#8c6040", builtin: false },
 ]
-const EMPTY: Clones = { voices: {}, profiles: {}, clips: [] }
+const EMPTY: Clones = { voices: {}, profiles: {}, clips: [], available: true }
 const VOICE = cloneVoice({
   player_id: "p1",
   source: "recording of 2026-10-12",
@@ -116,6 +116,15 @@ describe("VoiceCloneDialog", () => {
     expect(screen.queryByRole("button", { name: /Build voice/ })).toBeNull()
   })
 
+  it("off Apple Silicon, says why there's no voice and keeps the speech profile", () => {
+    serve(undefined)
+    const alice = player({ id: "p1", name: "Alice", trained: true, clone_ok: true })
+    renderDialog(alice, { ...EMPTY, available: false })
+    expect(screen.getByText(/Voice clones need a Mac with Apple Silicon/)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Build voice/ })).toBeNull()
+    expect(screen.getByRole("button", { name: /Profile how they talk/ })).toBeInTheDocument()
+  })
+
   it("builds the voice and shows the preview, likeness and what it says; nothing autoplays", async () => {
     const alice = player({ id: "p1", name: "Alice", trained: true, clone_ok: true })
     const { writes } = serve(campaignJob({ id: "j1", kind: "clone", player_id: "p1" }))
@@ -161,6 +170,7 @@ describe("VoiceCloneDialog", () => {
     const alice = player({ id: "p1", name: "Alice", trained: true, clone_ok: true })
     const { writes } = serve(campaignJob({ id: "s1", kind: "say", player_id: "p1" }))
     renderDialog(alice, {
+      ...EMPTY,
       voices: { p1: VOICE },
       profiles: {},
       clips: [

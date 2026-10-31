@@ -22,7 +22,7 @@ server -> engine -> cloud -> lore | sound -> core
 A package imports only from the packages to its right; `lore` and `sound` never import each other.
 `tests/test_layers.py` runs import-linter on this contract, so `yarn check` fails on a violation.
 `lore` has no ML dependencies (facts, write-ups, Ask, review, recap stay testable without torch or MLX);
-`sound` holds every model that touches audio and shares `asr.mlx_lock`; `engine` orchestrates; `server`
+`sound` holds every model that touches audio and shares `asr.model_lock`; `engine` orchestrates; `server`
 only translates HTTP into engine and lore calls. `troubadour-cloud` imports `lore` only under
 `TYPE_CHECKING`. Why: `docs/architecture.md`, `docs/adr/0001`.
 
@@ -38,9 +38,9 @@ only translates HTTP into engine and lore calls. `troubadour-cloud` imports `lor
 | | `fsutil` | `write_atomic`. |
 | `sound` | `audio` | `MicSource` (native rate to soxr 16 kHz), `FileSource` (paced replay), `Recorder` (48 kHz WAV, background writer). |
 | | `segment`, `levels`, `mics` | VAD cutting, level/quality metering, microphone listing and per-device settings. |
-| | `asr` | mlx-whisper; prompt with glossary names and the last lines; `suspicious()` drops echoed or looping prompted output. |
+| | `asr` | Whisper (`asr_mlx` on Apple Silicon, `asr_ct2` faster-whisper elsewhere; ADR 0011); prompt with glossary names and the last lines; `suspicious()` drops echoed or looping prompted output. |
 | | `voices` | Speaker embeddings and the voice matcher. |
-| | `tts` | Voice clones (opt-in per player): Chatterbox + DeepFilterNet on MLX, `Clones` (`data/clones/`), choosing clean references, note to speakable text. |
+| | `tts` | Voice clones (opt-in per player; Apple Silicon only): Chatterbox + DeepFilterNet on MLX, `Clones` (`data/clones/`), choosing clean references, note to speakable text. |
 | `lore` | `campaign` | Obsidian vault: `Vault`, entity notes (frontmatter + Facts sections), `Corrector`, `everyday()`. |
 | | `facts` | Facts as vault bullets: parse and render the trailer (source, speaker, confidence); ids; history. |
 | | `memory` | Campaign jobs (note import, session write-up, scenes), the job runner (`Job.update()` / `advance()`), spelling suggestions. |
@@ -89,7 +89,7 @@ Other switches (`TROUBADOUR_RECORD`, `CLEANUP`, `ASR_PROMPT`, `DATA`, `VAULT`, p
 - **Session isolation:** work for an abandoned session must never write shared state. Check
   `sess is self.live` under `self.lock` before mutating; message ids are unique across sessions.
 - **Locks:** `engine.lock` (RLock) guards players/voices/messages; never call Whisper, the LLM or
-  disk-heavy work while holding it. `asr.mlx_lock` serializes MLX (Whisper, the voice clone); `embed_lock` serializes torch MPS.
+  disk-heavy work while holding it. `asr.model_lock` serializes Whisper and the voice clone; `embed_lock` serializes the torch speaker embedder.
 - **A broken vault, a down LLM, or a full disk never stops transcription.** Catch, log, carry on.
 - **Patches, not replacements**, for anything a UI may click quickly (`Vault.review`, ignore list).
 - **Never lose words:** improve keeps a line's old text if Whisper now hears nothing; every spelling

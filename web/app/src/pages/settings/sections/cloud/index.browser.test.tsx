@@ -73,7 +73,7 @@ it("renders the connected layout", async () => {
   await shot("cloud-settings-connected")
 })
 
-it("renders a failed backup on another main Mac", async () => {
+it("renders a failed backup on another main computer", async () => {
   const el = await mount(
     cloudStatus({
       connected: true,

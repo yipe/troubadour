@@ -1,5 +1,9 @@
 # Troubadour rebuild: the plan
 
+> **History.** This is the record of a finished rebuild, kept as it was written. It describes the
+> project at that time (Mac only, older commands). For how things are now, see the root README,
+> [INSTALL.md](../../INSTALL.md), [AGENTS.md](../../AGENTS.md) and [docs/architecture.md](../architecture.md).
+
 This rebuilds the web UI to the redesign in `docs/design/troubadour-redesign/`, splits the backend into
 packages, and leaves a clean base to iterate from. The work is cut into **70 small tasks in a DAG**
 (`dag.toml`). Each one is a spec a Sonnet agent can run on its own (`tasks/<ID>.md`).

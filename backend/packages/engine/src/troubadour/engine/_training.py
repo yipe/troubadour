@@ -11,6 +11,7 @@ import threading
 import time
 
 import numpy as np
+from troubadour.core import config
 from troubadour.sound.audio import MicSource, read_wav, wav_bytes
 from troubadour.sound.voices import centroid, speech_spans
 
@@ -188,6 +189,8 @@ class TrainingMixin:
             if not p.clone_ok:
                 raise ValueError(f"Turn on the voice clone for {p.name} first (they agree to it).")
             if needs_idle:
+                if not config.VOICE_CLONES:
+                    raise ValueError("Voice clones need a Mac with Apple Silicon. The speech profile works here.")
                 self._require_idle("using the voice clone")
             return p.name
 

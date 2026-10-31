@@ -24,7 +24,7 @@ export function putLlmState(client: QueryClient, state: LlmState) {
   client.setQueryData<ModelSettings>(keys.models(), (m) => m && { ...m, ...state })
 }
 
-/** Hosted providers and whether this Mac is signed in to each; `llm.updated` keeps it current. */
+/** Hosted providers and whether this computer is signed in to each; `llm.updated` keeps it current. */
 export function useLlm() {
   return useQuery({
     queryKey: keys.llm(),
@@ -48,7 +48,7 @@ export function useLlmModels(provider: LlmProvider["id"] | undefined, enabled = 
   })
 }
 
-/** Local model servers on this Mac and which answer. */
+/** Local model servers on this computer and which answer. */
 export function useLocalServers(enabled = true) {
   return useQuery({ queryKey: keys.localServers(), queryFn: localServers, enabled, staleTime: 0 })
 }

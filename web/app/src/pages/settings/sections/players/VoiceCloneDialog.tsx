@@ -78,7 +78,7 @@ export function VoiceCloneDialog({
       <DialogContent>
         <DialogHeader
           title={`${player.name}'s voice clone`}
-          description={`Troubadour can speak in ${player.name}'s voice, copied from their Train recording or the cleanest stretch of their talk in your sessions, and in each character they voice. It all stays on this Mac.`}
+          description={`Troubadour can speak in ${player.name}'s voice, copied from their Train recording or the cleanest stretch of their talk in your sessions, and in each character they voice. It all stays on this computer.`}
         />
         <DialogBody className="flex flex-col gap-4">
           <label className="flex items-center gap-2 text-14">
@@ -91,7 +91,12 @@ export function VoiceCloneDialog({
 
           <SpeechProfile player={player} profile={profile} job={latest("profile")} />
 
-          {player.clone_ok && (
+          {player.clone_ok && clones?.available === false && (
+            <p className="text-13 text-ink-muted">
+              Voice clones need a Mac with Apple Silicon. The speech profile above works here.
+            </p>
+          )}
+          {player.clone_ok && clones?.available !== false && (
             <div className="flex flex-col gap-4">
               {player.trained ? (
                 <BuildVoice player={player} voice={voice} job={building} blocked={blocked} />

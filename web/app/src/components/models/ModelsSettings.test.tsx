@@ -75,7 +75,7 @@ function model(id: string) {
 afterEach(() => vi.restoreAllMocks())
 
 describe("Models settings", () => {
-  it("keeps this Mac's server settings when the model runs locally", async () => {
+  it("keeps this computer's server settings when the model runs locally", async () => {
     const { writes } = mockFetch((call) => {
       if (call.url === "/api/settings/models") return settings()
     })

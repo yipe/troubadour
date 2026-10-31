@@ -56,7 +56,7 @@ export const STEPS: Record<WelcomeStep, StepInfo> = {
     continueTo: "AI & privacy",
     heading: "AI & privacy",
     explainer:
-      "Transcription and voices always stay on this Mac. Choose where the language model that writes recaps and answers runs.",
+      "Transcription and voices always stay on this computer. Choose where the language model that writes recaps and answers runs.",
   },
 }
 

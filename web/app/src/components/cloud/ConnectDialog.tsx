@@ -44,7 +44,7 @@ export function ConnectDialog({ open, onOpenChange, campaignName }: ConnectDialo
         <DialogHeader
           icon={<CloudUpload />}
           title={`Back up ${campaignName}`}
-          description="Keep a copy of this campaign’s notes online, with history, and read them in a browser. Nothing leaves this Mac until you connect."
+          description="Keep a copy of this campaign’s notes online, with history, and read them in a browser. Nothing leaves this computer until you connect."
         />
         <div className="grid grid-cols-2 gap-3.5 px-6 py-4">
           <section className="flex flex-col gap-2 rounded-card border border-line bg-sunken p-3.5">
@@ -64,7 +64,7 @@ export function ConnectDialog({ open, onOpenChange, campaignName }: ConnectDialo
           </section>
           <section className="flex flex-col gap-2 rounded-card border border-line bg-sunken p-3.5">
             <h3 className="text-12 font-bold tracking-[0.08em] text-ink-subtle uppercase">
-              Stays on this Mac
+              Stays on this computer
             </h3>
             {STAYS.map((line) => (
               <div key={line} className="flex items-center gap-2 text-13 text-ink-muted">

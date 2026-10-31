@@ -662,6 +662,8 @@ class SessionsMixin:
         if torch.backends.mps.is_available():
             out["torch_mps_allocated_mb"] = round(torch.mps.current_allocated_memory() / 2**20, 1)
             out["torch_mps_driver_mb"] = round(torch.mps.driver_allocated_memory() / 2**20, 1)
+        if torch.cuda.is_available():
+            out["torch_cuda_allocated_mb"] = round(torch.cuda.memory_allocated() / 2**20, 1)
         with self.lock:
             out |= {
                 "py_blocks": sys.getallocatedblocks(),

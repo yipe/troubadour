@@ -10,7 +10,8 @@ const schemaJson = `${outDir}openapi.json`
 const schemaTypes = `${outDir}schema.d.ts`
 
 function run(cmd: string, args: string[]): void {
-  const result = spawnSync(cmd, args, { stdio: "inherit" })
+  // Windows: pnpm is a .cmd shim, which only a shell finds and runs.
+  const result = spawnSync(cmd, args, { stdio: "inherit", shell: process.platform === "win32" })
   if (result.error && "code" in result.error && result.error.code === "ENOENT") {
     console.error(`gen: \`${cmd}\` was not found. Run \`yarn setup\` first.`)
     process.exit(1)

@@ -20,6 +20,7 @@ from troubadour.sound.audio import MicSource, list_mics, load_audio
 from troubadour.sound.voices import (
     VoiceMatcher,
     embed_span,
+    torch_device,
 )
 
 from ._library import LibraryMixin
@@ -96,7 +97,7 @@ class Engine(SessionsMixin, LibraryMixin, VoicesMixin, PipelineMixin, TrainingMi
 
     def _load_models(self) -> None:
         if config.env("MODELS", "1") == "0":
-            # Scratch servers run many at once; loading Whisper and the embedder in each would swamp the Mac.
+            # Scratch servers run many at once; loading Whisper and the embedder in each would swamp the computer.
             log.info("TROUBADOUR_MODELS=0: not loading Whisper, the speaker embedder or the VAD; asr.state stays 'loading'")
             return
         if os.environ.get("HUGGING_FACE_TOKEN") and not os.environ.get("HF_TOKEN"):
@@ -108,7 +109,7 @@ class Engine(SessionsMixin, LibraryMixin, VoicesMixin, PipelineMixin, TrainingMi
             from silero_vad import load_silero_vad
 
             pipeline = Pipeline.from_pretrained(config.DIARIZER)
-            pipeline.to(torch.device("mps"))
+            pipeline.to(torch.device(torch_device()))
             self.embedder = pipeline._embedding
             load_silero_vad()  # warm the download/cache; each session loads its own instance
             asr.warm_up()

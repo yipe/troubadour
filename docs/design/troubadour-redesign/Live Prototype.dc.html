@@ -71,7 +71,7 @@
             <span style="font-weight:600;flex:1">{{ askQ }}</span>
             <button onClick="{{ closeAsk }}" style="border:none;background:transparent;color:var(--color-fg-subtle);cursor:pointer;display:flex;padding:4px"><dc-import name="Icon" n="x" s="16" hint-size="16px,16px"></dc-import></button>
           </div>
-          <sc-if value="{{ askThinking }}" hint-placeholder-val="{{ false }}"><div style="padding:16px;color:var(--color-fg-subtle);display:flex;gap:8px;align-items:center"><dc-import name="Icon" n="loader" s="14" hint-size="14px,14px"></dc-import>Searching 13 transcripts and 214 notes on this Mac…</div></sc-if>
+          <sc-if value="{{ askThinking }}" hint-placeholder-val="{{ false }}"><div style="padding:16px;color:var(--color-fg-subtle);display:flex;gap:8px;align-items:center"><dc-import name="Icon" n="loader" s="14" hint-size="14px,14px"></dc-import>Searching 13 transcripts and 214 notes on this computer…</div></sc-if>
           <sc-if value="{{ askDone }}" hint-placeholder-val="{{ false }}">
             <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
               <div style="font-size:16px;line-height:1.5;text-wrap:pretty">Orsa never said “under the bell.” Tonight she said the diamond is “beneath the tide’s tongue” <sup style="color:var(--color-accent-fg)">1</sup>, and in session 10 that the abbot keeps it “close to his voice” <sup style="color:var(--color-accent-fg)">2</sup>.</div>

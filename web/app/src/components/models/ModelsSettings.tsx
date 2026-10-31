@@ -24,7 +24,7 @@ import { ServerPick } from "./ServerPick.tsx"
 
 const asModels = (ids: string[]): LlmModel[] => ids.map((id) => ({ id, name: id, price: null }))
 
-/** Which Whisper this Mac uses, and where the language model runs (this Mac, or a hosted provider the user
+/** Which Whisper this computer uses, and where the language model runs (this computer, or a hosted provider the user
  * signs in to or adds a key for). A section: the page that hosts it supplies the heading. */
 export function ModelsSettings() {
   const settings = useModelSettings()
@@ -150,7 +150,7 @@ function Form({
   return (
     <div className="flex flex-col gap-4 text-14">
       <p className="text-13 text-ink-subtle">
-        Saved on this Mac. A new choice is used the next time Troubadour transcribes or asks.
+        Saved on this computer. A new choice is used the next time Troubadour transcribes or asks.
       </p>
 
       <FixedRow icon={<AudioLines className="size-[18px]" />} title="Speech to text">
@@ -206,7 +206,7 @@ function Form({
         </div>
         <div role="radiogroup" aria-label="Language model provider" className="flex flex-col gap-2.5">
           <ProviderCard
-            title="LM Studio on this Mac"
+            title="LM Studio on this computer"
             subtitle={`${settings.llm} · ${settings.llm_url}`}
             state={settings.provider === "local" ? { text: "Connected", connected: true } : null}
             selected={provider === "local"}
@@ -281,12 +281,12 @@ function Form({
           <p className="text-12 text-ink-subtle">
             {listError ? `${listError} ` : ""}
             Transcripts and notes go to {chosen.label} for spelling cleanup, write-ups, note import and
-            questions. Whisper and voices stay on this Mac.
+            questions. Whisper and voices stay on this computer.
           </p>
         ) : (
           <p className="text-12 text-ink-subtle">
-            A port means this Mac. A host and port reaches another machine; leave the key empty for LM Studio.
-            The model list is what that server offers, plus any model you have chosen here before.
+            A port means this computer. A host and port reaches another machine; leave the key empty for LM
+            Studio. The model list is what that server offers, plus any model you have chosen here before.
           </p>
         )}
       </div>

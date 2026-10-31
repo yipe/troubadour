@@ -35,7 +35,7 @@ export const keys = {
   storage: () => ["storage"] as const,
 }
 
-/** Describe this Mac or the live session, not the open campaign: a campaign switch leaves them alone. */
+/** Describe this computer or the live session, not the open campaign: a campaign switch leaves them alone. */
 const liveOnlyRoots: ReadonlySet<unknown> = new Set([
   "mics",
   "sources",

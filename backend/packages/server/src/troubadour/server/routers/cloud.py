@@ -123,7 +123,7 @@ def _cloud_status() -> dict:
 
 @router.get("/api/cloud", response_model=CloudStatus)
 def cloud_status():
-    """Connected or not, and the open campaign's backup settings and last backup, and which Mac is main (asked of the service, at most every minute, 3 s at most)."""
+    """Connected or not, and the open campaign's backup settings and last backup, and which computer is main (asked of the service, at most every minute, 3 s at most)."""
     return _cloud_status()
 
 
@@ -161,7 +161,7 @@ def _cloud_page(title: str, text: str) -> str:
 
 @router.post("/api/cloud/disconnect", response_model=CloudStatus)
 def cloud_disconnect():
-    """Forget the sign-in on this Mac (backups already made stay in the cloud)."""
+    """Forget the sign-in on this computer (backups already made stay in the cloud)."""
     deps.cloud.logout()
     status = _cloud_status()
     deps.bus.emit("cloud.updated", status)
@@ -228,7 +228,7 @@ def cloud_backup():
 
 @router.get("/api/cloud/vaults", response_model=list[CloudVault])
 def cloud_vaults():
-    """This account's campaigns in Troubadour Cloud (from any Mac), to restore from."""
+    """This account's campaigns in Troubadour Cloud (from any computer), to restore from."""
     try:
         return deps.cloud.vaults()
     except CloudError as e:
@@ -253,7 +253,7 @@ def cloud_history():
 @router.post("/api/cloud/restore")
 def cloud_restore(body: CloudRestoreIn):
     """Bring a backed-up campaign's newest snapshot (or the restore point in `snapshot`) back (a background job, kind "restore"). It goes into the
-    campaign with the vault's id: one this Mac doesn't have yet is created (so it shows in the picker),
+    campaign with the vault's id: one this computer doesn't have yet is created (so it shows in the picker),
     one it has keeps its other notes. Notes that differ go to .trash first; nothing is deleted."""
     with deps.campaign_gate:
         cid, name, _ = _open_campaign()
@@ -265,11 +265,11 @@ def cloud_restore(body: CloudRestoreIn):
             target = remote.get("campaign_id")
             if not isinstance(target, str):
                 raise CloudError("not_found", "That campaign has no id Troubadour can use.")
-            # "Bring to this Mac" (no restore point) is for a campaign this Mac doesn't have. Into one it has,
+            # "Bring to this computer" (no restore point) is for a campaign this computer doesn't have. Into one it has,
             # the open one included (every install's first campaign is `main`), it would swap newer local notes
             # for the cloud copy: refuse. Restoring a backup names its snapshot explicitly.
             if body.snapshot is None and target in deps.engine.campaigns:
-                raise CloudError("exists", "That campaign is already on this Mac. Open it to restore a backup.")
+                raise CloudError("exists", "That campaign is already on this computer. Open it to restore a backup.")
             job.title = str(remote.get("name") or "Restored campaign")[:60]
             deps.engine.adopt_campaign(target, job.title)
             result = deps.cloud.restore(body.vault_id, deps.engine.vault_dir(target), _job_progress(job), body.snapshot)

@@ -3,7 +3,7 @@
 The app was renamed from Bard to Troubadour. The site moved from bard.5eapps.com (it redirects) and the Vercel project is now `troubadour-site`.
 
 A one-page static site that explains Troubadour and links to the code and to Troubadour Cloud. **Troubadour itself is not
-hosted**: it records the room's microphone and runs Whisper and the LLM on the user's Mac (repo rule: local only).
+hosted**: it records the room's microphone and runs Whisper and the LLM on the user's computer (repo rule: local only).
 
 Executor: follow the steps in order. Every step ends with a check; don't move on until it passes.
 
@@ -36,12 +36,12 @@ Keep `site/PLAN.md` (this file) as the site's design note.
 Structure of `index.html`, top to bottom. Use this copy as written; small wording fixes are fine, new claims are not.
 
 1. `<head>`: `lang="en"`, charset, viewport, `<title>Troubadour: live transcripts and a campaign wiki for your table</title>`,
-   `<meta name="description" content="Troubadour transcribes your in-person tabletop game from one microphone, shows who said what, and keeps a campaign wiki. Everything runs on your Mac.">`,
+   `<meta name="description" content="Troubadour transcribes your in-person tabletop game from one microphone, shows who said what, and keeps a campaign wiki. Everything runs on your computer.">`,
    `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`, `<link rel="stylesheet" href="/styles.css">`.
 2. **Hero**
    - `<h1>Troubadour</h1>`
    - Lead: "Live transcripts and a growing campaign wiki for your in-person D&D table, from one shared microphone."
-   - Sub: "Everything runs on your Mac: speech-to-text, speaker recognition and the AI. No audio or text leaves the machine."
+   - Sub: "Everything runs on your computer: speech-to-text, speaker recognition and the AI. No audio or text leaves the machine."
    - Buttons: **Get Troubadour on GitHub** → `https://github.com/yipe/troubadour` ; **Troubadour Cloud backup** → `https://cloud.5eapps.com`
 3. **Example transcript** (pure HTML/CSS, made-up; an illustration, not a screenshot). A card with 4 lines,
    each with a speaker chip and text:
@@ -59,7 +59,7 @@ Structure of `index.html`, top to bottom. Use this copy as written; small wordin
    - Ask about the campaign: "Ask a question; Troubadour searches every transcript and note and shows its sources."
 5. **Private by design** (`<h2>`): 3 bullets:
    - "Runs on one Apple Silicon Mac. No account, no cloud, no subscription."
-   - "Recordings and voiceprints stay in a folder on your Mac. Ask your table before you record."
+   - "Recordings and voiceprints stay in a folder on your computer. Ask your table before you record."
    - "Troubadour Cloud backup is optional and off until you connect it."
 6. **What you need** (`<h2>`), list:
    - "A Mac with Apple Silicon"

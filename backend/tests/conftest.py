@@ -13,7 +13,7 @@ from pathlib import Path
 _TMP = Path(tempfile.mkdtemp(prefix="troubadour-tests-"))
 os.environ["TROUBADOUR_DATA"] = str(_TMP / "data")
 os.environ["TROUBADOUR_SAMPLES"] = str(_TMP / "samples")
-os.environ["TROUBADOUR_OBSIDIAN_REGISTRY"] = str(_TMP / "obsidian.json")  # never this Mac's Obsidian vaults
+os.environ["TROUBADOUR_OBSIDIAN_REGISTRY"] = str(_TMP / "obsidian.json")  # never this computer's Obsidian vaults
 (_TMP / "samples").mkdir()
 
 import numpy as np  # noqa: E402

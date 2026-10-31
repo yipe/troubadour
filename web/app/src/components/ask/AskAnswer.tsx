@@ -23,7 +23,7 @@ function Progress({ answer }: { answer: CampaignAnswer }) {
     state === "thinking"
       ? "Thinking…"
       : stats
-        ? `Searching ${stats.transcripts} transcripts and ${stats.notes} notes on this Mac…`
+        ? `Searching ${stats.transcripts} transcripts and ${stats.notes} notes on this computer…`
         : "Searching…"
   return (
     <p aria-live="polite" className="flex items-center gap-2 text-14 text-ink-muted">
@@ -124,7 +124,7 @@ export function AskAnswer({ answer, onSource, compact = false, retry }: AskAnswe
       ) : null}
       {stats ? (
         <p className="text-12 text-ink-subtle">
-          Answered on this Mac in {Math.round(stats.seconds)} s from {stats.transcripts} transcripts and{" "}
+          Answered on this computer in {Math.round(stats.seconds)} s from {stats.transcripts} transcripts and{" "}
           {stats.notes} notes
         </p>
       ) : null}

@@ -8,7 +8,7 @@ The layout, tech choices and decisions the rebuild settled. Conventions: [conven
 backend/                         uv workspace (virtual root: dev deps, ruff, pytest, import-linter)
   packages/
     core/    troubadour-core     troubadour.core    config, settings, providers (LLM accounts + wire formats), transcript, fsutil
-    sound/   troubadour-sound    troubadour.sound   audio, segment, levels, mics, asr, voices, tts            (mlx, torch, sounddevice)
+    sound/   troubadour-sound    troubadour.sound   audio, segment, levels, mics, asr, voices, tts            (mlx or faster-whisper, torch, sounddevice)
     lore/    troubadour-lore     troubadour.lore    campaign (vault), obsidian, memory (jobs), writeup, ask, cleanup, talk,
                                                     dnd_terms + srd_terms.json; new: facts, pages, notebook, review, timeline, recap
     cloud/   troubadour-cloud    troubadour.cloud   backup (was cloud.py); new: overview (_Overview/ pages)
@@ -41,7 +41,7 @@ violation. Why this split:
 - **`lore` has no ML dependencies.** Facts, write-ups, Ask, review, timeline and recap can be tested and
   reused (for example by the cloud service) without torch or MLX.
 - **`sound` holds every model that touches audio.** That covers Whisper, the speaker embedder, VAD and
-  the voice clone, which share `asr.mlx_lock`.
+  the voice clone; Whisper and the voice clone share `asr.model_lock`.
 - **`engine` orchestrates; `server` only translates HTTP to engine and lore calls.**
 
 The packages are PEP 420 namespace packages: no `troubadour/__init__.py`. The old `troubadour.main`

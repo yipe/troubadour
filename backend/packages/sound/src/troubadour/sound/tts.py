@@ -1,4 +1,4 @@
-"""Voice clones: say anything, or read a session page aloud, in a player's voice. All on this Mac.
+"""Voice clones: say anything, or read a session page aloud, in a player's voice. All on this computer.
 
 Opt-in per player (`Player.clone_ok`): nothing is built or spoken in someone's voice until it is on,
 and turning it off deletes everything made from it (`Clones.forget`).
@@ -283,7 +283,7 @@ def plausible(text: str, audio: np.ndarray, rate: int = OUT_SR) -> bool:
 
 class Synth:
     """Chatterbox and DeepFilterNet on MLX, loaded on first use (downloaded the first time). Each call
-    holds asr.mlx_lock: one MLX model at a time. Jobs also wait out live sessions (Clones.wait_idle),
+    holds asr.model_lock: one audio model at a time. Jobs also wait out live sessions (Clones.wait_idle),
     so this only ever holds up a session that starts mid-call, by that one call."""
 
     def __init__(self, model: str | None = None):
@@ -308,7 +308,7 @@ class Synth:
         _, dfn = self._models()
         sr = dfn.config.sample_rate
         x = soxr.resample(audio, rate, sr).astype(np.float32) if rate != sr else audio
-        with asr.mlx_lock:
+        with asr.model_lock:
             return np.asarray(dfn.enhance_array(x), np.float32), sr
 
     def voice(self, audio: np.ndarray, rate: int):
@@ -316,12 +316,12 @@ class Synth:
         import mlx.core as mx
 
         tts, _ = self._models()
-        with asr.mlx_lock:
+        with asr.model_lock:
             return tts.prepare_conditionals(mx.array(audio), rate)
 
     def speak(self, text: str, voice) -> np.ndarray:
         tts, _ = self._models()
-        with asr.mlx_lock:
+        with asr.model_lock:
             parts = [np.asarray(r.audio, np.float32) for r in tts.generate(text=text, conds=voice, verbose=False)]
         return np.concatenate(parts) if parts else np.zeros(0, np.float32)
 

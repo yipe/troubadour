@@ -1,9 +1,9 @@
 # Troubadour: agent guide
 
 Troubadour live-transcribes an in-person D&D table from one shared mic: who is speaking, what they
-said, and a campaign wiki that grows every session. **Everything runs
-locally** on one Mac (Apple Silicon): Python engine + FastAPI in `backend/`, React UI in `web/`,
-LLMs in LM Studio. No cloud calls at runtime, ever.
+said, and a campaign wiki that grows every session. **Everything runs locally** on one computer: Python
+engine + FastAPI in `backend/`, React UI in `web/`, LLMs in LM Studio. No cloud calls at runtime, ever.
+Apple Silicon is the main target (MLX); Linux and Windows run Whisper on faster-whisper (`docs/adr/0011`).
 
 Design, measurements and history: `PLAN.md` (read the relevant section before changing a subsystem; it
 records why things are the way they are). Layout and decisions: `docs/architecture.md`, `docs/adr/`.
@@ -12,7 +12,7 @@ records why things are the way they are). Layout and decisions: `docs/architectu
 
 | Task | Command |
 |---|---|
-| Install everything | `yarn setup` (uv + pnpm) |
+| Install everything | `yarn setup` (= `./install.sh --dev`: checks prerequisites, uv + pnpm + Playwright Chromium; safe to re-run) |
 | Run the app | `yarn start` → http://127.0.0.1:8765 (serves `web/dist`; `yarn build` first) |
 | API + Vite, with fast refresh | `yarn dev` |
 | UI dev server only | `yarn dev:web` (Vite, proxies to :8765) |
@@ -53,7 +53,7 @@ Deeper guides: `backend/AGENTS.md`, `web/AGENTS.md`, and a short `AGENTS.md` in 
    tests never reach either (`httpx.MockTransport`): **Troubadour Cloud** backup (`troubadour.cloud.backup`; nothing is
    sent until the user clicks Connect, and it only uploads the vault) and a **hosted language model**
    (`troubadour.core.providers`: ChatGPT plan, OpenRouter, Anthropic API, DeepSeek API; nothing is sent until the user
-   signs in or adds a key *and* picks it in Models). Whisper and voices never leave the Mac. Never use a
+   signs in or adds a key *and* picks it in Models). Whisper and voices never leave the computer. Never use a
    subscription sign-in a provider doesn't allow for third-party apps (Claude's).
 4. **Only restart the server (`:8765`) when `GET /api/state` shows `session.status == "idle"`.**
    A real game may be running.

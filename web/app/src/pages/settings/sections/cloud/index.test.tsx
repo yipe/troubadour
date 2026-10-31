@@ -90,21 +90,21 @@ it("restores the chosen snapshot of this campaign", async () => {
   )
 })
 
-it("brings another campaign to this Mac after confirming", async () => {
+it("brings another campaign to this computer after confirming", async () => {
   const m = setup()
   expect(await screen.findByText("Lantern Road")).toBeInTheDocument()
-  fireEvent.click(screen.getByRole("button", { name: "Bring to this Mac" }))
+  fireEvent.click(screen.getByRole("button", { name: "Bring to this computer" }))
   fireEvent.click(
-    within(await screen.findByRole("dialog")).getByRole("button", { name: "Bring to this Mac" }),
+    within(await screen.findByRole("dialog")).getByRole("button", { name: "Bring to this computer" }),
   )
   await waitFor(() => expect(bodyOf(m.writes().at(-1)!)).toEqual({ vault_id: "v-lantern" }))
 })
 
-it("never offers to bring a campaign this Mac already has", async () => {
+it("never offers to bring a campaign this computer already has", async () => {
   setup(connected, ["main", "lantern"])
   expect(await screen.findByText("Lantern Road")).toBeInTheDocument()
-  expect(screen.getByText("On this Mac")).toBeInTheDocument()
-  expect(screen.queryByRole("button", { name: "Bring to this Mac" })).toBeNull()
+  expect(screen.getByText("On this computer")).toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Bring to this computer" })).toBeNull()
 })
 
 it("asks before disconnecting", async () => {
