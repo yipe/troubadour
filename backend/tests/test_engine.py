@@ -756,3 +756,16 @@ def test_models_off_switch_skips_loading(engine, monkeypatch, caplog):
     assert not engine.ready.is_set()
     assert engine.load_error is None
     assert "TROUBADOUR_MODELS=0" in caplog.text
+
+
+def test_a_failed_final_save_still_ends_the_session_and_reports_it(engine, monkeypatch):
+    engine.status = "stopping"
+
+    def disk_full(force=False):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(engine, "save_transcript", disk_full)
+    engine._finish(engine.live)
+    assert engine.status == "idle"
+    (err,) = engine.bus.of("error")
+    assert "No space left" in err["message"]
