@@ -769,3 +769,20 @@ def test_a_failed_final_save_still_ends_the_session_and_reports_it(engine, monke
     assert engine.status == "idle"
     (err,) = engine.bus.of("error")
     assert "No space left" in err["message"]
+
+
+def test_a_failed_transcript_save_still_saves_the_voices_and_the_notebook(engine, monkeypatch):
+    engine.status = "stopping"
+    sess = engine.live
+    saved = []
+
+    def disk_full(force=False):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(engine, "save_transcript", disk_full)
+    monkeypatch.setattr(engine, "_save_state", lambda: saved.append("voices"))
+    monkeypatch.setattr(sess.notebook, "save", lambda path: saved.append("notebook"))
+    engine._finish(sess)
+    assert saved == ["voices", "notebook"]
+    (err,) = engine.bus.of("error")
+    assert err["message"].startswith("Saving the session failed: transcript: OSError")

@@ -222,25 +222,43 @@ class PipelineMixin:
         # Save everything before announcing "idle": a Replay clicked the moment the UI says the
         # session ended must see the final meta.json (its duration caps the replay) and recording.
         try:
-            self._save_final(sess)
-        except Exception as e:  # a full disk must not leave the engine "stopping": Stop, Refresh and backup all wait on idle
-            log.exception("saving the finished session failed")
-            self.bus.emit("error", {"message": f"Saving the session failed: {type(e).__name__}: {e}"})
-        finally:
+            failed = self._save_final(sess)
+            if failed:
+                self.bus.emit("error", {"message": "Saving the session failed: " + "; ".join(failed)})
+        finally:  # a full disk must not leave the engine "stopping": Stop, Refresh and backup all wait on idle
             self._go_idle(sess)
 
-    def _save_final(self, sess: LiveSession) -> None:
-        sess.release()
-        with self.lock:
-            sess.restore_absent(self.matcher)  # before the state save: their voiceprints are written from the matcher
-        self.save_transcript(force=True)
-        self._save_state()  # keep voiceprints adapted during the session
-        self._snapshot_setup(sess, "end")
-        if sess.notebook_loop is not None:  # a pass in flight would add its items after the save below
-            sess.notebook_loop.drain(NOTEBOOK_DRAIN_S)
-        sess.notebook.save(self.sessions_dir() / sess.id / "notebook.json")
+    def _save_final(self, sess: LiveSession) -> list[str]:
+        """Each save is tried on its own, so a failed transcript save still keeps the notebook and the
+        voiceprints. Returns what failed, for the error the UI shows."""
+        failed: list[str] = []
+        eng = cast("Engine", self)
+
+        def attempt(what: str, save: Callable[[], object]) -> None:
+            try:
+                save()
+            except Exception as e:
+                log.exception("saving the finished session: %s failed", what)
+                failed.append(f"{what}: {type(e).__name__}: {e}")
+
+        def release() -> None:
+            sess.release()
+            with self.lock:
+                sess.restore_absent(self.matcher)  # before the state save: their voiceprints are written from the matcher
+
+        def notebook() -> None:
+            if sess.notebook_loop is not None:  # a pass in flight would add its items after the save below
+                sess.notebook_loop.drain(NOTEBOOK_DRAIN_S)
+            sess.notebook.save(self.sessions_dir() / sess.id / "notebook.json")
+
+        attempt("recording", release)
+        attempt("transcript", lambda: eng.save_transcript(force=True))
+        attempt("voices", eng._save_state)  # keep voiceprints adapted during the session
+        attempt("setup", lambda: eng._snapshot_setup(sess, "end"))
+        attempt("notebook", notebook)
         if sess.desc["kind"] == "mic":
             threading.Thread(target=self._quality_quietly, args=(sess.id,), name="quality", daemon=True).start()
+        return failed
 
     def _go_idle(self, sess: LiveSession) -> None:
         with self.lock:
