@@ -236,7 +236,10 @@ function RestoreDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
       onConfirm={async () => {
         const vault = vaults.data?.find((v) => v.campaign_id === status?.campaign)
         if (!vault) throw new Error("This campaign isn’t in Troubadour Cloud yet. Back it up first.")
-        await restore.mutateAsync({ vaultId: vault.id })
+        // Named explicitly: the server refuses a restore with no restore point into a campaign this Mac has.
+        if (!vault.head_snapshot)
+          throw new Error("This campaign hasn’t been backed up yet. Back it up first.")
+        await restore.mutateAsync({ vaultId: vault.id, snapshot: vault.head_snapshot })
       }}
     />
   )

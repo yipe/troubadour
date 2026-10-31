@@ -546,3 +546,42 @@ def test_the_write_up_model_can_use_another_local_server(api):
     client.put("/api/settings/models", json={"memory_url": ""})  # auto: the live-spelling server again
     assert deps.memory.llm.url == "http://127.0.0.1:1235/v1"
     assert client.put("/api/settings/models", json={"memory_url": "ftp://x"}).status_code == 400
+
+
+def test_the_api_key_is_never_sent_back_and_an_empty_one_keeps_it(api):
+    client, _, _ = api
+    r = client.put("/api/settings/models", json={"llm_url": "1235", "api_key": "lm-secret-123"})
+    assert r.status_code == 200, r.text
+    assert "lm-secret-123" not in r.text
+    assert (r.json()["has_api_key"], "api_key" in r.json()) == (True, False)
+    got = client.get("/api/settings/models")
+    assert "lm-secret-123" not in got.text
+    assert got.json()["has_api_key"] is True
+    # Saving the form without retyping the key keeps it, and it still reaches the live model.
+    assert client.put("/api/settings/models", json={"api_key": "", "llm": "gemma"}).json()["has_api_key"] is True
+    assert settings.current()["api_key"] == "lm-secret-123"
+    assert deps.engine.cleanup_llm.api_key == "lm-secret-123"
+    assert client.put("/api/settings/models", json={"api_key": "new-key"}).status_code == 200
+    assert settings.current()["api_key"] == "new-key"
+
+
+def test_models_fields_are_capped_and_whisper_comes_from_the_menu(api):
+    client, _, _ = api
+    for field in ("whisper", "whisper_improve", "llm", "memory"):
+        assert client.put("/api/settings/models", json={field: "x" * 201}).status_code == 422, field
+    assert client.put("/api/settings/models", json={"llm_url": "1" * 301}).status_code == 422
+    assert client.put("/api/settings/models", json={"api_key": "k" * 401}).status_code == 422
+    r = client.put("/api/settings/models", json={"whisper": "someone/else"})
+    assert r.status_code == 422
+    assert client.put("/api/settings/models", json={"whisper_improve": "someone/else"}).status_code == 422
+    assert client.put("/api/settings/models", json={"whisper": settings.WHISPER_LARGE}).status_code == 200
+
+
+def test_a_blank_scan_key_uses_the_saved_key_only_for_the_saved_server(api, monkeypatch):
+    client, _, _ = api
+    client.put("/api/settings/models", json={"llm_url": "1235", "api_key": "lm-secret-123"})
+    seen = []
+    monkeypatch.setattr(deps, "_scan_llms", lambda url, key: (seen.append((url, key)) or [], None))
+    client.post("/api/llm/local/models", json={"llm_url": "1235"})
+    client.post("/api/llm/local/models", json={"llm_url": "http://10.0.0.8:1234/v1"})
+    assert seen == [("http://127.0.0.1:1235/v1", "lm-secret-123"), ("http://10.0.0.8:1234/v1", "")]

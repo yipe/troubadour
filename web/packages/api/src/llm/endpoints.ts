@@ -8,9 +8,13 @@ export const saveModelSettings = (
   body: Partial<
     Pick<
       ModelSettings,
-      "whisper" | "whisper_improve" | "llm" | "memory" | "llm_url" | "memory_url" | "api_key" | "provider"
+      "whisper" | "whisper_improve" | "llm" | "memory" | "llm_url" | "memory_url" | "provider"
     >
-  > & { hosted?: Partial<ModelSettings["hosted"]> },
+  > & {
+    /** A new key; "" or absent keeps the saved one. */
+    api_key?: string
+    hosted?: Partial<ModelSettings["hosted"]>
+  },
 ) => req<ModelSettings>("PUT", "/api/settings/models", body)
 
 /** The usual local model server ports on this Mac, and which of them answer. */

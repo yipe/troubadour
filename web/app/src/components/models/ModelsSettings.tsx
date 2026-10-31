@@ -52,7 +52,7 @@ function Form({
   const [llm, setLlm] = useState(settings.llm)
   const [memory, setMemory] = useState(settings.memory)
   const [url, setUrl] = useState(settings.llm_url)
-  const [apiKey, setApiKey] = useState(settings.api_key)
+  const [apiKey, setApiKey] = useState("") // the saved key never reaches the page; "" keeps it
   // The write-up model's own server ("" = auto: the one above) and what it offers.
   const [memoryUrl, setMemoryUrl] = useState(settings.memory_url ?? "")
   const [memoryChoices, setMemoryChoices] = useState<string[] | null>(null)
@@ -90,7 +90,7 @@ function Form({
     }
   }
   useEffect(() => {
-    if (settings.memory_url) void scanMemory(settings.memory_url, settings.api_key)
+    if (settings.memory_url) void scanMemory(settings.memory_url, "")
     // Once, for the server saved with the settings.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -138,6 +138,7 @@ function Form({
               api_key: apiKey.trim(),
             }),
       })
+      setApiKey("")
       setSaved(true)
     } catch (e) {
       setError((e as Error).message)
@@ -217,8 +218,12 @@ function Form({
                 setUrl(v)
                 setSaved(false)
               }}
+              keySaved={settings.has_api_key}
               apiKey={apiKey}
-              onApiKey={setApiKey}
+              onApiKey={(v) => {
+                setApiKey(v)
+                setSaved(false)
+              }}
               servers={servers}
               scan={scan}
               onRescan={(a) => void rescan(a)}

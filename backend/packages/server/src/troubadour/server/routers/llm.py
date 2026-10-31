@@ -2,7 +2,7 @@
 
 import concurrent.futures
 import html
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 import httpx
@@ -25,15 +25,61 @@ class HostedModelsIn(BaseModel):
 
 
 class ModelsIn(BaseModel):
-    whisper: str | None = None
-    whisper_improve: str | None = None
-    llm: str | None = None
-    memory: str | None = None
-    llm_url: str | None = None
+    whisper: str | None = Field(None, max_length=200)
+    whisper_improve: str | None = Field(None, max_length=200)
+    llm: str | None = Field(None, max_length=200)
+    memory: str | None = Field(None, max_length=200)
+    llm_url: str | None = Field(None, max_length=300)
     memory_url: str | None = Field(None, max_length=300)  # "" = auto: llm_url's server
-    api_key: str | None = None
+    api_key: str | None = Field(None, max_length=400)  # "" keeps the saved key: it is never sent back to the page
     provider: str | None = Field(None, max_length=20)
     hosted: dict[str, HostedModelsIn] | None = Field(None, max_length=len(PROVIDERS))
+
+
+class HostedPair(BaseModel):
+    llm: str
+    memory: str
+
+
+class HostedOut(BaseModel):
+    openai: HostedPair
+    openrouter: HostedPair
+    anthropic: HostedPair
+    deepseek: HostedPair
+
+
+class LlmProviderOut(BaseModel):
+    id: Literal["openai", "openrouter", "anthropic", "deepseek"]
+    label: str
+    sign_in: bool  # a browser sign-in (ChatGPT, OpenRouter); the others take a pasted key
+    manage_url: str
+    connected: bool
+    account: str | None
+    known_account: str | None
+
+
+class WhisperOption(BaseModel):
+    id: str
+    label: str
+
+
+class ModelSettings(BaseModel):
+    """The saved model choices. The API key itself is never returned, only whether one is saved."""
+
+    whisper: str
+    whisper_improve: str
+    llm: str
+    memory: str
+    llm_url: str
+    memory_url: str
+    has_api_key: bool
+    provider: Literal["local", "openai", "openrouter", "anthropic", "deepseek"]
+    hosted: HostedOut
+    providers: list[LlmProviderOut]
+    speaker: str
+    speaker_label: str
+    whisper_options: list[WhisperOption]
+    installed: list[str]
 
 
 class LocalModelsIn(BaseModel):
@@ -102,7 +148,8 @@ def _llm_providers() -> list[dict]:
 
 def _models_response(chosen: dict) -> dict:
     return {
-        **chosen,
+        **{k: v for k, v in chosen.items() if k != "api_key"},
+        "has_api_key": bool(chosen.get("api_key")),
         "speaker": settings.SPEAKER_MODEL,
         "speaker_label": settings.SPEAKER_LABEL,
         "whisper_options": list(settings.WHISPER_OPTIONS),
@@ -111,12 +158,12 @@ def _models_response(chosen: dict) -> dict:
     }
 
 
-@router.get("/api/settings/models")
+@router.get("/api/settings/models", response_model=ModelSettings)
 def get_models():
     return _models_response(settings.current())
 
 
-@router.put("/api/settings/models")
+@router.put("/api/settings/models", response_model=ModelSettings)
 def put_models(body: ModelsIn):
     if body.provider in PROVIDERS:
         p = PROVIDERS[body.provider]
@@ -128,6 +175,14 @@ def put_models(body: ModelsIn):
         if not (pair["llm"] and pair["memory"]):  # ChatGPT has no defaults: "" would fail every call quietly
             raise HTTPException(400, f"Choose both models for {p.label}.")
     patch = body.model_dump(exclude={"hosted"})
+    for key in ("whisper", "whisper_improve"):
+        if patch[key] is not None:
+            try:
+                settings.check_whisper(key, patch[key])
+            except ValueError as e:
+                raise HTTPException(422, str(e)) from None
+    if not patch["api_key"]:  # empty or absent: keep the saved key (the page never has it to send back)
+        del patch["api_key"]
     if body.hosted is not None:
         patch["hosted"] = {pid: models.model_dump() for pid, models in body.hosted.items()}
     try:
@@ -147,7 +202,10 @@ def local_models(body: LocalModelsIn):
         url = settings.normalize_llm_url(body.llm_url)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    found, error = deps._scan_llms(url, body.api_key.strip())
+    key = body.api_key.strip()
+    if not key and url == settings.current()["llm_url"]:
+        key = settings.current()["api_key"]  # the saved key, for the saved server only (never for a typed address)
+    found, error = deps._scan_llms(url, key)
     return {"installed": _llm_choices(found), "found": len(found), "error": error}
 
 

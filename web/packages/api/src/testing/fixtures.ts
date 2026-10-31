@@ -360,7 +360,7 @@ export function modelSettings(m: Partial<ModelSettings> = {}): ModelSettings {
     memory: "local-llm",
     llm_url: "http://127.0.0.1:1235/v1",
     memory_url: "",
-    api_key: "",
+    has_api_key: false,
     provider: "local",
     hosted: {
       openai: { llm: "", memory: "" },

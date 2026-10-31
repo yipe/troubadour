@@ -23,6 +23,8 @@ function ServerStatus({ scanned }: { scanned: string | null }) {
 export type LocalServerProps = {
   url: string
   onUrl: (url: string) => void
+  /** A key was saved earlier. It is never sent back, so the field starts empty and "" keeps it. */
+  keySaved: boolean
   apiKey: string
   onApiKey: (key: string) => void
   servers: LocalServerInfo[] | undefined
@@ -33,8 +35,18 @@ export type LocalServerProps = {
 
 /** This Mac's model server: its address (a known server reads by name, its address while editing), the
  * usual servers to pick from, a rescan, and the API key for a server that asks for one. */
-export function LocalServer({ url, onUrl, apiKey, onApiKey, servers, scan, onRescan }: LocalServerProps) {
+export function LocalServer({
+  url,
+  onUrl,
+  keySaved,
+  apiKey,
+  onApiKey,
+  servers,
+  scan,
+  onRescan,
+}: LocalServerProps) {
   const [editing, setEditing] = useState(false)
+  const [replacing, setReplacing] = useState(false)
   const known = servers?.find((s) => s.url === url.trim())
   return (
     <>
@@ -77,16 +89,30 @@ export function LocalServer({ url, onUrl, apiKey, onApiKey, servers, scan, onRes
           </p>
         )}
       </div>
-      <Field label="API key">
-        <Input
-          type="password"
-          value={apiKey}
-          onChange={(e) => onApiKey(e.target.value)}
-          placeholder="Only for a server that asks for one"
-          autoComplete="off"
-          spellCheck={false}
-        />
-      </Field>
+      {keySaved && !replacing && !apiKey ? (
+        <div className="flex items-center gap-2.5">
+          <span className="text-13 font-semibold">API key</span>
+          <span role="status" className="text-12 text-ink-subtle">
+            Key saved
+          </span>
+          <Button size="sm" variant="secondary" onClick={() => setReplacing(true)}>
+            Replace
+          </Button>
+        </div>
+      ) : (
+        <Field label="API key">
+          <Input
+            type="password"
+            value={apiKey}
+            onChange={(e) => onApiKey(e.target.value)}
+            placeholder={
+              keySaved ? "Type a new key to replace the saved one" : "Only for a server that asks for one"
+            }
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </Field>
+      )}
     </>
   )
 }

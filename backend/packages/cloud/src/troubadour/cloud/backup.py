@@ -606,8 +606,11 @@ class Cloud:
         skipped: list[str] = []
         for i, f in enumerate(files):
             progress(i, len(files), f"Restoring {len(files)} files")
-            path = f.get("path", "")
-            problem = path_problem(path) if isinstance(path, str) else "not a path"
+            path = f.get("path", "") if isinstance(f, dict) else None
+            if not isinstance(path, str):
+                skipped.append(f"{path!r}: not a path")
+                continue
+            problem = path_problem(path)
             target = root / path
             if problem is None and (not _inside(target, root) or target.is_symlink()):
                 problem = "would land outside the campaign folder"

@@ -266,8 +266,9 @@ def cloud_restore(body: CloudRestoreIn):
             if not isinstance(target, str):
                 raise CloudError("not_found", "That campaign has no id Troubadour can use.")
             # "Bring to this Mac" (no restore point) is for a campaign this Mac doesn't have. Into one it has,
-            # other than the open one, it would swap newer local notes for the cloud copy: refuse.
-            if body.snapshot is None and target != cid and target in deps.engine.campaigns:
+            # the open one included (every install's first campaign is `main`), it would swap newer local notes
+            # for the cloud copy: refuse. Restoring a backup names its snapshot explicitly.
+            if body.snapshot is None and target in deps.engine.campaigns:
                 raise CloudError("exists", "That campaign is already on this Mac. Open it to restore a backup.")
             job.title = str(remote.get("name") or "Restored campaign")[:60]
             deps.engine.adopt_campaign(target, job.title)

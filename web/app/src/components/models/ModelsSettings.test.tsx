@@ -32,7 +32,7 @@ function settings(over: Partial<ModelSettings> = {}): ModelSettings {
     memory: "qwen",
     llm_url: "http://127.0.0.1:1235/v1",
     memory_url: "",
-    api_key: "",
+    has_api_key: false,
     provider: "local",
     hosted: {
       openai: { llm: "", memory: "" },
@@ -93,6 +93,23 @@ describe("Models settings", () => {
       memory_url: "",
       api_key: "",
     })
+  })
+
+  it("shows Key saved instead of the key, and saves a replacement only when one is typed", async () => {
+    const { writes } = mockFetch((call) => {
+      if (call.url === "/api/settings/models") return settings({ has_api_key: true })
+    })
+    await openSection()
+    expect(screen.queryByLabelText("API key")).not.toBeInTheDocument()
+    expect(screen.getByText("Key saved")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await act(async () => {})
+    expect(writes()[0]?.body).toMatchObject({ api_key: "" }) // "" keeps the saved key
+    fireEvent.click(screen.getByRole("button", { name: "Replace" }))
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: " new-key " } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await act(async () => {})
+    expect(writes()[1]?.body).toMatchObject({ api_key: "new-key" })
   })
 
   it("rescans the typed server for the models it offers now", async () => {

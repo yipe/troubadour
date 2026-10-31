@@ -237,7 +237,7 @@ def checks(os_info: dict, spec: dict, measured: list[dict]) -> list[dict]:
                     "good": "Your last recording with it measured well.",
                     "settings": "Your last recording needs setting changes.",
                     "microphone": "Your last recording showed problems settings can't fix.",
-                }[kind]
+                }.get(kind, "Your last recording couldn't be judged.")
                 + f" ({len(measured)} recording{'s' if len(measured) != 1 else ''} measured.)",
             }
         )

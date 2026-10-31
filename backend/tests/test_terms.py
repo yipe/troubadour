@@ -162,3 +162,48 @@ def test_upload_reports_skipped_rows_and_rejects_junk(client):
     assert client.post("/api/terms/upload", content=b'{"terms": [1]}').status_code == 400
     assert client.post("/api/terms/upload", content=b"\xff\xfe\x00").status_code == 400
     assert client.post("/api/terms/upload", content=b"a\n" * 600_000).status_code == 413
+
+
+def test_a_malformed_file_is_set_aside_not_wiped(files, client):
+    _, mine = files
+    mine.write_text('{"terms": [["Zorbo", "npc"],')  # cut off mid-write
+    r = client.post("/api/terms", json={"terms": [{"name": "Mirvane", "type": "npc"}]})
+    assert r.status_code == 409
+    assert "couldn't be read" in r.json()["detail"]
+    kept = list(mine.parent.glob("mine.corrupt-*.json"))
+    assert len(kept) == 1
+    assert "Zorbo" in kept[0].read_text()
+    assert not mine.exists()
+    assert client.post("/api/terms", json={"terms": [{"name": "Mirvane", "type": "npc"}]}).json()["added"] == 1
+
+
+def test_a_malformed_file_is_set_aside_on_remove_too(files, client):
+    _, mine = files
+    mine.write_text("not json")
+    assert client.delete("/api/terms/Zorbo").status_code == 409
+    assert len(list(mine.parent.glob("mine.corrupt-*.json"))) == 1
+
+
+def test_one_bad_entry_does_not_wipe_the_good_ones(files):
+    _, mine = files
+    mine.write_text(json.dumps({"terms": [["Zorbo", "npc"], 7, ["only one"], ["Quill", "creature"]]}))
+    assert names("custom") == ["Zorbo", "Quill"]  # reads skip only the bad entries
+    added, _ = dnd_terms.add_custom([("Mirvane", "npc")])
+    assert added == [("Mirvane", "npc")]
+    assert names("custom") == ["Zorbo", "Quill", "Mirvane"]
+    assert len(list(mine.parent.glob("mine.skipped-*.json"))) == 1  # the original, since the rewrite drops 7 and ["only one"]
+
+
+def test_concurrent_adds_do_not_lose_each_other(files):
+    import threading
+
+    threads = [threading.Thread(target=dnd_terms.add_custom, args=([(f"Zorbo{'abcdefgh'[i]}", "npc")],)) for i in range(8)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert len(names("custom")) == 8
+
+
+def test_upload_is_refused_early_on_content_length_and_deep_json_is_a_400(client):
+    assert client.post("/api/terms/upload", content=b"a", headers={"content-length": "2000000"}).status_code in (400, 413)
+    assert client.post("/api/terms/upload", content=b"[" * 100_000).status_code == 400
+    assert client.post("/api/terms/upload", content=b"[" * 5000 + b"]" * 5000).status_code == 400

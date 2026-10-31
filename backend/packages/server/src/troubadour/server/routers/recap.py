@@ -77,13 +77,14 @@ def build_recap(sid: str, body: RecapIn):
     """Write the recap from the session page and its reviewed facts (a background job; progress arrives as
     campaign.job events). 409 while one is already running for this session."""
     options = recap.Options(body.voice, body.length_s, recap.Include(**body.include.model_dump()))
+    # Fail now, not minutes into the job, when the model can't answer. Asked before taking the gate: the check
+    # can wait on the network, and a campaign switch must not queue behind it.
+    if (problem := deps.memory.llm.problem()) is not None:
+        raise HTTPException(503, problem)
     with deps.campaign_gate:
         _saved(sid)
         if not (deps.memory.sessions_dir() / sid / "transcript.json").is_file():
             raise HTTPException(404, f"not found: {sid}")
-        # Fail now, not minutes into the job, when the model can't answer.
-        if (problem := deps.memory.llm.problem()) is not None:
-            raise HTTPException(503, problem)
         try:
             return deps._call(recap.start, deps.memory, deps.memory.sessions_dir(), sid, options).to_json()
         except RuntimeError as e:
