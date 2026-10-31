@@ -22,4 +22,3 @@ def test_a_vault_in_the_shell_environment_is_never_written(tmp_path):
     )
     assert run.returncode == 0, run.stdout[-2000:]
     assert list(vault.rglob("*")) == []
-

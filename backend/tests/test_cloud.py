@@ -1001,3 +1001,18 @@ def test_the_token_refresh_inside_a_main_check_uses_the_short_timeout(client, se
     client.status("main")
     (refresh,) = [t for m, u, t in wrapper.seen if u == f"{AUTH}/oauth/token"]
     assert refresh["read"] == MAIN_CHECK_TIMEOUT_S
+
+
+def test_the_history_is_written_atomically_without_a_fixed_temp_name_and_read_once(client, service, vault, monkeypatch):
+    connect(client, service)
+    stray = client.path().with_name(".cloud_history.json.tmp")  # what a second writer on a fixed name would own
+    stray.write_text("half written")
+    reads = []
+    real = client._history_all
+    monkeypatch.setattr(client, "_history_all", lambda: (reads.append(1), real())[1])
+    client.backup("main", "The Sunken Gate", vault, noop)
+    assert stray.read_text() == "half written"
+    assert len(reads) == 1  # _record reads the file once
+    assert len(client.history("main")) == 1
+    assert stat.S_IMODE(client.path().stat().st_mode) == 0o600  # the token file stays private
+    assert sorted(p.name for p in client.path().parent.iterdir() if p.name.endswith(".tmp")) == [".cloud_history.json.tmp"]

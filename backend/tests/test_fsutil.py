@@ -40,3 +40,12 @@ def test_a_failed_write_leaves_the_old_file_and_no_temp(tmp_path, monkeypatch):
         write_atomic(target, "new")
     assert target.read_text() == "old"
     assert [p.name for p in tmp_path.iterdir()] == ["a.txt"]
+
+
+def test_write_atomic_mode_is_the_final_permission(tmp_path):
+    write_atomic(tmp_path / "public.txt", "x")
+    write_atomic(tmp_path / "secret.json", "x", mode=0o600)
+    assert stat.S_IMODE((tmp_path / "public.txt").stat().st_mode) == 0o644
+    assert stat.S_IMODE((tmp_path / "secret.json").stat().st_mode) == 0o600
+    write_atomic(tmp_path / "secret.json", "y", mode=0o600)  # an overwrite keeps it private
+    assert stat.S_IMODE((tmp_path / "secret.json").stat().st_mode) == 0o600

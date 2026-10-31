@@ -32,6 +32,7 @@ from urllib.parse import urlencode
 
 import httpx
 from troubadour.core import config
+from troubadour.core.fsutil import write_atomic
 
 log = logging.getLogger("troubadour")
 
@@ -221,14 +222,7 @@ class Cloud:
 
     def _save(self, data: dict) -> None:
         """Atomically, readable by this user only: it holds the refresh token."""
-        path = self.path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(f".{path.name}.tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            json.dump(data, f, indent=2)
-        os.chmod(tmp, 0o600)
-        tmp.replace(path)
+        write_atomic(self.path(), json.dumps(data, indent=2), mode=0o600)
 
     def _update(self, change: Callable[[dict], None]) -> dict:
         with self._lock:
@@ -311,22 +305,22 @@ class Cloud:
         except (OSError, ValueError):
             return {}
 
+    @staticmethod
+    def _recent(attempts: list) -> list[dict]:
+        """The attempts from the last HISTORY_DAYS, newest first."""
+        cutoff = time.time() - HISTORY_DAYS * 86400
+        return sorted((a for a in attempts if isinstance(a, dict) and a.get("at", 0) >= cutoff), key=lambda a: -a["at"])
+
     def history(self, campaign_id: str) -> list[dict]:
         """Backup attempts for the campaign in the last HISTORY_DAYS, newest first."""
-        cutoff = time.time() - HISTORY_DAYS * 86400
-        attempts = self._history_all().get(campaign_id, [])
-        return sorted((a for a in attempts if isinstance(a, dict) and a.get("at", 0) >= cutoff), key=lambda a: -a["at"])
+        return self._recent(self._history_all().get(campaign_id, []))
 
     def _record(self, campaign_id: str, attempt: dict) -> None:
         """Append one attempt (success or failure) and drop what is older than HISTORY_DAYS."""
         with self._lock:
             data = self._history_all()
-            data[campaign_id] = [*reversed(self.history(campaign_id)), attempt]
-            path = self._history_path()
-            path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = path.with_name(f".{path.name}.tmp")
-            tmp.write_text(json.dumps(data, indent=1))
-            tmp.replace(path)
+            data[campaign_id] = [*reversed(self._recent(data.get(campaign_id, []))), attempt]
+            write_atomic(self._history_path(), json.dumps(data, indent=1))
 
     # ---------------------------------------------------------------- sign-in
 
@@ -447,7 +441,13 @@ class Cloud:
         token = self._token(timeout=timeout)
         r = self._request(method, url, json=body, headers={"Authorization": f"Bearer {token}"}, **extra)
         if r.status_code == 401:  # the access token may have just expired or been revoked: refresh once
-            r = self._request(method, url, json=body, headers={"Authorization": f"Bearer {self._token(rejected=token, timeout=timeout)}"}, **extra)
+            r = self._request(
+                method,
+                url,
+                json=body,
+                headers={"Authorization": f"Bearer {self._token(rejected=token, timeout=timeout)}"},
+                **extra,
+            )
             if r.status_code == 401:
                 # Even a fresh token is refused: this sign-in is no good here any more (say, the service moved
                 # to another sign-in provider). Offer Connect again instead of failing every backup.
