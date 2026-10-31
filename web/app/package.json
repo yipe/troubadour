@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "pnpm -C ../packages/api gen",
     "build": "tsc --noEmit && vite build",
     "pretypecheck": "pnpm -C ../packages/api gen",
     "typecheck": "tsc --noEmit",
