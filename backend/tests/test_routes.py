@@ -140,3 +140,46 @@ def test_every_route_is_still_served():
         elif isinstance(route, APIWebSocketRoute):
             found.append(("WEBSOCKET", route.path))
     assert sorted(found) == sorted(EXPECTED)
+
+
+TYPED = [
+    ("GET", "/api/mics"),
+    ("PATCH", "/api/mics/{name}"),
+    ("POST", "/api/mic/test"),
+    ("POST", "/api/mic/test/stop"),
+    ("PUT", "/api/audio/monitor"),
+    ("GET", "/api/sources"),
+    ("POST", "/api/campaign/entities/{name}/facts/search"),
+    ("POST", "/api/campaign/import"),
+    ("POST", "/api/campaign/writeup/{sid}"),
+    ("POST", "/api/campaign/ignore"),
+    ("DELETE", "/api/campaign/ignore/{word}"),
+    ("GET", "/api/campaign/suggestions"),
+    ("POST", "/api/sessions/{sid}/improve"),
+    ("POST", "/api/sessions/{sid}/retranscribe"),
+    ("POST", "/api/sessions/{sid}/spelling"),
+    ("POST", "/api/sessions/{sid}/in-character"),
+    ("POST", "/api/sessions/{sid}/refresh"),
+    ("POST", "/api/sessions/upgrade"),
+    ("POST", "/api/sessions/{sid}/restore"),
+    ("GET", "/api/sessions/{sid}/quality"),
+    ("POST", "/api/players/{pid}/profile"),
+    ("POST", "/api/players/{pid}/clone"),
+    ("POST", "/api/players/{pid}/clone/say"),
+    ("POST", "/api/players/{pid}/clone/read"),
+]
+
+
+def test_these_endpoints_declare_a_response_model():
+    """The web types come from the schema: an endpoint without a response model is `unknown` there."""
+    paths = app.openapi()["paths"]
+    untyped = [
+        (method, path)
+        for method, path in TYPED
+        if not any(
+            r.get("content", {}).get("application/json", {}).get("schema")
+            for code, r in paths[path][method.lower()]["responses"].items()
+            if code in ("200", "202")
+        )
+    ]
+    assert untyped == []

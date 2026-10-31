@@ -1,7 +1,7 @@
 """Saved sessions: list, merge, jobs over a recording, quality and audio."""
 
 import json
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Path
 from fastapi.responses import FileResponse
@@ -10,6 +10,7 @@ from troubadour.core import settings, transcript
 from troubadour.engine import improve, pipeline, session_audio
 from troubadour.lore import pages
 from troubadour.server import deps
+from troubadour.server.models import CampaignJob
 from troubadour.server.routers.session import FileDesc, MicDesc, ReplayDesc
 
 router = APIRouter()
@@ -171,7 +172,7 @@ def saved_transcript(sid: str, fmt: Literal["md", "json"]):
     return deps._download(body, sid, fmt)
 
 
-@router.post("/api/sessions/{sid}/improve")
+@router.post("/api/sessions/{sid}/improve", response_model=CampaignJob)
 def improve_transcript(sid: str):
     """Re-transcribe a saved session with what the campaign knows now (a background job; it
     waits while a live session runs). The original is kept as transcript.orig.json."""
@@ -192,7 +193,7 @@ def improve_transcript(sid: str):
         ).to_json()
 
 
-@router.post("/api/sessions/{sid}/retranscribe")
+@router.post("/api/sessions/{sid}/retranscribe", response_model=CampaignJob)
 def retranscribe(sid: str):
     """Re-assign who spoke each line from the recording. Words stay; hand-set speakers can move.
     The first original transcript is kept."""
@@ -209,7 +210,7 @@ def retranscribe(sid: str):
         ).to_json()
 
 
-@router.post("/api/sessions/{sid}/spelling")
+@router.post("/api/sessions/{sid}/spelling", response_model=CampaignJob)
 def fix_spellings(sid: str):
     """The spelling cleanup over a saved session (a background job; the original is kept)."""
     deps._call(deps.engine.session_file, sid, "json")
@@ -224,7 +225,7 @@ def fix_spellings(sid: str):
         ).to_json()
 
 
-@router.post("/api/sessions/{sid}/in-character")
+@router.post("/api/sessions/{sid}/in-character", response_model=CampaignJob)
 def estimate_in_character(sid: str):
     """Which of each player's lines were in character, read by the memory LLM (a background job;
     the original is kept)."""
@@ -234,7 +235,9 @@ def estimate_in_character(sid: str):
         return deps.memory.submit(
             "incharacter",
             sid,
-            lambda job: deps.stamped(sid, "in_character", lambda: improve.label_in_character(job, deps.engine, sid, deps.memory.llm)),
+            lambda job: deps.stamped(
+                sid, "in_character", lambda: improve.label_in_character(job, deps.engine, sid, deps.memory.llm)
+            ),
         ).to_json()
 
 
@@ -264,7 +267,7 @@ def _llm_ready(steps: list[pipeline.Step]) -> None:
         raise HTTPException(503, problem)
 
 
-@router.post("/api/sessions/{sid}/refresh")
+@router.post("/api/sessions/{sid}/refresh", response_model=CampaignJob)
 def refresh_session(sid: Annotated[str, Path(pattern=SESSION_PATTERN)]):
     """Re-run every processing step that can run on a saved session (a background job of kind "refresh"):
     listening, speakers, spellings, talk time, in-character lines, the write-up, the review list, the recap.
@@ -298,7 +301,7 @@ def session_upgrades():
     }
 
 
-@router.post("/api/sessions/upgrade")
+@router.post("/api/sessions/upgrade", response_model=list[CampaignJob])
 def upgrade_sessions():
     """Queue the stale steps of every out-of-date session, oldest first, one session at a time. What was
     recorded survives a restart, so asking again continues where it stopped. 409 while a session runs."""
@@ -309,7 +312,11 @@ def upgrade_sessions():
         return [_queue_refresh(sid, only_stale=True).to_json() for sid, _ in todo]
 
 
-@router.post("/api/sessions/{sid}/restore")
+class Restored(BaseModel):
+    restored: str  # the session id
+
+
+@router.post("/api/sessions/{sid}/restore", response_model=Restored)
 def restore_transcript(sid: str):
     """Undo improvements: put the session's original transcript back."""
     deps._call(deps.engine.session_file, sid, "json")
@@ -321,7 +328,7 @@ def restore_transcript(sid: str):
     return {"restored": sid}
 
 
-@router.get("/api/sessions/{sid}/quality")
+@router.get("/api/sessions/{sid}/quality", response_model=dict[str, Any])
 def session_quality(sid: str):
     """How good a recording is (levels, noise, rumble, per-speaker loudness, verdict)."""
     deps._call(deps.engine.session_file, sid, "json")

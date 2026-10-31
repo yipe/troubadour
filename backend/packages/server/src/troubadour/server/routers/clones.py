@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, StringConstraints
 from troubadour.server import deps
+from troubadour.server.models import CampaignJob
 from troubadour.sound import tts
 
 router = APIRouter()
@@ -32,27 +33,27 @@ def clones():
     return {"voices": deps.engine.clones.voices(), "profiles": deps.engine.clones.profiles(), "clips": deps.engine.clones.clips()}
 
 
-@router.post("/api/players/{pid}/profile", status_code=202)
+@router.post("/api/players/{pid}/profile", status_code=202, response_model=CampaignJob)
 def build_profile(pid: str):
     """Profile how they talk from every saved transcript (a job: kind "profile"). Needs the clone opt-in."""
     name, work = deps._call(deps.cloning.profile_job, pid)
     return deps.memory.submit("profile", name, work, player_id=pid).to_json()
 
 
-@router.post("/api/players/{pid}/clone", status_code=202)
+@router.post("/api/players/{pid}/clone", status_code=202, response_model=CampaignJob)
 def build_clone(pid: str):
     """(Re)build their voice (a job: kind "clone")."""
     name, work = deps._call(deps.cloning.build_job, pid)
     return deps.memory.submit("clone", name, work, player_id=pid).to_json()
 
 
-@router.post("/api/players/{pid}/clone/say", status_code=202)
+@router.post("/api/players/{pid}/clone/say", status_code=202, response_model=CampaignJob)
 def clone_say(pid: str, body: SayIn):
     name, work = deps._call(deps.cloning.say_job, pid, body.text, body.in_their_words, body.persona)
     return deps.memory.submit("say", name, work, player_id=pid).to_json()
 
 
-@router.post("/api/players/{pid}/clone/read", status_code=202)
+@router.post("/api/players/{pid}/clone/read", status_code=202, response_model=CampaignJob)
 def clone_read(pid: str, body: ReadIn):
     """Read a session's write-up page aloud in their voice (a job: kind "read", note = the page)."""
     title, page, work = deps._call(deps.cloning.read_job, pid, body.session, body.in_their_words, body.persona)

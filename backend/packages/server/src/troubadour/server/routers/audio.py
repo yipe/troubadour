@@ -37,6 +37,70 @@ class AudioMonitorIn(BaseModel):
     on: bool
 
 
+class MicSpecs(BaseModel):
+    source: Literal["catalog", "you", "unknown"]
+    model: str | None = None
+    capsule: str | None = None
+    patterns: list[str] | None = None
+    bits: int | None = None
+    max_rate: int | None = None
+    wireless: bool | None = None
+    notes: str | None = None
+
+
+class MicCheck(BaseModel):
+    id: Literal["around", "distance", "wired", "rate", "measured"]
+    label: str
+    ok: bool | None  # None: can't tell
+    detail: str
+
+
+class MicMeasured(BaseModel):
+    session: str
+    started_at: float
+    verdict: str
+    reasons: list[str]
+
+
+class MicInfo(BaseModel):
+    """An input as GET /api/mics describes it (a mic the OS doesn't list has only its name and specs)."""
+
+    name: str
+    maker: str | None = None
+    connection: str = "other"
+    rate: float | None = None
+    default: bool = False
+    specs: MicSpecs
+    measured: list[MicMeasured] = []
+    checks: list[MicCheck] = []
+
+
+class MicTestState(BaseModel):
+    state: Literal["running", "stopped"]
+    device: str | None = None
+    seconds: float | None = None
+
+
+class AudioMonitorOut(BaseModel):
+    on: bool
+
+
+class SampleFile(BaseModel):
+    name: str
+    duration: float
+    audio_url: str
+
+
+class SourceMic(BaseModel):
+    name: str
+    default: bool
+
+
+class Sources(BaseModel):
+    files: list[SampleFile]
+    mics: list[SourceMic]
+
+
 def _sample_files() -> list[dict]:
     files = []
     for path in sorted(config.SAMPLES_DIR.glob("*.wav")):
@@ -49,13 +113,13 @@ def _sample_files() -> list[dict]:
     return files
 
 
-@router.get("/api/mics")
+@router.get("/api/mics", response_model=list[MicInfo])
 def list_mic_details():
     """Every input: what macOS reports, specs (catalog or yours), measurements, ✓/✗ checklist."""
     return mics.describe(deps.engine.sessions_dir())
 
 
-@router.patch("/api/mics/{name}")
+@router.patch("/api/mics/{name}", response_model=MicInfo)
 def correct_mic(name: str, body: MicSpecsIn):
     if len(name) > 200:
         raise HTTPException(422, "name too long")
@@ -65,25 +129,25 @@ def correct_mic(name: str, body: MicSpecsIn):
     )
 
 
-@router.post("/api/mic/test")
+@router.post("/api/mic/test", response_model=MicTestState)
 def mic_test(body: MicTestIn):
     """Level meter and quality for the mic without a session (events: audio.level, audio.quality, mic.test)."""
     return deps._call(deps.engine.mic_test, body.device, body.seconds)
 
 
-@router.post("/api/mic/test/stop")
+@router.post("/api/mic/test/stop", response_model=MicTestState)
 def stop_mic_test():
     return deps.engine.stop_mic_test()
 
 
-@router.put("/api/audio/monitor")
+@router.put("/api/audio/monitor", response_model=AudioMonitorOut)
 def audio_monitor(body: AudioMonitorIn):
     """Switch the live session's level + quality read-out on or off (reported as session.audio_monitor)."""
     deps.engine.set_audio_monitor(body.on)
     return {"on": body.on}
 
 
-@router.get("/api/sources")
+@router.get("/api/sources", response_model=Sources)
 def sources():
     return {"files": _sample_files(), "mics": list_mics()}
 
