@@ -275,7 +275,8 @@ class Entity:
     extra_meta: dict = field(default_factory=dict)  # frontmatter keys Troubadour doesn't own
     extra_sections: list[tuple[str, str]] = field(default_factory=list)  # (heading, body), verbatim
     path: Path | None = None
-    read_only: bool = False  # frontmatter didn't parse: show it, never overwrite it
+    read_only: bool = False  # never overwrite it: frontmatter didn't parse, or its Facts wouldn't round-trip
+    unreadable: bool = False  # frontmatter didn't parse: its names and type can't be trusted either
 
     def names(self) -> list[str]:
         return [self.name, *self.aliases]
@@ -433,6 +434,7 @@ def parse(name: str, text: str) -> Entity:
     facts_text, suggested_text = "\n".join(mine[FACTS.casefold()]), "\n".join(mine[SUGGESTED.casefold()])
     e.facts = parse_bullets(facts_text.splitlines(), name)
     e.suggested_facts = parse_bullets(suggested_text.splitlines(), name)
+    e.unreadable = meta is None
     e.read_only = meta is None or not (lists_round_trip(facts_text) and lists_round_trip(suggested_text))
     if meta is None:
         return e
@@ -601,8 +603,9 @@ class Vault:
         return None
 
     def glossary(self) -> list[Entity]:
-        """Confirmed, readable entities: what transcription may rely on."""
-        return [e for e in self.entities() if e.status == "confirmed" and not e.read_only]
+        """Confirmed, readable entities: what transcription may rely on. A note only locked against writes
+        (Facts in a layout Troubadour wouldn't keep) still names things correctly."""
+        return [e for e in self.entities() if e.status == "confirmed" and not e.unreadable]
 
     def signature(self) -> tuple:
         """Changes whenever any entity note changes (cheap: one stat per note)."""

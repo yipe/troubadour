@@ -63,7 +63,7 @@ class Speller:
         self.glossary: set[str] = set()  # canonical names from the campaign (vs D&D terms)
         self.about: dict[str, str] = {}  # name → "npc: one-line description" for the LLM
         for e in self.entities:
-            if e.status != "confirmed" or e.read_only:
+            if e.status != "confirmed" or e.unreadable:
                 continue
             self.glossary.add(e.name)
             self.about[e.name] = f"{e.type}: {(e.description.splitlines() or [''])[0][:120]}"

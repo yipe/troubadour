@@ -133,6 +133,17 @@ def test_a_facts_list_that_would_not_round_trip_makes_the_note_read_only(vault, 
     assert path.read_text() == original
 
 
+def test_a_note_locked_only_for_its_facts_layout_still_names_things_for_transcription(vault):
+    people = vault.root / "People"
+    people.mkdir(parents=True)
+    (people / "Orsa.md").write_text("---\ntype: npc\n---\n# Orsa\n\n## Facts\n1. Captain of the Gull.\n")
+    (people / "Pip.md").write_text("---\ntype: [unclosed\n---\n# Pip\n")
+    assert vault.get("Orsa").read_only and not vault.get("Orsa").unreadable
+    names = {e.name for e in vault.glossary()}
+    assert "Orsa" in names  # locked against writes, but its name is fine
+    assert "Pip" not in names  # frontmatter unreadable: nothing about it can be trusted
+
+
 def test_wrapped_bullets_and_history_still_round_trip(vault):
     e = parse("Orsa", "---\ntype: npc\n---\n# Orsa\n\n## Facts\n- Hates goblins\n  because of the fire.\n  - ~~Old.~~\n")
     assert not e.read_only
