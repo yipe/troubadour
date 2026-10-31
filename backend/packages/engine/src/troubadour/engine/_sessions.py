@@ -497,9 +497,7 @@ class SessionsMixin:
                 wav = self._voice_audio_path(v["id"])
                 if wav.is_file():
                     shutil.copyfile(wav, folder / "voices" / wav.name)
-            tmp = folder / f".{phase}.json.tmp"
-            tmp.write_text(json.dumps(data))
-            tmp.replace(folder / f"{phase}.json")
+            write_atomic(folder / f"{phase}.json", json.dumps(data))
         except OSError:
             log.exception("couldn't snapshot the %s setup", phase)
 

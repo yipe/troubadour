@@ -11,6 +11,7 @@ import time
 
 import numpy as np
 from troubadour.core import config
+from troubadour.core.fsutil import write_atomic
 from troubadour.lore import cleanup
 from troubadour.lore.memory import MemoryLLM
 from troubadour.sound import asr, levels, tts
@@ -220,9 +221,7 @@ class Engine(SessionsMixin, LibraryMixin, VoicesMixin, PipelineMixin, TrainingMi
         out = levels.report(load_audio(path, 0.0, end), record["messages"])
         src = record["session"].get("source") or {}
         out["mic"] = src.get("device") or src.get("name") or src.get("kind")
-        tmp = folder / ".quality.json.tmp"
-        tmp.write_text(json.dumps({"key": key, "report": out}))
-        tmp.replace(cache)
+        write_atomic(cache, json.dumps({"key": key, "report": out}))
         return out
 
     def _quality_quietly(self, sid: str) -> None:
