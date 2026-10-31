@@ -51,3 +51,26 @@ def test_write_atomic_mode_is_the_final_permission(tmp_path):
     assert_mode(tmp_path / "secret.json", 0o600)
     write_atomic(tmp_path / "secret.json", "y", mode=0o600)  # an overwrite keeps it private
     assert_mode(tmp_path / "secret.json", 0o600)
+
+
+@pytest.mark.parametrize("windows", [True, False])
+def test_a_rename_windows_refuses_for_a_moment_is_tried_again(tmp_path, monkeypatch, windows):
+    real, calls = os.replace, []
+
+    def busy_twice(src, dst):
+        calls.append(dst)
+        if len(calls) <= 2:
+            raise PermissionError(13, "Access is denied")
+        real(src, dst)
+
+    monkeypatch.setattr(fsutil, "WINDOWS", windows)
+    monkeypatch.setattr(fsutil.os, "replace", busy_twice)
+    monkeypatch.setattr(fsutil.time, "sleep", lambda s: None)
+    if windows:
+        write_atomic(tmp_path / "q.json", "{}")
+        assert (tmp_path / "q.json").read_text() == "{}"
+        assert len(calls) == 3
+    else:  # elsewhere a refused rename is a real error
+        with pytest.raises(PermissionError):
+            write_atomic(tmp_path / "q.json", "{}")
+    assert not list(tmp_path.glob(".*.tmp"))

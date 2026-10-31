@@ -48,9 +48,8 @@ jobs:
         working-directory: backend
 
   windows:
-    # Not proven on Windows yet: report, don't block. Make it required once it's green.
+    # faster-whisper on the CPU, no voice clones (docs/adr/0011). Tests need no models or network.
     runs-on: windows-2025
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - run: choco install ffmpeg -y --no-progress
