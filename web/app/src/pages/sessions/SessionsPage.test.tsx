@@ -118,7 +118,11 @@ it("shows scene lengths from the next scene's start", () => {
 })
 
 it("explains scenes before a write-up and starts the write-up job", async () => {
-  const m = mockFetch(() => campaignJob({ id: "j1", kind: "writeup", title: "s3", state: "queued" }))
+  const m = mockFetch((c) =>
+    c.url === "/api/sessions/upgrades"
+      ? { sessions: [], current: {} }
+      : campaignJob({ id: "j1", kind: "writeup", title: "s3", state: "queued" }),
+  )
   page("/sessions/s3")
   expect(screen.getByText("Scenes appear after the write-up.")).toBeInTheDocument()
   await userEvent.click(screen.getByRole("button", { name: "Write up" }))

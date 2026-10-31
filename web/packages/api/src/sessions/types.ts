@@ -1,3 +1,4 @@
+import type { CampaignJob } from "../campaign/types.ts"
 import type { Schemas } from "../generated/index.ts"
 import type { QualityNumbers, QualityVerdict } from "../audio/types.ts"
 import type { Fix } from "../session/types.ts"
@@ -8,6 +9,10 @@ export type SavedSession = Schemas["SavedSession"]
 export type Scene = Schemas["Scene"]
 /** What a start sets or the server fills in after the fact; absent from records saved by older versions. */
 type LaterFields = "title" | "present_player_ids" | "reviewed_at" | "talk" | "merged_from"
+/** Sessions processed by an older Troubadour: `stale` names the steps to redo; `current` is each step's version. */
+export type Upgrades = Schemas["Upgrades"]
+/** The `kind` of a refresh job. (`CampaignJob["kind"]` doesn't list it yet; the server sends it.) */
+export const REFRESH_JOB = "refresh" as CampaignJob["kind"]
 export type ReviewedResult = Schemas["ReviewedOut"]
 /** Set on a saved record once "Improve transcript" re-transcribed it. */
 export interface ImprovedInfo {

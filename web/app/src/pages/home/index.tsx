@@ -10,6 +10,7 @@ import { obsidianUrl } from "../../lib/entities.ts"
 import { duration } from "../../lib/format.ts"
 import { nextSessionNumber, sessionNumbers } from "../../lib/sessions.ts"
 import { paths } from "../../paths.ts"
+import { UpgradeBanner } from "../sessions/UpgradeBanner.tsx"
 import { homeStats } from "./data.ts"
 import { LastSession } from "./LastSession.tsx"
 import { NewestFacts } from "./NewestFacts.tsx"
@@ -76,6 +77,7 @@ export function Component() {
           </>
         }
       />
+      <UpgradeBanner />
       <div className="grid min-h-0 grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)] gap-[18px]">
         <section className="flex flex-col gap-[18px]">
           <LastSession

@@ -8,6 +8,7 @@ import { Spinner } from "@troubadour/ui/spinner"
 import { nextSessionNumber, sessionNumbers } from "../../lib/sessions.ts"
 import { SessionDetail } from "./SessionDetail.tsx"
 import { SessionList } from "./SessionList.tsx"
+import { UpgradeBanner } from "./UpgradeBanner.tsx"
 
 export function Component() {
   const { id } = useParams()
@@ -34,11 +35,16 @@ export function Component() {
         />
       }
     >
-      {selected ? (
-        <SessionDetail key={selected.id} session={selected} numbers={numbers} />
-      ) : (
-        <p className="p-10 text-ink-subtle">No sessions yet. Prepare one to get started.</p>
-      )}
+      <div className="flex flex-col gap-5">
+        <div className="px-10 pt-7 empty:hidden">
+          <UpgradeBanner />
+        </div>
+        {selected ? (
+          <SessionDetail key={selected.id} session={selected} numbers={numbers} />
+        ) : (
+          <p className="p-10 text-ink-subtle">No sessions yet. Prepare one to get started.</p>
+        )}
+      </div>
     </RailLayout>
   )
 }

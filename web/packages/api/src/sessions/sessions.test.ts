@@ -1,12 +1,16 @@
 import { afterEach, expect, it, vi } from "vitest"
 import { bodyOf, mockFetch, savedSession } from "../testing/index.ts"
 import {
+  cancelRefresh,
   deleteSession,
   markReviewed,
   mergeSessions,
+  refreshSession,
   sessionAudioUrl,
+  sessionUpgrades,
   undeleteSession,
   unmergeSession,
+  upgradeSessions,
 } from "./index.ts"
 
 afterEach(() => vi.restoreAllMocks())
@@ -40,5 +44,23 @@ it("deleteSession, undeleteSession and unmergeSession hit their routes", async (
     ["DELETE", "/api/sessions/a"],
     ["POST", "/api/sessions/a/undelete"],
     ["POST", "/api/sessions/a/unmerge"],
+  ])
+})
+
+it("refresh, cancel, upgrades and upgrade hit their routes", async () => {
+  const m = mockFetch((c) => {
+    if (c.url === "/api/sessions/upgrades") return { sessions: [], current: { talk: 1 } }
+    if (c.url.endsWith("/cancel")) return new Response(null, { status: 204 })
+    return c.url === "/api/sessions/upgrade" ? [] : { id: "j1", kind: "refresh" }
+  })
+  await refreshSession("a b")
+  await cancelRefresh("j1")
+  await sessionUpgrades()
+  await upgradeSessions()
+  expect(m.calls.map((c) => [c.method, c.url])).toEqual([
+    ["POST", "/api/sessions/a%20b/refresh"],
+    ["POST", "/api/sessions/refresh/j1/cancel"],
+    ["GET", "/api/sessions/upgrades"],
+    ["POST", "/api/sessions/upgrade"],
   ])
 })

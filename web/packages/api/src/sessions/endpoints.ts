@@ -1,7 +1,7 @@
 import type { CampaignJob } from "../campaign/types.ts"
 import { req, segment } from "../http/index.ts"
 import { transcriptUrl } from "../session/endpoints.ts"
-import type { RecordingQuality, ReviewedResult, SavedSession, SessionRecord } from "./types.ts"
+import type { RecordingQuality, ReviewedResult, SavedSession, SessionRecord, Upgrades } from "./types.ts"
 
 export const sessions = () => req<SavedSession[]>("GET", "/api/sessions")
 
@@ -39,6 +39,19 @@ export const retranscribeSession = (id: string) =>
 
 /** Run the spelling cleanup over a saved session (background job; no re-listening). */
 export const fixSpellings = (id: string) => req<CampaignJob>("POST", `/api/sessions/${segment(id)}/spelling`)
+
+/** Re-run every processing step that can run on a saved session (background job of kind "refresh"). */
+export const refreshSession = (id: string) => req<CampaignJob>("POST", `/api/sessions/${segment(id)}/refresh`)
+
+/** Stop a refresh before its next step; what finished stays. */
+export const cancelRefresh = (jobId: string) =>
+  req<void>("POST", `/api/sessions/refresh/${segment(jobId)}/cancel`)
+
+/** Sessions an older Troubadour processed, with the steps that would be redone. */
+export const sessionUpgrades = () => req<Upgrades>("GET", "/api/sessions/upgrades")
+
+/** Queue the stale steps of every out-of-date session, oldest first (one job each). */
+export const upgradeSessions = () => req<CampaignJob[]>("POST", "/api/sessions/upgrade")
 
 /** Put an improved/spell-fixed session's original transcript back. */
 export const restoreSession = (id: string) => req<unknown>("POST", `/api/sessions/${segment(id)}/restore`)

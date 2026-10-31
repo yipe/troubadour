@@ -57,6 +57,9 @@ describe("ImproveDialog", () => {
         return campaignJob({ id: "r1", kind: "retranscribe", title: ID, state: "queued" })
       if (c.url.endsWith("/in-character"))
         return campaignJob({ id: "c1", kind: "incharacter", title: ID, state: "queued" })
+      if (c.url.endsWith("/refresh"))
+        return campaignJob({ id: "f1", kind: "refresh" as never, title: ID, state: "queued" })
+      if (c.url.endsWith("/cancel")) return new Response(null, { status: 204 })
       if (c.url.endsWith("/restore")) return { ok: true }
       return new Response(null, { status: 500 })
     })
@@ -94,6 +97,48 @@ describe("ImproveDialog", () => {
     for (const name of ["Improve", "Fix spellings", "Estimate", "Retranscribe"])
       expect(screen.getByRole("button", { name })).toBeDisabled()
     expect(writes()).toEqual([])
+  })
+
+  it("leads with Refresh this session, which says what it keeps and starts the refresh job", async () => {
+    const { writes } = server()
+    renderWithProviders(<ImproveDialog session={session} open />)
+    const section = screen.getByRole("region", { name: "Refresh this session" })
+    expect(section).toHaveTextContent(/every fact you confirmed/)
+    expect(section.compareDocumentPosition(screen.getByRole("region", { name: "Improve transcript" }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+    fireEvent.click(within(section).getByRole("button", { name: "Refresh this session" }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(writes()[0]).toMatchObject({ method: "POST", url: `/api/sessions/${ID}/refresh` })
+  })
+
+  it("shows the refresh job's steps, locks the other tools, and Stop cancels it", async () => {
+    const { writes } = server()
+    renderWithProviders(<ImproveDialog session={session} open />, {
+      queryData: [
+        withJobs([
+          campaignJob({
+            id: "f1",
+            kind: "refresh" as never,
+            title: ID,
+            state: "running",
+            done: 1,
+            total: 2,
+            message: "Fix spellings",
+            steps: [
+              { label: "Count talk time", state: "done" },
+              { label: "Fix spellings", state: "running" },
+            ],
+          }),
+        ]),
+      ],
+    })
+    expect(screen.getAllByText("Count talk time").length).toBeGreaterThan(0)
+    for (const name of ["Refresh this session", "Improve", "Fix spellings"])
+      expect(screen.getAllByRole("button", { name }).every((b) => b.hasAttribute("disabled"))).toBe(true)
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(writes()[0]).toMatchObject({ method: "POST", url: "/api/sessions/refresh/f1/cancel" })
   })
 
   it("starts improve, spelling and in-character jobs", async () => {
