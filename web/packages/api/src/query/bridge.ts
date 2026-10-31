@@ -70,6 +70,9 @@ export function bridgeSocket(socket: Socket, client: QueryClient, opts: BridgeOp
       campaignId = snap.campaign
       if (!switched) return
       clearTimeout(timer)
+      // Reset, not just invalidate: a refetch merges with what is cached, and that is the old
+      // campaign's jobs and answers.
+      void client.resetQueries({ queryKey: keys.campaign(), exact: true })
       void client.invalidateQueries({ predicate: (q) => !isLiveOnlyKey(q.queryKey) })
       opts.onCampaignSwitch?.(snap.campaign)
     }),

@@ -12,8 +12,7 @@ export function FactsCard({ entity }: { entity: Entity }) {
     e.preventDefault()
     const fact = text.trim()
     if (!fact) return
-    add.mutate({ name: entity.name, fact: { text: fact } })
-    setText("")
+    add.mutate({ name: entity.name, fact: { text: fact } }, { onSuccess: () => setText("") })
   }
 
   return (

@@ -55,9 +55,9 @@ export function Component() {
         title="Couldn't load this transcript"
         body={record.error.message}
         action={
-          <Link to={paths.sessions()}>
-            <Button>Back to sessions</Button>
-          </Link>
+          <Button nativeButton={false} render={<Link to={paths.sessions()} role="link" />}>
+            Back to sessions
+          </Button>
         }
       />
     )

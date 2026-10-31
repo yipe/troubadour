@@ -27,10 +27,13 @@ export function ImportNotes({ onDone }: ImportNotesProps) {
   const job =
     useCampaign().data?.jobs.find((j) => j.id === jobId) ?? (queued?.id === jobId ? queued : undefined)
 
-  const reset = () => {
-    setText("")
+  const dismiss = () => {
     setJobId(null)
     importNotes.reset()
+  }
+  const reset = () => {
+    setText("")
+    dismiss()
   }
 
   const submit = () =>
@@ -106,7 +109,7 @@ export function ImportNotes({ onDone }: ImportNotesProps) {
           className="max-h-[50vh] min-h-48 font-mono"
         />
       </Field>
-      {job?.state === "error" && <JobStatus job={job} variant="inline" onDismiss={reset} />}
+      {job?.state === "error" && <JobStatus job={job} variant="inline" onDismiss={dismiss} />}
       <div className="flex items-center gap-2">
         <Button type="submit" variant="primary" disabled={!text.trim() || importNotes.isPending}>
           <Upload className="size-4" /> Import

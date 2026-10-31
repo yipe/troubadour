@@ -132,7 +132,12 @@ export function Component() {
   }
 
   async function finish() {
-    await markReviewed.mutateAsync(true)
+    try {
+      await markReviewed.mutateAsync(true)
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Couldn’t mark the review done.", { tone: "danger" })
+      return
+    }
     notify(`${label} reviewed`)
     void navigate(paths.session(id))
   }

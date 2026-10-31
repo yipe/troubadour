@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { keys } from "@troubadour/api/query"
-import { bodyOf, mockFetch, savedSession, session } from "@troubadour/api/testing"
+import { bodyOf, httpError, mockFetch, savedSession, session } from "@troubadour/api/testing"
 import { renderApp } from "../../test/render.tsx"
 
 const ONE = { campaign: "main", campaigns: [{ id: "main", name: "Blank", table_name: "" }] }
@@ -94,6 +94,38 @@ describe("welcome wizard", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/welcome/table"))
     expect(writes().map((w) => `${w.method} ${w.url}`)).toEqual([
       "POST /api/campaigns",
+      "POST /api/campaigns/c2/open",
+    ])
+  })
+
+  it("retrying after a failed open does not create a second campaign", async () => {
+    let opens = 0
+    const server = mockFetch((c) => {
+      if (c.method === "POST" && c.url === "/api/campaigns")
+        return { id: "c2", name: "Sunken Crown", table_name: "" }
+      if (c.method === "POST" && c.url === "/api/campaigns/c2/open")
+        return opens++ === 0
+          ? httpError(500, "Busy")
+          : {
+              campaign: "c2",
+              campaigns: [...ONE.campaigns, { id: "c2", name: "Sunken Crown", table_name: "" }],
+            }
+      return []
+    })
+    const { router } = renderApp({
+      route: "/welcome/campaign?new=1",
+      live: { session: session({ status: "idle" }) },
+      queryData: [[keys.campaigns(), ONE]],
+    })
+    fireEvent.change(await screen.findByLabelText("Campaign name"), { target: { value: "Sunken Crown" } })
+    fireEvent.click(screen.getByRole("button", { name: /Continue to the table/ }))
+    await waitFor(() => expect(opens).toBe(1))
+    await waitFor(() => expect(screen.getByRole("button", { name: /Continue to the table/ })).toBeEnabled())
+    fireEvent.click(screen.getByRole("button", { name: /Continue to the table/ }))
+    await waitFor(() => expect(router.state.location.pathname).toBe("/welcome/table"))
+    expect(server.writes().map((w) => `${w.method} ${w.url}`)).toEqual([
+      "POST /api/campaigns",
+      "POST /api/campaigns/c2/open",
       "POST /api/campaigns/c2/open",
     ])
   })

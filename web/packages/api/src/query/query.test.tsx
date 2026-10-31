@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useAddCampaignFact, useCampaign, useIgnoreWord, useMutateEntity } from "../campaign/index.ts"
+import { putJob } from "./cache.ts"
 import { bridgeSocket, REFETCH_DEBOUNCE_MS } from "./bridge.ts"
 import { makeQueryClient } from "./client.ts"
 import { keys } from "./keys.ts"
@@ -153,6 +154,52 @@ describe("useCampaign", () => {
     const { result } = renderHook(() => useCampaign(), { wrapper })
     await act(() => result.current.refetch())
     expect(result.current.data!.jobs[0]!.state).toBe("done")
+  })
+
+  it("drops an ended job the fetch no longer lists, but keeps a running one seen only by event", async () => {
+    client.setQueryData(
+      keys.campaign(),
+      campaign({
+        jobs: [campaignJob({ id: "old", state: "done" }), campaignJob({ id: "new", state: "running" })],
+      }),
+    )
+    mockFetch(() => campaign({ jobs: [] }))
+    const { result } = renderHook(() => useCampaign(), { wrapper })
+    await act(() => client.invalidateQueries({ queryKey: keys.campaign() }))
+    await waitFor(() => expect(result.current.data!.jobs.map((j) => j.id)).toEqual(["new"]))
+  })
+
+  it("a POST response does not overwrite a newer socket state for the same job", () => {
+    client.setQueryData(keys.campaign(), campaign({ jobs: [campaignJob({ id: "j", state: "done" })] }))
+    putJob(client, campaignJob({ id: "j", state: "queued" }))
+    expect(client.getQueryData<Campaign>(keys.campaign())!.jobs[0]!.state).toBe("done")
+    putJob(client, campaignJob({ id: "k", state: "queued" }))
+    expect(client.getQueryData<Campaign>(keys.campaign())!.jobs.map((j) => j.id)).toEqual(["j", "k"])
+  })
+
+  it("a switch to another campaign leaves none of the old campaign's jobs behind", async () => {
+    const { socket, emit } = (() => {
+      const handlers = new Map<string, (d: never) => void>()
+      return {
+        socket: {
+          on: (t: string, h: (d: never) => void) => (handlers.set(t, h), () => handlers.delete(t)),
+        } as never,
+        emit: (e: ServerEvent) => handlers.get(e.type)?.(e.data as never),
+      }
+    })()
+    bridgeSocket(socket, client)
+    client.setQueryData(
+      keys.campaign(),
+      campaign({ jobs: [campaignJob({ id: "a-running", state: "running" })] }),
+    )
+    emit({ type: "snapshot", data: snapshot() })
+    mockFetch(() => campaign({ jobs: [] }))
+    const { result } = renderHook(() => useCampaign(), { wrapper })
+    emit({
+      type: "snapshot",
+      data: snapshot({ campaign: "other", campaigns: [{ id: "other", name: "Other", table_name: "" }] }),
+    })
+    await waitFor(() => expect(result.current.data?.jobs).toEqual([]))
   })
 })
 

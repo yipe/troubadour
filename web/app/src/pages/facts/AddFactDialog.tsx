@@ -73,7 +73,11 @@ export function AddFactDialog({ open, onOpenChange, entities }: AddFactDialogPro
         </DialogBody>
         <DialogFooter>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={!body} onClick={submit}>
+          <Button
+            variant="primary"
+            disabled={!body || addToEntity.isPending || addToCampaign.isPending}
+            onClick={submit}
+          >
             Add fact
           </Button>
         </DialogFooter>

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type { Campaign } from "../campaign/types.ts"
-import { editCampaign, withAnswer, withoutAnswer } from "../query/cache.ts"
+import { editCampaign, withAnswer, withNewAnswer, withoutAnswer } from "../query/cache.ts"
 import { useCampaignWrite } from "../query/campaignWrite.ts"
 import { keys } from "../query/keys.ts"
 import { ask, deleteAnswer } from "./endpoints.ts"
@@ -10,7 +10,7 @@ export function useAsk() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: ({ question, t }: { question: string; t?: number }) => ask(question, t),
-    onSuccess: (answer) => editCampaign(client, withAnswer(answer)),
+    onSuccess: (answer) => editCampaign(client, withNewAnswer(answer)),
   })
 }
 

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router"
 import {
   useCampaigns,
@@ -27,6 +27,7 @@ export function CampaignStep({ onBusy }: { onBusy: (busy: boolean) => void }) {
   const create = useCreateCampaign()
   const open = useOpenCampaign()
   const rename = useRenameCampaign()
+  const madeId = useRef<string | null>(null)
   const [typed, setTyped] = useState<string | null>(null)
   const [typedTable, setTypedTable] = useState<string | null>(null)
 
@@ -51,9 +52,10 @@ export function CampaignStep({ onBusy }: { onBusy: (busy: boolean) => void }) {
         }
         if (Object.keys(patch).length > 0) await rename.mutateAsync({ id: current.id, ...patch })
       } else {
-        const made = await create.mutateAsync(trimmed)
-        if (table) await rename.mutateAsync({ id: made.id, table_name: table })
-        await open.mutateAsync(made.id)
+        // Kept across retries: a failed rename or open must not create a second campaign.
+        madeId.current ??= (await create.mutateAsync(trimmed)).id
+        if (table) await rename.mutateAsync({ id: madeId.current, table_name: table })
+        await open.mutateAsync(madeId.current)
       }
       await navigate(paths.welcome("table"))
     } catch (e) {
