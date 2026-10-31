@@ -8,9 +8,8 @@ import { Chip } from "@troubadour/ui/chip"
 import { PageHeading } from "@troubadour/ui/page-heading"
 import { SegmentedBar } from "@troubadour/ui/segmented-bar"
 import { Spinner } from "@troubadour/ui/spinner"
-import { hm } from "../../lib/format.ts"
 import { playerColor } from "../../lib/players.ts"
-import { talkSegments, topPlayer } from "../../lib/talk.ts"
+import { talkSegments } from "../../lib/talk.ts"
 import { paths } from "../../paths.ts"
 import { ROW_HEIGHT, TravelLine } from "./TravelLine.tsx"
 import { travelStops, type TravelStop } from "./travel.ts"
@@ -119,8 +118,6 @@ function RowCells({ row, maxFacts }: { row: Row; maxFacts: number }) {
   const { session, stop, olderLane, newest } = row
   const players = useLive((s) => s.players)
   const classes = useClasses().data ?? []
-  const top = topPlayer(session.talk, players)
-  const totalTalk = Object.values(session.talk).reduce((sum, s) => sum + Math.max(0, s), 0)
   const barWidth = (session.facts_accepted / maxFacts) * FACT_BAR_MAX
   return (
     <>
@@ -143,10 +140,12 @@ function RowCells({ row, maxFacts }: { row: Row; maxFacts: number }) {
         <TravelLine stop={stop} olderLane={olderLane} hasNewer={!newest} newest={newest} />
       </td>
       <td className={CELL}>
-        <SegmentedBar segments={talkSegments(session.talk, players, classes)} height={10} gap={1} />
-        <div className="mt-1.5 text-11 text-ink-subtle">
-          {top ? `Top player: ${top.player.name} ${top.pct}% · ${hm(totalTalk)}` : "No one named spoke"}
-        </div>
+        <SegmentedBar
+          segments={talkSegments(session.talk, players, classes, "share")}
+          height={18}
+          gap={1}
+          labels
+        />
       </td>
       <td className={CELL}>
         <div className="flex flex-wrap items-center gap-1.5">

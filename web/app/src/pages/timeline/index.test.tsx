@@ -58,10 +58,10 @@ it("shows the count, a legend and one row per session, newest first", () => {
   expect(screen.getByText("Sep 3")).toBeInTheDocument()
 })
 
-it("names the top player without the GM", () => {
-  show([tl(1, { talk: { gm: 600, pip: 100, velis: 60 } })])
-  // 100 of 760 seconds in all.
-  expect(screen.getByText("Top player: Pip 13% · 0:12")).toBeInTheDocument()
+it("orders who talked by share, biggest first, with no top-player line", () => {
+  show([tl(1, { talk: { velis: 60, gm: 600, pip: 100 } })])
+  expect(screen.getByRole("img", { name: /^Alex 79%, Pip 13%, Velis 8%/ })).toBeInTheDocument()
+  expect(screen.queryByText(/Top player/)).not.toBeInTheDocument()
 })
 
 it("links new faces to the codex and opens the session when its row is clicked", async () => {

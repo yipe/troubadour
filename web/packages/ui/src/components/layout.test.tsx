@@ -26,6 +26,34 @@ describe("SegmentedBar", () => {
     expect(screen.getByRole("img")).toHaveAccessibleName("A 50%, B 25%, C 25%")
   })
 
+  it("writes each label inside its segment, or its first letter when the whole label doesn't fit", () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    )
+    // jsdom has no layout: a label is 50px wide; segment A is 100px, segment B 20px.
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(50)
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.segment === "Aurelia" ? 100 : 20
+    })
+    render(
+      <SegmentedBar
+        labels
+        segments={[
+          { value: 5, color: "red", label: "Aurelia" },
+          { value: 1, color: "green", label: "Bram" },
+        ]}
+      />,
+    )
+    const shown = [...document.querySelectorAll("[data-label]")].map((e) => e.textContent)
+    expect(shown).toEqual(["Aurelia", "B"])
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
   it("renders nothing when the total is zero", () => {
     const { container } = render(<SegmentedBar segments={[{ value: 0, color: "red", label: "A" }]} />)
     expect(container).toBeEmptyDOMElement()
