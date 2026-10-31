@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, StringConstraints
+from pydantic import AfterValidator, BaseModel, StringConstraints
 from troubadour.engine import SESSION_ID
 from troubadour.lore import review as lore
 from troubadour.server import deps
-from troubadour.server.routers.campaign import EntityName, FactSuggestionOut, Kind, _Out
+from troubadour.server.routers.campaign import EntityName, FactSuggestionOut, Kind, _Out, one_line
 
 router = APIRouter()
 
@@ -54,7 +54,7 @@ class Review(BaseModel):
 
 class ReviewAction(BaseModel):
     action: Literal["accept", "reject"]
-    text: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] | None = (
+    text: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000), AfterValidator(one_line)] | None = (
         None  # edited fact; a new entry's name
     )
     about: EntityName | None = None  # a fact moved to this entry; null (given) = the campaign's facts

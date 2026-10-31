@@ -30,7 +30,7 @@ import httpx
 from troubadour.core import config, providers, transcript
 
 from . import dnd_terms, writeup
-from .campaign import TYPES, Entity, Vault, add_unique, everyday, norm, safe_name, write_atomic
+from .campaign import TYPES, Entity, Vault, add_unique, everyday, norm, safe_name, trash_copy, write_atomic
 from .facts import Fact, Source
 
 log = logging.getLogger("troubadour")
@@ -524,6 +524,7 @@ class Job:
     message: str = ""
     created: list[str] = field(default_factory=list)
     updated: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)  # notes left alone because Troubadour can't read them safely
     suggested: int = 0
     note: str | None = None  # vault-relative path of the note it wrote (a read-aloud job: the note it reads)
     player_id: str | None = None  # voice-clone jobs: whose voice
@@ -615,7 +616,7 @@ class Memory:
         job.on_change = lambda: self.emit(job)
         with self._lock:
             self.jobs[job.id] = job
-            for old in sorted(self.jobs.values(), key=lambda j: j.id)[:-20]:
+            for old in list(self.jobs.values())[:-20]:  # oldest first: dicts keep insertion order, ids are random
                 if old.state in ("done", "error"):
                     del self.jobs[old.id]
         self.emit(job)
@@ -692,19 +693,27 @@ class Memory:
             self.emit(job)
             self.bus.emit("campaign.updated", {})
         job.message = f"{len(job.created)} new, {len(job.updated)} updated"
+        if job.skipped:
+            job.message += f"; left alone (fix in Obsidian first): {', '.join(job.skipped)}"
 
     def _merge_notes(self, job: Job, out: dict, note: str) -> None:
         source = Source(note)
-        items = out.get("entities") if isinstance(out.get("entities"), list) else []
+        items = writeup.as_list(out.get("entities"))
         for item in items[:MAX_ITEMS]:
             if not isinstance(item, dict) or not (name := _name(item.get("name"))):
                 continue
-            aliases = [a for a in (_name(a) for a in item.get("aliases") or [] if isinstance(a, str)) if a]
+            aliases = [a for a in (_name(a) for a in writeup.as_list(item.get("aliases")) if isinstance(a, str)) if a]
             facts = [
-                Fact(f, name, source=source) for f in (_text(f) for f in item.get("facts") or [] if isinstance(f, str)) if f
+                Fact(f, name, source=source)
+                for f in (_text(f) for f in writeup.as_list(item.get("facts")) if isinstance(f, str))
+                if f
             ][:5]
             description = _text(item.get("description"))
             existing = self.vault.find(name) or next((e for a in aliases if (e := self.vault.find(a))), None)
+            if existing is not None and existing.read_only:
+                if existing.name not in job.skipped:
+                    job.skipped.append(existing.name)
+                continue
             # An alias that already names a *different* entry would make two notes claim one name.
             aliases = [a for a in aliases if (o := self.vault.find(a)) is None or (existing and o.path == existing.path)]
             if existing is None:
@@ -730,7 +739,7 @@ class Memory:
                 )
                 if existing.name not in job.created and existing.name not in job.updated:
                     job.updated.append(existing.name)
-        for fact in (out.get("campaign_facts") or [])[:5]:
+        for fact in writeup.as_list(out.get("campaign_facts"))[:5]:
             if text := _text(fact):
                 self.vault.add_campaign_fact(Fact(text, source=source))
 
@@ -746,6 +755,9 @@ class Memory:
         entity = self.vault.find(name)
         if entity is None:
             raise KeyError(name)
+        if entity.read_only:
+            job.message = f"{entity.name}.md can't be read safely; fix it in Obsidian first."
+            return
         passages = passages_about(self.vault, self.sessions_dir(), entity.names())
         if not passages:
             job.message = f"Nothing mentions {entity.name}"
@@ -762,7 +774,7 @@ class Memory:
                 f"Name: {entity.name}\n\nKnown facts:\n{known}\n\nPassage ({label}):\n{text}",
                 FACT_SCHEMA,
             )
-            for raw in out.get("facts") or []:
+            for raw in writeup.as_list(out.get("facts")):
                 fact = _text(raw)
                 if not fact or fleeting(fact):
                     continue
@@ -826,9 +838,12 @@ class Memory:
 
         tdir = self.vault.root / "Sessions" / "Transcripts"
         tdir.mkdir(parents=True, exist_ok=True)
-        (tdir / f"{sid}.md").write_text(transcript.markdown(record), encoding="utf-8")
+        write_atomic(tdir / f"{sid}.md", transcript.markdown(record))
         body = self._session_markdown(record, note_title, notes, page, len(lines))
         path = existing or self.vault.root / "Sessions" / f"{note_title}.md"
+        # The page may have been edited in Obsidian since the last run: keep what it was.
+        if path.exists():
+            trash_copy(self.vault.root, path)
         write_atomic(path, body)
         job.note = str(path.relative_to(self.vault.root))
         job.step(len(job.steps), f"Wrote {path.stem}; {job.suggested} suggestions to review")

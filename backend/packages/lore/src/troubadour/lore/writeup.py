@@ -186,6 +186,11 @@ def _named(items, kinds: set[str] | None = None) -> list[Named]:
     return out[:NAMED_MAX]
 
 
+def as_list(value) -> list:
+    """A list the model sent as a list; anything else ("none", 3, null, an object) is no items."""
+    return value if isinstance(value, list) else []
+
+
 def _strings(items, limit: int = LIST_MAX) -> list[str]:
     return [t for x in (items if isinstance(items, list) else []) if (t := clean(x))][:limit]
 
@@ -193,12 +198,12 @@ def _strings(items, limit: int = LIST_MAX) -> list[str]:
 def parse_notes(raw: dict, stamps: set[str]) -> Notes:
     beats = [
         Beat(_stamp(b.get("at"), stamps), text)
-        for b in raw.get("beats") or []
+        for b in as_list(raw.get("beats"))
         if isinstance(b, dict) and (text := clean(b.get("text")))
     ][:BEATS_MAX]
     spellings = [
         (heard, means)
-        for s in raw.get("spellings") or []
+        for s in as_list(raw.get("spellings"))
         if isinstance(s, dict) and (heard := clean(s.get("heard"), NAME_MAX)) and (means := clean(s.get("means"), NAME_MAX))
     ][:LIST_MAX]
     return Notes(
@@ -216,7 +221,7 @@ def parse_notes(raw: dict, stamps: set[str]) -> Notes:
 def parse_page(raw: dict, stamps: set[str]) -> Page:
     highlights = [
         Beat(_stamp(h.get("at"), stamps), text)
-        for h in raw.get("highlights") or []
+        for h in as_list(raw.get("highlights"))
         if isinstance(h, dict) and (text := clean(h.get("text")))
     ][:8]
     last_time = raw.get("last_time") if isinstance(raw.get("last_time"), str) else ""
@@ -320,7 +325,7 @@ def facts(llm, notes: Notes, known: list[Fact] | None = None, progress=None) -> 
     block = "\n".join(f"{i}. [{f.about}] {f.text}" for i, f in enumerate(known, start=1)) or "(none)"
     raw = llm.json(FACTS_SYSTEM, f"Known facts:\n{block}\n\nNotes:\n{notes.text()}", FACTS_SCHEMA, 2000, progress=progress)
     out = []
-    for f in raw.get("facts") or []:
+    for f in as_list(raw.get("facts")):
         if not isinstance(f, dict) or not (about := clean(f.get("about"), NAME_MAX)) or not (text := clean(f.get("text"))):
             continue
         confidence: Confidence = "gm" if f.get("confidence") == "gm" else "theory" if f.get("confidence") == "theory" else "once"
@@ -394,7 +399,7 @@ def scenes(llm, notes: Notes, places: dict[str, str], progress=None) -> list[dic
     raw = llm.json(SCENES_SYSTEM, f"Known places: {known}\n\nBeats:\n{listing}", SCENES_SCHEMA, 1000, progress=progress)
     out: list[dict] = []
     last_start, last_t = 0, -1.0
-    for s in raw.get("scenes") or []:
+    for s in as_list(raw.get("scenes")):
         if not isinstance(s, dict) or not isinstance(s.get("start"), int) or isinstance(s.get("start"), bool):
             continue
         start = s["start"]

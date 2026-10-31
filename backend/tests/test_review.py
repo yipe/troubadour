@@ -86,7 +86,7 @@ def act(api, item, **body):
 def test_items_for_each_kind_with_anchors(api, world):
     review = get(api)
     assert review["written_up"] is True
-    assert review["counts"] == {"total": 6, "done": 0, "fact": 3, "spelling": 2, "entry": 1}
+    assert review["counts"] == {"total": 5, "done": 0, "fact": 2, "spelling": 2, "entry": 1}
     mudge = find(review, "fact", lambda i: i["fact"]["about"] == "Mudge")
     assert (mudge["line_id"], mudge["t"]) == ("m2", 25.0)  # the line whose span holds t
     assert mudge["fact"]["confidence"] == "gm"
@@ -94,8 +94,8 @@ def test_items_for_each_kind_with_anchors(api, world):
     update = find(review, "fact", lambda i: i["fact"]["kind"] == "update")
     assert update["fact"]["replaces"]
     assert update["line_id"] == "m0"  # t=3 is inside line 0 (0..8)
-    campaign = find(review, "fact", lambda i: i["fact"]["about"] is None)
-    assert campaign["line_id"] == "m2"  # t=28 falls in the gap after line 2 (20..28)
+    # "The toll is two gold." is a confirmed campaign fact: nothing waits for a decision, so it is no item.
+    assert by_kind(review, "fact", **{"id": "fact:" + deps.vault.campaign_facts()[0].id}) == []
     misheard = find(review, "spelling", lambda i: i["spelling"]["entity"] == "Elara")
     assert misheard["spelling"]["heard"] == "Dilara"
     assert misheard["line_id"] == "m3"
@@ -135,7 +135,7 @@ def test_preaccepted_from_the_notebook_and_kept_only_facts(api, world):
     ]
     (world / "notebook.json").write_text(json.dumps({"session_id": SID, "items": items, "pins": []}))
     review = get(api)
-    assert review["counts"]["total"] == 7
+    assert review["counts"]["total"] == 6
     assert [i["preaccepted"] for i in review["items"]].count(True) == 4
     assert find(review, "fact", lambda i: i["fact"]["about"] == "Mudge")["preaccepted"]
     assert find(review, "entry", lambda i: True)["preaccepted"]
@@ -157,7 +157,7 @@ def test_the_total_is_frozen_when_an_item_is_rejected(api, world):
     assert r.json()["status"] == "rejected"
     assert deps.vault.get("Mudge").suggested_facts == []
     after = get(api)
-    assert after["counts"]["total"] == 6
+    assert after["counts"]["total"] == 5
     assert after["counts"]["done"] == 1
     again = find(after, "fact", lambda i: i["id"] == mudge["id"])
     assert again["status"] == "rejected"
@@ -170,7 +170,7 @@ def test_a_suggestion_that_vanishes_counts_as_rejected_and_new_ones_join(api, wo
     deps.vault.delete_fact("Mudge", mudge["fact"]["id"])  # removed elsewhere, no decision
     deps.vault.add_fact("Greyfen", Fact("Greyfen floods in spring.", "Greyfen", None, Source(PAGE, SID, 5.0)), suggested=True)
     after = get(api)
-    assert after["counts"]["total"] == 7
+    assert after["counts"]["total"] == 6
     assert find(after, "fact", lambda i: i["id"] == mudge["id"])["status"] == "rejected"
     assert act(api, mudge, action="accept").status_code == 409
 
@@ -187,11 +187,6 @@ def test_accept_fact_keeps_its_source_and_can_be_edited_or_moved(api, world):
     assert e.facts[0].source
     assert e.facts[0].source.t == 25.0
     assert e.facts[0].confidence == "gm"
-
-    campaign = find(review, "fact", lambda i: i["fact"]["about"] is None)
-    assert act(api, campaign, action="accept", about="Greyfen").status_code == 200  # moved into an entry
-    assert [f.text for f in deps.vault.get("Greyfen").facts] == ["The toll is two gold."]
-    assert deps.vault.campaign_facts() == []
     assert act(api, mudge, action="accept").status_code == 409
 
 
@@ -202,11 +197,33 @@ def test_a_suggested_fact_can_move_to_the_campaign(api, world):
     assert r.json()["fact"]["about"] is None
     assert [f.text for f in deps.vault.campaign_facts()][-1] == "Mudge guards the Greyfen bridge."
     assert deps.vault.get("Mudge").suggested_facts == []
-    assert (
-        act(api, find(get(api), "fact", lambda i: i["fact"]["text"] == "The toll is two gold."), action="reject").status_code
-        == 200
-    )
-    assert "The toll is two gold." not in [f.text for f in deps.vault.campaign_facts()]
+    assert [f.text for f in deps.vault.campaign_facts()][0] == "The toll is two gold."
+
+
+def test_a_campaign_fact_is_no_review_item_even_in_an_old_review_file(api, world):
+    fact = deps.vault.campaign_facts()[0]
+    row = {
+        "id": f"fact:{fact.id}",
+        "kind": "fact",
+        "key": fact.id,
+        "line_id": "m2",
+        "t": 28.0,
+        "data": {"text": fact.text, "about": None, "source": {"page": PAGE, "session_id": SID, "t": 28.0, "label": None}},
+    }
+    (world / "review.json").write_text(json.dumps({"items": [row], "decisions": {}}))
+    old = find(get(api), "fact", lambda i: i["id"] == row["id"])
+    assert old["status"] == "accepted"  # nothing is waiting: the fact is in the vault
+    assert act(api, old, action="reject").status_code == 409
+    assert [f.text for f in deps.vault.campaign_facts()] == ["The toll is two gold."]
+
+
+def test_rejecting_a_fact_that_is_confirmed_never_deletes_it(api, world):
+    from troubadour.lore import review as lore
+
+    fact = deps.vault.campaign_facts()[0]
+    item = lore.Item(f"fact:{fact.id}", "fact", fact.id, fact=fact)
+    lore._fact_action(deps.vault, item, "reject", None, None, False)
+    assert [f.text for f in deps.vault.campaign_facts()] == ["The toll is two gold."]
 
 
 def test_a_bad_target_changes_nothing(api, world):
@@ -233,7 +250,7 @@ def test_spelling_accept_and_reject(api, world):
     unknown = find(review, "spelling", lambda i: i["spelling"]["entity"] is None)
     assert act(api, unknown, action="reject").json()["status"] == "rejected"
     assert "zorblax" in [w.casefold() for w in deps.vault.ignored()]
-    assert get(api)["counts"]["total"] == 6
+    assert get(api)["counts"]["total"] == 5
 
 
 def test_misheard_reject_is_remembered(api, world):

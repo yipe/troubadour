@@ -13,8 +13,10 @@ This module knows nothing of HTTP or the engine: the router hands it a `Context`
 
 import hashlib
 import json
+import logging
 import re
 import threading
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -25,6 +27,8 @@ from troubadour.core.fsutil import write_atomic
 from .campaign import Vault, same_fact
 from .facts import Fact, Source, norm
 from .memory import spelling_suggestions
+
+log = logging.getLogger(__name__)
 
 Kind = Literal["fact", "spelling", "entry"]
 Status = Literal["open", "accepted", "rejected"]
@@ -172,7 +176,7 @@ def _fact_candidates(ctx: Context, messages: list[dict]) -> list[Item]:
     vault, out = ctx.vault, []
     for e in vault.entities():
         out += [_fact_item(f, messages) for f in e.suggested_facts if _source_session(vault, f.source) == ctx.sid]
-    out += [_fact_item(f, messages) for f in vault.campaign_facts() if _source_session(vault, f.source) == ctx.sid]
+    # Campaign facts are confirmed the moment they are written: nothing here is waiting for a decision.
     return out
 
 
@@ -316,12 +320,25 @@ def _lock_for(sid: str) -> threading.Lock:
 
 
 def _load(path: Path) -> dict:
+    """The saved file, or an empty one. A file that exists but can't be used is set aside first, so the new
+    list never overwrites the decisions in it."""
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(raw.get("items"), list) and isinstance(raw.get("decisions"), dict):
             return raw
+    except FileNotFoundError:
+        return {"items": [], "decisions": {}}
     except (OSError, ValueError, AttributeError):
         pass
+    stamp, n = time.strftime("%Y%m%d-%H%M%S"), 1
+    aside = path.with_name(f"review.corrupt-{stamp}.json")
+    while aside.exists():
+        n += 1
+        aside = path.with_name(f"review.corrupt-{stamp}-{n}.json")
+    try:
+        path.rename(aside)
+    except OSError:
+        log.exception("couldn't set aside the unreadable %s", path)
     return {"items": [], "decisions": {}}
 
 
@@ -431,8 +448,7 @@ def _fact_action(vault: Vault, it: Item, action: str, text: str | None, about: s
     if action == "reject":
         if where == "suggested":
             vault.review(f.about or "", reject_facts=[f.id])
-        elif where == "campaign":
-            vault.delete_campaign_fact(f.id)
+        # A confirmed fact (the campaign's) is the owner's: rejecting an item never deletes it.
         return
     target = about if about_given else f.about
     if target is not None:

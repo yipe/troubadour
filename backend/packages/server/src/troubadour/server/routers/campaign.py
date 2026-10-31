@@ -1,11 +1,12 @@
 """Campaign memory: the glossary, facts, note import, write-ups and spelling suggestions."""
 
 import json
+import re
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 from troubadour.engine import SESSION_ID
 from troubadour.lore import obsidian, timeline
 from troubadour.lore.campaign import TYPES, Entity, SessionIndex, mention_counts
@@ -25,7 +26,24 @@ EntityName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=
 Term = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 
 
-FactText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)]
+def one_line(text: str) -> str:
+    """A fact is one bullet in a note: a pasted line break would end it and strand the rest as prose."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+FactText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000), AfterValidator(one_line)]
+
+
+def _plain_description(text: str | None) -> str | None:
+    """A description sits between the title and the first `## ` heading of the note: a line that starts one
+    (or a `---` rule) would split it, and its tail would be read back as a section of its own."""
+    for line in (text or "").splitlines():
+        if line.startswith("## ") or line.strip() == "---":
+            raise ValueError("A description can't contain a line that starts with '## ' or is '---'.")
+    return text
+
+
+Description = Annotated[str, AfterValidator(_plain_description)]
 
 
 FactId = Annotated[str, StringConstraints(min_length=1, max_length=40)]
@@ -68,7 +86,7 @@ class FactEdit(BaseModel):
 class EntityIn(BaseModel):
     name: EntityName
     type: Kind = "term"
-    description: str = Field("", max_length=4000)
+    description: Description = Field("", max_length=4000)
     aliases: list[Term] = Field(default_factory=list, max_length=50)
     heard_as: list[Term] = Field(default_factory=list, max_length=100)
 
@@ -77,7 +95,7 @@ class EntityPatch(BaseModel):
     name: EntityName | None = None
     type: Kind | None = None
     status: Literal["confirmed", "suggested"] | None = None
-    description: str | None = Field(None, max_length=4000)
+    description: Description | None = Field(None, max_length=4000)
     aliases: list[Term] | None = Field(None, max_length=50)
     heard_as: list[Term] | None = Field(None, max_length=100)
     heard_as_suggested: list[Term] | None = Field(None, max_length=100)
@@ -397,7 +415,7 @@ def delete_entity_fact(name: str, fact_id: str):
 
 @router.post("/api/campaign/facts", response_model=list[FactOut])
 def add_campaign_fact(body: FactIn):
-    facts = deps.vault.add_campaign_fact(_new_fact(body, None))
+    facts = deps._call(deps.vault.add_campaign_fact, _new_fact(body, None))
     deps.memory.changed()
     return _facts_out(facts)
 
@@ -411,7 +429,7 @@ def edit_campaign_fact(body: FactEdit):
 
 @router.delete("/api/campaign/facts/{fact_id}", response_model=list[FactOut])
 def delete_campaign_fact(fact_id: str):
-    facts = deps.vault.delete_campaign_fact(fact_id)
+    facts = deps._call(deps.vault.delete_campaign_fact, fact_id)
     deps.memory.changed()
     return _facts_out(facts)
 
