@@ -12,7 +12,7 @@ type LaterFields = "title" | "present_player_ids" | "reviewed_at" | "talk" | "me
 /** Sessions processed by an older Troubadour: `stale` names the steps to redo; `current` is each step's version. */
 export type Upgrades = Schemas["Upgrades"]
 /** The `kind` of a refresh job. (`CampaignJob["kind"]` doesn't list it yet; the server sends it.) */
-export const REFRESH_JOB = "refresh" as CampaignJob["kind"]
+export const REFRESH_JOB: CampaignJob["kind"] = "refresh"
 export type ReviewedResult = Schemas["ReviewedOut"]
 /** Set on a saved record once "Improve transcript" re-transcribed it. */
 export interface ImprovedInfo {

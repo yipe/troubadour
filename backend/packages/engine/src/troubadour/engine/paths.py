@@ -92,6 +92,8 @@ def session_audio(sid: str) -> tuple[Path, float | None]:
             src = meta["source"]
         except (OSError, ValueError, KeyError, TypeError):
             raise KeyError(sid) from None
+        if not isinstance(src, dict):  # a session with no recorded source (older or imported): no audio
+            raise KeyError(sid)
         heard = meta.get("duration_s")
         if isinstance(heard, int | float) and heard > 0:
             end = heard if end is None else min(end, heard)
@@ -99,5 +101,8 @@ def session_audio(sid: str) -> tuple[Path, float | None]:
             return sample_path(src["name"]), end
         if src.get("kind") != "session":
             raise KeyError(sid)
-        sid = src.get("id")
+        nxt = src.get("id")
+        if not isinstance(nxt, str):
+            raise KeyError(sid)
+        sid = nxt
     raise KeyError(sid)

@@ -362,6 +362,14 @@ def test_session_audio_follows_recordings_samples_and_replays(dirs):
             session_audio(bad)
 
 
+def test_a_session_with_no_recorded_source_has_no_audio(dirs):
+    folder = config.DATA_DIR / "sessions" / A
+    folder.mkdir(parents=True)
+    (folder / "meta.json").write_text(json.dumps({"id": A, "started_at": 1, "source": None}))
+    with pytest.raises(KeyError):
+        session_audio(A)
+
+
 def test_replay_stops_where_the_session_stopped(dirs):
     # A replay stopped after 30 s of a 600 s sample, then a replay of that stopped at 12 s.
     write_wav(dirs[1] / "long.wav", tone(BOB, 0.5))
