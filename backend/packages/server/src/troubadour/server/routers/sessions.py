@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Path
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from troubadour.core import settings, transcript
-from troubadour.engine import improve, session_audio
+from troubadour.engine import improve, pipeline, session_audio
 from troubadour.lore import pages
 from troubadour.server import deps
 from troubadour.server.routers.session import FileDesc, MicDesc, ReplayDesc
@@ -28,6 +28,17 @@ class ReviewedIn(BaseModel):
 class ReviewedOut(BaseModel):
     id: str
     reviewed_at: float | None
+
+
+class UpgradeSession(BaseModel):
+    id: str
+    n: int | None  # the session's number, as in the list
+    stale: list[str]  # steps an older Troubadour processed it with, in the order they run
+
+
+class Upgrades(BaseModel):
+    sessions: list[UpgradeSession]  # oldest first
+    current: dict[str, int]  # every step's current version
 
 
 class Scene(BaseModel):
@@ -101,6 +112,12 @@ def _conflict(fn, *args):
         raise HTTPException(409, f"Can't do that: {e}") from None
 
 
+def _stamped(sid: str, step: str, work) -> None:
+    """Run one step's job, then record its version on the session (only when it finished)."""
+    work()
+    pipeline.stamp(deps.engine.sessions_dir() / sid, pipeline.BY_NAME[step])
+
+
 @router.post("/api/sessions/merge", response_model=SavedSession)
 def merge_sessions(body: SessionMergeIn):
     """Append the later of two saved sessions onto the earlier one. The later folder goes to
@@ -152,8 +169,12 @@ def improve_transcript(sid: str):
         return deps.memory.submit(
             "improve",
             sid,
-            lambda job: improve.run(
-                job, deps.engine, sid, lambda: deps.memory.emit(job), model=settings.current()["whisper_improve"]
+            lambda job: _stamped(
+                sid,
+                "transcribe",
+                lambda: improve.run(
+                    job, deps.engine, sid, lambda: deps.memory.emit(job), model=settings.current()["whisper_improve"]
+                ),
             ),
         ).to_json()
 
@@ -167,7 +188,11 @@ def retranscribe(sid: str):
     with deps.campaign_gate:
         deps._require_open_campaign(sid)
         return deps.memory.submit(
-            "retranscribe", sid, lambda job: improve.reassign_speakers(job, deps.engine, sid, lambda: deps.memory.emit(job))
+            "retranscribe",
+            sid,
+            lambda job: _stamped(
+                sid, "speakers", lambda: improve.reassign_speakers(job, deps.engine, sid, lambda: deps.memory.emit(job))
+            ),
         ).to_json()
 
 
@@ -178,7 +203,11 @@ def fix_spellings(sid: str):
     with deps.campaign_gate:
         deps._require_open_campaign(sid)
         return deps.memory.submit(
-            "spelling", sid, lambda job: improve.fix_spellings(job, deps.engine, sid, lambda: deps.memory.emit(job))
+            "spelling",
+            sid,
+            lambda job: _stamped(
+                sid, "spelling", lambda: improve.fix_spellings(job, deps.engine, sid, lambda: deps.memory.emit(job))
+            ),
         ).to_json()
 
 
@@ -190,8 +219,81 @@ def estimate_in_character(sid: str):
     with deps.campaign_gate:
         deps._require_open_campaign(sid)
         return deps.memory.submit(
-            "incharacter", sid, lambda job: improve.label_in_character(job, deps.engine, sid, deps.memory.llm)
+            "incharacter",
+            sid,
+            lambda job: _stamped(sid, "in_character", lambda: improve.label_in_character(job, deps.engine, sid, deps.memory.llm)),
         ).to_json()
+
+
+def _idle() -> None:
+    if deps.engine.status != "idle":
+        raise HTTPException(409, "A session is running. Refreshing waits until it ends.")
+
+
+def _refreshing(sid: str) -> bool:
+    return any(
+        j["kind"] == "refresh" and j["title"] == sid and j["state"] in ("queued", "running") for j in deps.memory.list_jobs()
+    )
+
+
+def _queue_refresh(sid: str, only_stale: bool):
+    """Queue the pipeline for one session (the caller holds the campaign gate)."""
+    return deps.memory.submit(
+        "refresh",
+        sid,
+        lambda job: pipeline.refresh(job, pipeline.Run(deps.engine, deps.memory, sid), only_stale=only_stale),
+    )
+
+
+def _llm_ready(steps: list[pipeline.Step]) -> None:
+    """Fail now, not minutes into the job, when a step needs a language model that can't answer."""
+    if pipeline.llm_steps(steps) and (problem := deps.memory.llm.problem()) is not None:
+        raise HTTPException(503, problem)
+
+
+@router.post("/api/sessions/{sid}/refresh")
+def refresh_session(sid: Annotated[str, Path(pattern=SESSION_PATTERN)]):
+    """Re-run every processing step that can run on a saved session (a background job of kind "refresh"):
+    listening, speakers, spellings, talk time, in-character lines, the write-up, the review list, the recap.
+    Originals are kept; confirmed facts are never changed. 409 while a session runs."""
+    _idle()
+    deps._call(deps.engine.session_file, sid, "json")
+    with deps.campaign_gate:
+        deps._require_open_campaign(sid)
+        if _refreshing(sid):
+            raise HTTPException(409, "That session is already being refreshed.")
+        _llm_ready(pipeline.make_plan(pipeline.Run(deps.engine, deps.memory, sid)))
+        return _queue_refresh(sid, only_stale=False).to_json()
+
+
+@router.post("/api/sessions/refresh/{job_id}/cancel", status_code=204)
+def cancel_refresh(job_id: Annotated[str, Path(pattern=r"^[0-9a-f]{8}$")]):
+    """Stop a refresh before its next step. What already finished stays."""
+    if not any(j["kind"] == "refresh" and j["id"] == job_id for j in deps.memory.list_jobs()):
+        raise HTTPException(404, f"not found: {job_id}")
+    pipeline.request_cancel(job_id)
+
+
+@router.get("/api/sessions/upgrades", response_model=Upgrades)
+def session_upgrades():
+    """Sessions an older Troubadour processed, and the steps to redo (only those steps)."""
+    todo = pipeline.upgradable(deps.engine, deps.memory)
+    numbers = pages.session_numbers(deps.engine.list_sessions())
+    return {
+        "sessions": [{"id": sid, "n": numbers.get(sid), "stale": [s.name for s in steps]} for sid, steps in todo],
+        "current": pipeline.current(),
+    }
+
+
+@router.post("/api/sessions/upgrade")
+def upgrade_sessions():
+    """Queue the stale steps of every out-of-date session, oldest first, one session at a time. What was
+    recorded survives a restart, so asking again continues where it stopped. 409 while a session runs."""
+    _idle()
+    with deps.campaign_gate:
+        todo = [(sid, steps) for sid, steps in pipeline.upgradable(deps.engine, deps.memory) if not _refreshing(sid)]
+        _llm_ready([s for _, steps in todo for s in steps])
+        return [_queue_refresh(sid, only_stale=True).to_json() for sid, _ in todo]
 
 
 @router.post("/api/sessions/{sid}/restore")

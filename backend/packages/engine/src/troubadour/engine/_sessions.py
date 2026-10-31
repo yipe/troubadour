@@ -21,6 +21,7 @@ from troubadour.core import config, settings, transcript
 from troubadour.sound import asr, levels
 from troubadour.sound.audio import load_audio
 
+from . import pipeline
 from .live_session import LiveSession
 from .model import PERSON_KEYS, SR, Player, Voice
 from .paths import SESSION_ID, _audio_seconds, _concat_wav, _first_by_id, session_audio
@@ -75,6 +76,7 @@ class SessionsMixin:
                 "title": sess.title,
                 "present_player_ids": sess.present_player_ids,
                 "reviewed_at": None,  # save_transcript keeps a value set since the last save
+                "pipeline": pipeline.live_stamp(),  # what listening live already did (pipeline.py)
             }
             record = transcript.build(
                 meta,

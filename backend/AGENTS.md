@@ -58,6 +58,7 @@ only translates HTTP into engine and lore calls. `troubadour-cloud` imports `lor
 | | `live_session`, `buffers`, `model`, `state`, `paths`, `bus` | One listening run; its audio; players/voices/messages; `state.json` and its migration; paths; the event bus. |
 | | `notebook` | The live notebook and its loop (`NotebookLoop`, started from `_pipeline.bind_notebook`). |
 | | `improve`, `cloning`, `sim` | Post-session re-transcription and spelling fixes; clone jobs (HTTP-free); `troubadour-sim`. |
+| | `pipeline` | The processing steps and their versions; the "refresh" job (Refresh this session, Upgrade old sessions). See *Pipeline versions*. |
 | `server` | `app`, `deps`, `models`, `static`, `main` | FastAPI app, shared singletons, request models used by 2+ routers, the built UI, entry point. |
 | | `routers/*` | One router per domain: `state`, `session`, `sessions`, `players`, `voices`, `campaign`, `ask`, `notebook`, `review`, `timeline`, `recap`, `clones`, `cloud`, `llm`, `audio`, `storage`. |
 | | `openapi` | Schema export for the web types (sets `TROUBADOUR_DATA` and `TROUBADOUR_MODELS=0` first). |
@@ -100,6 +101,27 @@ Other switches (`TROUBADOUR_RECORD`, `CLEANUP`, `ASR_PROMPT`, `DATA`, `VAULT`, p
 - **Spelling cleanup must not touch everyday speech:** dictionary words and their forms, case-only
   changes to D&D terms, spelled-out letters and aliases are never fixed. Add a test for any new rule.
 
+## Pipeline versions (refresh and upgrade)
+
+`engine/pipeline.py` lists the steps that process a saved session (`transcribe`, `speakers`, `spelling`,
+`talk`, `in_character`, `writeup`, `review`, `recap`), each with an integer `version`. `session.pipeline`
+(`{step: version}`, in `meta.json` and `transcript.json`) is written when a step finishes; a session without it
+is version 0 of everything. `GET /api/sessions/upgrades` lists sessions with a step below the current version
+(only steps the session can run and has output of); `POST /api/sessions/upgrade` queues a `refresh` job per
+session, oldest first, running only those steps; `POST /api/sessions/{sid}/refresh` runs every step that can
+run. Never during a live session (409). A failed step stops the job and earlier steps stay recorded.
+
+- **Bump a step's `VERSION` only when its output meaningfully changes** (new prompt, new rule, new fields).
+  Every saved session then offers an upgrade; a bump for a refactor or a bug in unrelated code just makes the
+  owner wait for nothing.
+- A new step goes in `STEPS` in dependency order, reuses the existing job code (don't copy it), says why it
+  can't run (`skip`) and whether a session has anything of its kind to upgrade (`upgrades`).
+- What it must keep: the first transcript as `transcript.orig.json` (taken before the first rewriting step), the
+  old write-up page copied to the vault's `.trash`, old `review.json`/`recap.json` archived beside the new ones,
+  confirmed facts untouched (new facts are suggestions, deduped with `same_fact`).
+- Live sessions are saved with the steps listening already did (`LIVE_STEPS`); keep that list honest when a
+  step is added.
+
 ## Testing
 
 - No models, no network: Whisper is stubbed (`troubadour.asr.transcribe`), the embedder is a fake,
@@ -131,8 +153,9 @@ Other switches (`TROUBADOUR_RECORD`, `CLEANUP`, `ASR_PROMPT`, `DATA`, `VAULT`, p
   `facts.py` has its own `norm` (avoids an import cycle).
 - `Engine.bind_notebook(sess)` is needed for sessions created without `start()`. Notebook tests spawn idle
   daemon threads; no final LLM pass runs for lines transcribed after Stop.
-- Session `talk` in `meta.json` is not refreshed by Retranscribe or Improve. `present_player_ids == []`
-  means everyone.
+- Session `talk` in `meta.json` is not refreshed by Retranscribe or Improve; the pipeline's `talk` step
+  (Refresh) does. `present_player_ids == []` means everyone.
+- An encoded-slash path (`..%2F`) may hit the built UI's fallback route (200 html / 405) instead of the API's 404; traversal tests accept that.
 - `routers/review.py` imports its output models from `routers/campaign.py`.
 - A cloud `GET /api/cloud` may call the service (connected only, 3 s cap, 60 s cache).
 - Scenes need at least 2 usable beats or none are stored.

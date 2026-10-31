@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { AudioLines, Drama, SpellCheck, Undo2, Wand2 } from "lucide-react"
+import { AudioLines, Drama, RefreshCw, SpellCheck, Undo2, Wand2 } from "lucide-react"
 import type { CampaignJob } from "@troubadour/api/campaign"
 import { keys } from "@troubadour/api/query"
+import { useLive } from "@troubadour/api/live"
 import {
+  REFRESH_JOB,
+  useCancelRefresh,
   useEstimateInCharacter,
   useFixSpellings,
   useImproveSession,
+  useRefreshSession,
   useRestoreSession,
   useRetranscribeSession,
   useSessionRecord,
@@ -23,7 +27,7 @@ export type ImproveDialogProps = {
   onOpenChange?: (open: boolean) => void
 }
 
-type Kind = "improve" | "spelling" | "retranscribe" | "incharacter"
+type Kind = CampaignJob["kind"]
 
 /** The saved record is read-only to the page, so a finished job must refetch it (and the list's flags). */
 function useRefreshWhenDone(kind: Kind, sessionId: string) {
@@ -49,15 +53,24 @@ export function ImproveDialog({ session, open, onOpenChange }: ImproveDialogProp
   const retranscribe = useRetranscribeSession()
   const inCharacter = useEstimateInCharacter()
   const restore = useRestoreSession()
+  const refresh = useRefreshSession()
+  const cancel = useCancelRefresh()
+  const running = useLive((s) => (s.session?.status ?? "idle") !== "idle")
 
   const jobs = {
+    refresh: useRefreshWhenDone(REFRESH_JOB, session.id),
     improve: useRefreshWhenDone("improve", session.id),
     spelling: useRefreshWhenDone("spelling", session.id),
     retranscribe: useRefreshWhenDone("retranscribe", session.id),
     incharacter: useRefreshWhenDone("incharacter", session.id),
   }
   const anyActive = Object.values(jobs).some((j) => j.active)
-  const starting = improve.isPending || spelling.isPending || retranscribe.isPending || inCharacter.isPending
+  const starting =
+    refresh.isPending ||
+    improve.isPending ||
+    spelling.isPending ||
+    retranscribe.isPending ||
+    inCharacter.isPending
   const busy = anyActive || starting || restore.isPending
   const [confirm, setConfirm] = useState<"retranscribe" | "restore" | null>(null)
 
@@ -81,6 +94,23 @@ export function ImproveDialog({ session, open, onOpenChange }: ImproveDialogProp
           description="Each tool keeps the original, so you can always restore it."
         />
         <DialogBody className="flex flex-col divide-y divide-line py-2">
+          <ToolRow
+            icon={<RefreshCw />}
+            title="Refresh this session"
+            body="Re-runs everything that can run, in order: listening again, speakers, spellings, talk time, in-character lines, the write-up, the review list and the recap. Steps that can't run here (no recording, not written up yet) are skipped. It can take a long while."
+            keeps="Keeps: the original transcript (Restore original), the old write-up page (moved to the vault's trash), the old review list and recap (archived beside the new ones), and every fact you confirmed. New facts arrive as suggestions to review."
+            action="Refresh this session"
+            primary
+            panel
+            disabled={busy || running}
+            job={jobs.refresh.job}
+            onRun={() => refresh.mutate(session.id)}
+            onCancel={
+              jobs.refresh.job && jobs.refresh.active ? () => cancel.mutate(jobs.refresh.job!.id) : undefined
+            }
+            error={refresh.error?.message}
+            result={jobs.refresh.job?.state === "done" && jobs.refresh.job.message}
+          />
           {session.replayable && (
             <ToolRow
               icon={<Wand2 />}
@@ -191,9 +221,13 @@ function ToolRow({
   icon,
   title,
   body,
+  keeps,
   action,
+  primary,
+  panel,
   disabled,
   job,
+  onCancel,
   confirm,
   result,
   error,
@@ -202,9 +236,16 @@ function ToolRow({
   icon: ReactNode
   title: string
   body: string
+  /** What the tool leaves alone. */
+  keeps?: string
   action: string
+  primary?: boolean
+  /** Show a running job's steps instead of one line. */
+  panel?: boolean
   disabled: boolean
   job?: CampaignJob
+  /** Stops a running job before its next step. */
+  onCancel?: () => void
   confirm?: ReactNode
   result?: ReactNode
   error?: string
@@ -217,14 +258,22 @@ function ToolRow({
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <h3 className="font-semibold">{title}</h3>
           <p className="text-13 text-ink-muted">{body}</p>
+          {keeps && <p className="text-13 text-ink-muted">{keeps}</p>}
           {result && <p className="text-12 text-ink-subtle">{result}</p>}
         </div>
-        <Button size="sm" disabled={disabled} onClick={onRun}>
-          {action}
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          {onCancel && (
+            <Button size="sm" variant="ghost" onClick={onCancel}>
+              Stop
+            </Button>
+          )}
+          <Button size="sm" variant={primary ? "primary" : "secondary"} disabled={disabled} onClick={onRun}>
+            {action}
+          </Button>
+        </div>
       </div>
       {confirm}
-      {job && <JobStatus job={job} variant="inline" />}
+      {job && <JobStatus job={job} variant={panel ? "panel" : "inline"} />}
       {error && (
         <p role="alert" className="text-13 text-danger">
           {error}

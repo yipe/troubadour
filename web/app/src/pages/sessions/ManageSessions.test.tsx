@@ -27,6 +27,7 @@ function Where() {
 function page(route: string, rows = [blip, s2, s1]) {
   const m = mockFetch((c) => {
     if (c.method === "DELETE") return new Response(null, { status: 204 })
+    if (c.url === "/api/sessions/upgrades") return { sessions: [], current: {} }
     return c.method === "GET" && c.url === "/api/sessions" ? rows : s1
   })
   renderWithProviders(

@@ -2,19 +2,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { putJob } from "../query/cache.ts"
 import { keys } from "../query/keys.ts"
 import {
+  cancelRefresh,
   deleteSession,
   estimateInCharacter,
   fixSpellings,
   improveSession,
   markReviewed,
   mergeSessions,
+  refreshSession,
   restoreSession,
   retranscribeSession,
   sessionQuality,
+  sessionUpgrades,
   sessionRecord,
   sessions,
   undeleteSession,
   unmergeSession,
+  upgradeSessions,
 } from "./endpoints.ts"
 
 /** The open campaign's saved sessions, newest first. The bridge refetches when a live session ends. */
@@ -112,5 +116,27 @@ export function useRestoreSession() {
         client.invalidateQueries({ queryKey: keys.record(id) }),
         client.invalidateQueries({ queryKey: keys.sessions() }),
       ]),
+  })
+}
+
+/** Run every processing step that can run on one saved session. */
+export const useRefreshSession = () => useSessionJob(refreshSession)
+
+/** Stop a running refresh before its next step. */
+export function useCancelRefresh() {
+  return useMutation({ mutationFn: (jobId: string) => cancelRefresh(jobId) })
+}
+
+/** Sessions an older Troubadour processed. Under the sessions key, so whatever refreshes the list refreshes this. */
+export function useUpgrades() {
+  return useQuery({ queryKey: [...keys.sessions(), "upgrades"], queryFn: sessionUpgrades })
+}
+
+/** Queue the stale steps of every out-of-date session; the jobs arrive in the campaign's job list. */
+export function useUpgradeSessions() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: upgradeSessions,
+    onSuccess: (jobs) => jobs.forEach((job) => putJob(client, job)),
   })
 }
