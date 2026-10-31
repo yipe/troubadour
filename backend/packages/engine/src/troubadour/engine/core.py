@@ -13,6 +13,7 @@ import numpy as np
 from troubadour.core import config
 from troubadour.core.fsutil import write_atomic
 from troubadour.lore import cleanup
+from troubadour.lore.campaign import Vault
 from troubadour.lore.memory import MemoryLLM
 from troubadour.sound import asr, levels, tts
 from troubadour.sound.audio import MicSource, list_mics, load_audio
@@ -74,7 +75,7 @@ class Engine(SessionsMixin, LibraryMixin, VoicesMixin, PipelineMixin, TrainingMi
         self.llm_ok = False
         self._next_label = 1
         self._persisted_vecs: dict[str, np.ndarray] = {}  # voiceprints from state.json until the matcher exists
-        self.vault = None  # campaign.Vault (set by the server): its glossary corrects new lines
+        self.vault: Vault | None = None  # campaign.Vault (set by the server): its glossary corrects new lines
         self.clones = tts.Clones(lambda: config.DATA_DIR / "clones", allowed=self.clone_allowed, wait_idle=self.wait_idle)
         self._glossary: tuple = ((), 0.0, None, [], [])  # (signature, checked, fixer, names, entries)
         self._spell: tuple = (None, None)  # (key, Speller): rebuilt when the glossary or Setup changes

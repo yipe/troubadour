@@ -1,6 +1,6 @@
 """A session's recap to share: build it as a background job, read the stored one."""
 
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field

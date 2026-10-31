@@ -154,6 +154,8 @@ def test_two_trash_copies_of_a_page_in_the_same_second_both_survive(tmp_path, mo
     first = pipeline.trash_copy(tmp_path, page)
     page.write_text("second draft")
     second = pipeline.trash_copy(tmp_path, page)
+    assert first is not None
+    assert second is not None
     assert first != second
     assert (first.read_text(), second.read_text()) == ("first draft", "second draft")
 

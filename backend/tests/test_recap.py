@@ -269,7 +269,7 @@ def test_the_recap_job_records_its_pipeline_step_only_when_it_worked(api):
     wait(api, api.post(f"/api/sessions/{SID}/recap", json=BODY).json()["id"])
     assert json.loads(meta.read_text())["pipeline"] == {"recap": pipeline.BY_NAME["recap"].version}
     meta.write_text(json.dumps({"id": SID}))
-    deps.memory.llm.answer = {}  # an empty body: the job fails
+    cast(FakeLLM, deps.memory.llm).answer = {}  # an empty body: the job fails
     wait(api, api.post(f"/api/sessions/{SID}/recap", json=BODY).json()["id"], "error")
     assert "pipeline" not in json.loads(meta.read_text())
 
