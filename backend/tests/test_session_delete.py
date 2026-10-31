@@ -2,6 +2,9 @@
 
 import json
 import os
+import threading
+import time
+import wave
 from pathlib import Path
 
 import pytest
@@ -172,3 +175,85 @@ def test_a_second_merge_keeps_the_first_restore_point(engine, client, pair):
     client.post("/api/sessions/merge", json={"ids": [EARLY, third]})
     assert len(list(pair[0].glob(".premerge*"))) == 2
     assert client.post(f"/api/sessions/{EARLY}/unmerge").json()["merged_from"] == [LATE]
+
+
+# ------------------------------------------------------------------ hardening
+
+
+def test_a_failed_second_merge_puts_the_first_restore_point_back(engine, client, pair, monkeypatch):
+    third = "2025-03-01_220000-cccc"
+    make_session(engine, third, 3000, 1.0)
+    client.post("/api/sessions/merge", json={"ids": [EARLY, LATE]})
+    after_first = snapshot(pair[0])
+
+    def boom(*a):
+        raise RuntimeError("disk full")
+
+    with monkeypatch.context() as m:
+        m.setattr("troubadour.engine._sessions._concat_wav", boom)
+        with pytest.raises(RuntimeError, match="disk full"):
+            client.post("/api/sessions/merge", json={"ids": [EARLY, third]})
+    assert snapshot(pair[0]) == after_first
+    assert [p.name for p in pair[0].glob(".premerge*")] == [".premerge"]
+    undone = client.post(f"/api/sessions/{EARLY}/unmerge")
+    assert undone.status_code == 200, undone.text
+    assert undone.json()["merged_from"] == []  # the first merge is still undoable
+
+
+def test_undelete_refuses_a_session_a_merge_dropped(engine, client, pair):
+    client.post("/api/sessions/merge", json={"ids": [EARLY, LATE]})
+    r = client.post(f"/api/sessions/{LATE}/undelete")
+    assert r.status_code == 409
+    assert "Undo the merge" in r.json()["detail"]
+    assert (engine.sessions_dir() / ".trash" / LATE).is_dir()
+    assert client.post(f"/api/sessions/{EARLY}/unmerge").status_code == 200
+
+
+def test_the_restore_point_names_the_trash_folder_before_the_dropped_session_moves(engine, client, pair, monkeypatch):
+    seen = []
+    real = type(engine)._to_trash
+
+    def watch(self, folder, name=None):
+        seen.append(json.loads((pair[0] / ".premerge" / "merge.json").read_text()))
+        return real(self, folder, name)
+
+    monkeypatch.setattr(type(engine), "_to_trash", watch)
+    client.post("/api/sessions/merge", json={"ids": [EARLY, LATE]})
+    assert seen[0]["trash"] == LATE
+
+
+def test_a_job_on_a_session_blocks_structure_changes_until_it_finishes(engine, client, pair):
+    release = threading.Event()
+    job = deps.memory.submit("improve", EARLY, lambda j: release.wait(5))
+    try:
+        for call in (
+            lambda: client.post("/api/sessions/merge", json={"ids": [EARLY, LATE]}),
+            lambda: client.delete(f"/api/sessions/{EARLY}"),
+            lambda: client.post(f"/api/sessions/{EARLY}/unmerge"),
+            lambda: client.post(f"/api/sessions/{EARLY}/restore"),
+        ):
+            r = call()
+            assert r.status_code == 409, r.text
+            assert "job is working" in r.json()["detail"]
+        assert all(p.is_dir() for p in pair)
+    finally:
+        release.set()
+    deadline = time.monotonic() + 5
+    while job.state in ("queued", "running") and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert client.post("/api/sessions/merge", json={"ids": [EARLY, LATE]}).status_code == 200
+
+
+def test_merging_recordings_in_different_formats_uses_ffmpeg_with_a_wav_temp_name(tmp_path):
+    from troubadour.engine.paths import _audio_seconds, _concat_wav
+
+    keep, extra = tmp_path / "audio.wav", tmp_path / "other.wav"
+    for path, rate, seconds in ((keep, 16000, 1.0), (extra, 48000, 2.0)):
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes(b"\x00\x01" * int(rate * seconds))
+    _concat_wav(keep, extra)
+    assert abs(_audio_seconds(keep) - 3.0) < 0.1
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["audio.wav", "other.wav"]

@@ -389,3 +389,31 @@ def test_the_single_tools_record_their_step_when_they_finish(client, idle, memor
     assert client.post(f"/api/sessions/{OLD}/retranscribe").status_code == 200
     wait_jobs(memory)
     assert pipeline_of(folder) == {"spelling": 1}  # a failed job records nothing
+
+
+# ------------------------------------------------------------------ hardening
+
+
+def test_each_recap_refresh_keeps_the_recap_it_replaced(idle, memory, job, monkeypatch):
+    folder = make_session(idle)
+    monkeypatch.setattr(pipeline.recap, "build", lambda *a, **k: {"text": "new"})
+    monkeypatch.setattr(Run, "page", lambda self: None)
+    for n in range(2):
+        (folder / "recap.json").write_text(json.dumps({"text": f"v{n}"}))
+        pipeline._recap(Run(idle, memory, OLD), job)
+    kept = sorted(json.loads(p.read_text())["text"] for p in folder.glob("recap.before-refresh-*.json"))
+    assert kept == ["v0", "v1"]
+
+
+def test_the_model_check_runs_without_the_campaign_gate(client, idle, memory, monkeypatch):
+    """problem() can ask a slow model server; every other request needing the gate would wait behind it."""
+    folder = make_session(idle)
+    (folder / "recap.json").write_text("{}")  # makes an LLM step runnable
+    held = []
+    monkeypatch.setattr(memory.llm, "problem", lambda: held.append(deps.campaign_gate.locked()) or "LM Studio isn't running")
+    assert client.post(f"/api/sessions/{OLD}/refresh").status_code == 503
+    llm_step = Step("in_character", 1, "Mark", ("llm",), (), lambda r, j: None)
+    monkeypatch.setattr(pipeline, "upgradable", lambda *a: [(OLD, [llm_step])])
+    assert client.post("/api/sessions/upgrade").status_code == 503
+    assert len(held) == 2
+    assert not any(held)

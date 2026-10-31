@@ -112,6 +112,18 @@ def _conflict(fn, *args):
         raise HTTPException(409, f"Can't do that: {e}") from None
 
 
+# Jobs whose title is a session id: they read the session's files and write them back when done.
+SESSION_JOBS = ("improve", "retranscribe", "spelling", "incharacter", "refresh", "writeup", "recap")
+
+
+def _not_busy(*sids: str) -> None:
+    """409 while a queued or running job works on one of these sessions: moving, merging or restoring
+    its files under the job would lose either the job's result or the change."""
+    for job in deps.memory.list_jobs():
+        if job["kind"] in SESSION_JOBS and job["title"] in sids and job["state"] in ("queued", "running"):
+            raise HTTPException(409, "A job is working on this session. Wait for it to finish.")
+
+
 def _stamped(sid: str, step: str, work) -> None:
     """Run one step's job, then record its version on the session (only when it finished)."""
     work()
@@ -122,20 +134,27 @@ def _stamped(sid: str, step: str, work) -> None:
 def merge_sessions(body: SessionMergeIn):
     """Append the later of two saved sessions onto the earlier one. The later folder goes to
     sessions/.trash; `POST /api/sessions/{sid}/unmerge` undoes it."""
-    kept = deps._call(deps.engine.merge_sessions, body.ids)
+    with deps.campaign_gate:  # no job can start between the check and the move
+        _not_busy(*body.ids)
+        kept = deps._call(deps.engine.merge_sessions, body.ids)
     return _listed(kept["id"])
 
 
 @router.post("/api/sessions/{sid}/unmerge", response_model=SavedSession)
 def unmerge_session(sid: Annotated[str, Path(pattern=SESSION_PATTERN)]):
     """Undo the last merge into this session: its old transcript and recording come back, and so does the later session."""
-    return _listed(_conflict(deps.engine.unmerge_session, sid)["id"])
+    with deps.campaign_gate:
+        _not_busy(sid)
+        undone = _conflict(deps.engine.unmerge_session, sid)
+    return _listed(undone["id"])
 
 
 @router.delete("/api/sessions/{sid}", status_code=204)
 def delete_session(sid: Annotated[str, Path(pattern=SESSION_PATTERN)]):
     """Move a saved session to sessions/.trash (the write-up note in the vault stays)."""
-    deps._call(deps.engine.delete_session, sid)
+    with deps.campaign_gate:
+        _not_busy(sid)
+        deps._call(deps.engine.delete_session, sid)
 
 
 @router.post("/api/sessions/{sid}/undelete", response_model=SavedSession)
@@ -258,11 +277,11 @@ def refresh_session(sid: Annotated[str, Path(pattern=SESSION_PATTERN)]):
     Originals are kept; confirmed facts are never changed. 409 while a session runs."""
     _idle()
     deps._call(deps.engine.session_file, sid, "json")
+    _llm_ready(pipeline.make_plan(pipeline.Run(deps.engine, deps.memory, sid)))  # may ask the model server: not under the gate
     with deps.campaign_gate:
         deps._require_open_campaign(sid)
         if _refreshing(sid):
             raise HTTPException(409, "That session is already being refreshed.")
-        _llm_ready(pipeline.make_plan(pipeline.Run(deps.engine, deps.memory, sid)))
         return _queue_refresh(sid, only_stale=False).to_json()
 
 
@@ -290,9 +309,9 @@ def upgrade_sessions():
     """Queue the stale steps of every out-of-date session, oldest first, one session at a time. What was
     recorded survives a restart, so asking again continues where it stopped. 409 while a session runs."""
     _idle()
-    with deps.campaign_gate:
+    _llm_ready([s for _, steps in pipeline.upgradable(deps.engine, deps.memory) for s in steps])  # not under the gate
+    with deps.campaign_gate:  # the campaign may have changed meanwhile: work out the list again
         todo = [(sid, steps) for sid, steps in pipeline.upgradable(deps.engine, deps.memory) if not _refreshing(sid)]
-        _llm_ready([s for _, steps in todo for s in steps])
         return [_queue_refresh(sid, only_stale=True).to_json() for sid, _ in todo]
 
 
@@ -300,7 +319,10 @@ def upgrade_sessions():
 def restore_transcript(sid: str):
     """Undo improvements: put the session's original transcript back."""
     deps._call(deps.engine.session_file, sid, "json")
-    if not improve.restore(deps.engine.sessions_dir() / sid):
+    with deps.campaign_gate:
+        _not_busy(sid)
+        restored = improve.restore(deps.engine.sessions_dir() / sid, deps.engine._transcript_lock)
+    if not restored:
         raise HTTPException(404, "this transcript was never improved")
     return {"restored": sid}
 

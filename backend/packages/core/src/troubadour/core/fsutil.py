@@ -1,11 +1,31 @@
 """File helpers shared by every package."""
 
+import contextlib
+import os
+import tempfile
 from pathlib import Path
 
 
 def write_atomic(path: Path, data: str | bytes) -> None:
-    """Write via a temp file and rename: a reader never sees half a file. Text is UTF-8."""
+    """Write via a temp file and rename: a reader never sees half a file, and a crash after the
+    rename keeps the new bytes (the file, then the folder entry, are fsynced). The temp name is
+    unique, so two writers never trample each other's half-written file. Text is UTF-8."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_bytes(data.encode("utf-8") if isinstance(data, str) else data)
-    tmp.replace(path)
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    tmp = Path(name)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data.encode("utf-8") if isinstance(data, str) else data)
+            f.flush()
+            os.fsync(f.fileno())
+        tmp.chmod(0o644)  # mkstemp makes it 0600; the old write_bytes + replace gave the umask default
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    with contextlib.suppress(OSError):  # directories can't be opened for fsync everywhere
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)

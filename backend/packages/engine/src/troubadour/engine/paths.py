@@ -34,7 +34,7 @@ def _concat_wav(keep: Path, extra: Path) -> None:
         spec = (a.getnchannels(), a.getsampwidth(), a.getframerate())
         a_frames = a.readframes(a.getnframes()) if same else b""
         b_frames = b.readframes(b.getnframes()) if same else b""
-    tmp = keep.with_name(".audio.wav.merging")
+    tmp = keep.with_name(".audio.merging.wav")  # ffmpeg picks the format from the suffix
     if same:
         with wave.open(str(tmp), "wb") as dst:
             dst.setnchannels(spec[0])
@@ -59,6 +59,8 @@ def _concat_wav(keep: Path, extra: Path) -> None:
                 str(spec[0]),
                 "-ar",
                 str(spec[2]),
+                "-f",
+                "wav",
                 str(tmp),
             ],
             check=True,
