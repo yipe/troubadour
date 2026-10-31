@@ -105,9 +105,56 @@ def test_a_recorded_version_is_not_stale_and_a_bumped_one_is(idle, memory, monke
     assert pipeline.stale(Run(idle, memory, OLD)) == []
     bumped = Step("talk", 2, "Count talk time", (), (), lambda r, j: None)
     assert [s.name for s in pipeline.stale(Run(idle, memory, OLD), [bumped])] == ["talk"]
-    pipeline.stamp(folder, bumped)
+    pipeline.stamp(folder, bumped, idle._transcript_lock)
     assert pipeline.stale(Run(idle, memory, OLD), [bumped]) == []
     assert pipeline_of(folder) == pipeline_of(folder, "transcript.json") == {"talk": 2}
+
+
+class WatchedLock:
+    """The engine's transcript lock, telling a test when someone is waiting for it."""
+
+    def __init__(self):
+        self.inner = threading.Lock()
+        self.wanted = threading.Event()
+
+    def __enter__(self):
+        self.wanted.set()
+        self.inner.acquire()
+
+    def __exit__(self, *exc):
+        self.inner.release()
+
+
+def test_a_stamp_waits_for_the_lock_set_reviewed_holds_and_keeps_its_reviewed_mark(idle):
+    folder = make_session(idle)
+    lock = WatchedLock()
+    idle._transcript_lock = lock
+    talk = Step("talk", 1, "Count talk time", (), (), lambda r, j: None)
+    with lock.inner:  # set_reviewed is mid read-modify-write
+        stamper = threading.Thread(target=pipeline.stamp, args=(folder, talk, lock), daemon=True)
+        stamper.start()
+        assert lock.wanted.wait(5)  # the stamp is queued behind it
+        for name in ("meta.json", "transcript.json"):
+            data = json.loads((folder / name).read_text())
+            (data["session"] if name == "transcript.json" else data)["reviewed_at"] = 123.0
+            (folder / name).write_text(json.dumps(data))
+    stamper.join(5)
+    assert not stamper.is_alive()
+    assert json.loads((folder / "meta.json").read_text())["reviewed_at"] == 123.0
+    assert json.loads((folder / "transcript.json").read_text())["session"]["reviewed_at"] == 123.0
+    assert pipeline_of(folder) == {"talk": 1}
+
+
+def test_two_trash_copies_of_a_page_in_the_same_second_both_survive(tmp_path, monkeypatch):
+    monkeypatch.setattr("troubadour.lore.campaign.time.strftime", lambda fmt: "20250401-190000")
+    page = tmp_path / "Sessions" / "Session 1.md"
+    page.parent.mkdir()
+    page.write_text("first draft")
+    first = pipeline.trash_copy(tmp_path, page)
+    page.write_text("second draft")
+    second = pipeline.trash_copy(tmp_path, page)
+    assert first != second
+    assert (first.read_text(), second.read_text()) == ("first draft", "second draft")
 
 
 def test_a_live_session_is_saved_with_what_listening_already_did(engine):

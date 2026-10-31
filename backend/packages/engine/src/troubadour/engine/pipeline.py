@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING
 from troubadour.core import settings
 from troubadour.core.fsutil import write_atomic
 from troubadour.lore import recap, review
+from troubadour.lore.campaign import trash_copy
 from troubadour.lore.memory import Job
 
 from .paths import SESSION_ID, session_audio
@@ -51,7 +52,6 @@ if TYPE_CHECKING:
 
 RESTORE_POINT = "transcript.orig.json"
 ARCHIVE = "before-refresh"  # review.before-refresh-<ns>.json, recap.before-refresh-<ns>.json
-_stamp_lock = threading.Lock()
 
 
 @dataclass
@@ -134,7 +134,7 @@ def _talk(run: Run, job: Job) -> None:
     from ._sessions import talk_seconds
 
     job.update(message="Counting who talked")
-    patch_session(run.folder, {"talk": talk_seconds(run.record()["messages"])})
+    patch_session(run.folder, {"talk": talk_seconds(run.record()["messages"])}, run.engine._transcript_lock)
 
 
 def _in_character(run: Run, job: Job) -> None:
@@ -278,29 +278,35 @@ def stale(run: Run, steps: Sequence[Step] = STEPS) -> list[Step]:
     return [s for s in steps if s.available and done.get(s.name, 0) < s.version and s.skip(run) is None and s.upgrades(run)]
 
 
-def patch_session(folder: Path, changes: dict) -> None:
+def _patch_files(folder: Path, changes: dict) -> None:
+    for name in ("transcript.json", "meta.json"):
+        path = folder / name
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        target = data["session"] if name == "transcript.json" else data
+        target.update(changes)
+        indent = 1 if name == "transcript.json" else None
+        write_atomic(path, json.dumps(data, ensure_ascii=False, indent=indent))
+
+
+def patch_session(folder: Path, changes: dict, lock: threading.Lock) -> None:
     """Set keys on `session` in transcript.json and in meta.json. Used for bookkeeping that changes no words,
-    so it never takes the restore point."""
-    with _stamp_lock:
-        for name in ("transcript.json", "meta.json"):
-            path = folder / name
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            target = data["session"] if name == "transcript.json" else data
-            target.update(changes)
-            indent = 1 if name == "transcript.json" else None
-            write_atomic(path, json.dumps(data, ensure_ascii=False, indent=indent))
+    so it never takes the restore point. `lock` is the engine's transcript lock: the same one `set_reviewed`
+    and the autosave hold for their read-modify-write of these files, so none of them loses another's change."""
+    with lock:
+        _patch_files(folder, changes)
 
 
-def stamp(folder: Path, step: Step) -> None:
+def stamp(folder: Path, step: Step, lock: threading.Lock) -> None:
     """Record that `step` finished at its current version."""
-    try:
-        meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        meta = {}
-    patch_session(folder, {"pipeline": {**recorded(meta), step.name: step.version}})
+    with lock:
+        try:
+            meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            meta = {}
+        _patch_files(folder, {"pipeline": {**recorded(meta), step.name: step.version}})
 
 
 # ------------------------------------------------------------------ keeping what was there
@@ -311,18 +317,6 @@ def ensure_restore_point(folder: Path) -> None:
     backup = folder / RESTORE_POINT
     if not backup.exists():
         write_atomic(backup, (folder / "transcript.json").read_bytes())
-
-
-def trash_copy(root: Path, page: Path) -> Path | None:
-    """A copy of a vault note in `.trash/` (Obsidian's convention), kept when the note is rewritten in place."""
-    try:
-        body = page.read_bytes()
-    except OSError:
-        return None
-    trash = root / ".trash"
-    dest = trash / f"{page.stem} {time.strftime('%Y%m%d-%H%M%S')}.md"
-    write_atomic(dest, body)
-    return dest
 
 
 def reset_review(folder: Path) -> None:
@@ -419,7 +413,7 @@ def refresh(job: Job, run: Run, steps: Sequence[Step] = STEPS, only_stale: bool 
                 step.run(run, child)
             except Exception as e:
                 raise RuntimeError(f"{step.label} failed ({e}). Earlier steps are kept.") from e
-            stamp(run.folder, step)
+            stamp(run.folder, step, run.engine._transcript_lock)
             job.created += [x for x in child.created if x not in job.created]
             job.updated += [x for x in child.updated if x not in job.updated]
             job.suggested += child.suggested

@@ -127,7 +127,7 @@ def _not_busy(*sids: str) -> None:
 def _stamped(sid: str, step: str, work) -> None:
     """Run one step's job, then record its version on the session (only when it finished)."""
     work()
-    pipeline.stamp(deps.engine.sessions_dir() / sid, pipeline.BY_NAME[step])
+    pipeline.stamp(deps.engine.sessions_dir() / sid, pipeline.BY_NAME[step], deps.engine._transcript_lock)
 
 
 @router.post("/api/sessions/merge", response_model=SavedSession)
