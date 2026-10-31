@@ -21,7 +21,7 @@ export type DialogContentProps = DialogPrimitive.Popup.Props & VariantProps<type
 export function DialogContent({ className, size, children, ...props }: DialogContentProps) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-[rgba(10,11,16,0.75)]" />
+      <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-canvas/75" />
       <DialogPrimitive.Popup className={cn(contentVariants({ size }), className)} {...props}>
         {children}
       </DialogPrimitive.Popup>

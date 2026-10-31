@@ -1,4 +1,4 @@
-// pnpm -C web/app smoke [--port 8770] [--out /tmp/smoke] [--width 1440] [--height 900]
+// pnpm -C web/app smoke [--port 8770] [--out /tmp/smoke] [--width 1440] [--height 900] [--theme dark|light|midnight]
 // Visits every route once and reports console errors, page errors and failed requests per route.
 // Also reports a route whose page scrolls sideways (scrollWidth past the window).
 // Never clicks anything: no Start, no mic test, no audio.
@@ -21,6 +21,11 @@ const viewport = {
 }
 if (!(viewport.width > 0 && viewport.height > 0)) {
   console.error("smoke: --width and --height must be positive numbers")
+  process.exit(1)
+}
+const theme = typeof flags.theme === "string" ? flags.theme : "dark"
+if (!["dark", "light", "midnight"].includes(theme)) {
+  console.error("smoke: --theme must be dark, light or midnight")
   process.exit(1)
 }
 const base = `http://127.0.0.1:${port}`
@@ -66,6 +71,8 @@ const routes = [
   "/settings/models",
   "/settings/microphone",
   "/settings/players",
+  "/settings/content",
+  "/settings/appearance",
   "/settings/vault",
   "/settings/cloud",
   "/welcome/campaign",
@@ -77,6 +84,8 @@ const rows: { route: string; ok: boolean; problems: string[] }[] = []
 try {
   for (const route of routes) {
     const page = await browser.newPage({ viewport })
+    // Same key as src/lib/theme.ts; set before the page's own script runs.
+    await page.addInitScript((t) => localStorage.setItem("troubadour.theme", t), theme)
     const problems = collectProblems(page, ALLOW[route])
     try {
       await page.goto(base + encodeURI(route), { waitUntil: "networkidle" })
@@ -109,5 +118,5 @@ for (const r of rows) {
   for (const p of r.problems) console.log(`        ${p.slice(0, 200)}`)
 }
 const failures = rows.filter((r) => !r.ok).length
-console.log(`\n${rows.length - failures}/${rows.length} routes clean; screenshots in ${outDir}`)
+console.log(`\n${rows.length - failures}/${rows.length} routes clean; screenshots in ${outDir} (${theme})`)
 process.exit(failures ? 1 : 0)

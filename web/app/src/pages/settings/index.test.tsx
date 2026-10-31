@@ -1,4 +1,5 @@
 import { screen, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, expect, it, vi } from "vitest"
 import { keys } from "@troubadour/api/query"
 import { cloudStatus, llmProvider, mockFetch, modelSettings } from "@troubadour/api/testing"
@@ -68,4 +69,19 @@ it("formats the storage numbers", () => {
     expect(within(list).getByText("2.0 KB")).toBeInTheDocument()
     expect(within(list).getByText("5.0 MB")).toBeInTheDocument()
   })
+})
+
+it("choosing Light sets data-theme and stores it", async () => {
+  mockFetch(() => modelSettings())
+  renderWithProviders(
+    <Routes>
+      <Route path="/settings/:section" element={<SettingsPage />} />
+    </Routes>,
+    { route: "/settings/appearance" },
+  )
+  await userEvent.click(await screen.findByRole("radio", { name: /Light/ }))
+  expect(document.documentElement.dataset.theme).toBe("light")
+  expect(localStorage.getItem("troubadour.theme")).toBe("light")
+  localStorage.clear()
+  delete document.documentElement.dataset.theme
 })

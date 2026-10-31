@@ -138,7 +138,7 @@ export function Component() {
       }
     >
       <div className="flex h-[75dvh] min-h-0 flex-col lg:h-full">
-        <style>{`::highlight(${HIGHLIGHT_NAME}) { background-color: var(--color-warning); color: black; }`}</style>
+        <style>{`::highlight(${HIGHLIGHT_NAME}) { background-color: var(--color-warning); color: var(--color-bg-canvas); }`}</style>
         <div className="border-b border-line px-5 py-3">
           <SearchInput
             aria-label="Search transcript"

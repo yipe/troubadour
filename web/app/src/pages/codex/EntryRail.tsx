@@ -53,7 +53,7 @@ export function EntryRail({ entities, selected }: { entities: Entity[]; selected
             onClick={() => setReviewOnly(!reviewOnly)}
             className={cn(
               "rounded-full px-3 py-1 text-13 font-semibold",
-              reviewOnly ? "bg-warning text-black" : "bg-warning-soft text-warning",
+              reviewOnly ? "bg-warning text-canvas" : "bg-warning-soft text-warning",
             )}
           >
             Needs review {reviewCount}

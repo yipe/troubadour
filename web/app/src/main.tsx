@@ -9,7 +9,11 @@ import "./index.css"
 import { App } from "./App.tsx"
 import { createRoutes } from "./routes.tsx"
 import { ErrorBoundary } from "./shell/ErrorBoundary.tsx"
+import { applyTheme, readTheme, watchSystemTheme } from "./lib/theme.ts"
 import { campaignSwitchTarget } from "./shell/campaignSwitch.ts"
+
+applyTheme(readTheme())
+watchSystemTheme()
 
 const socket = createSocket()
 const client = makeQueryClient()

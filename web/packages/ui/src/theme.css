@@ -78,6 +78,9 @@
   html {
     color-scheme: dark;
   }
+  html[data-theme="light"] {
+    color-scheme: light;
+  }
   body {
     @apply bg-canvas font-sans text-14 text-ink;
   }
