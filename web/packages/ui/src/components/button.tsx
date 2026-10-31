@@ -12,7 +12,7 @@ const buttonVariants = cva(
         ghost: "border border-line bg-transparent text-ink hover:bg-elevated",
         danger: "bg-danger-soft text-danger hover:brightness-125",
         warning: "bg-warning text-canvas hover:brightness-110",
-        link: "h-auto bg-transparent p-0 text-accent hover:text-ink",
+        link: "bg-transparent text-accent hover:text-ink",
       },
       size: {
         sm: "h-7 px-2.5 text-13",
@@ -21,6 +21,8 @@ const buttonVariants = cva(
         xl: "h-12 px-5 text-16",
       },
     },
+    // A compound variant comes after the size classes, so the link's resets win the merge.
+    compoundVariants: [{ variant: "link", class: "h-auto p-0" }],
     defaultVariants: { variant: "secondary", size: "md" },
   },
 )

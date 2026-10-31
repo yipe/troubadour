@@ -23,6 +23,24 @@ describe("Button", () => {
       expect(onClick).toHaveBeenCalledOnce()
     },
   )
+
+  it("keeps a link free of the size's height and padding, unless the caller sets them", () => {
+    render(
+      <>
+        <Button variant="link" size="sm">
+          Plain
+        </Button>
+        <Button variant="link" className="px-2">
+          Padded
+        </Button>
+      </>,
+    )
+    const plain = screen.getByRole("button", { name: "Plain" }).className.split(" ")
+    expect(plain).toEqual(expect.arrayContaining(["h-auto", "p-0"]))
+    expect(plain).not.toEqual(expect.arrayContaining(["h-7"]))
+    expect(plain).not.toEqual(expect.arrayContaining(["px-2.5"]))
+    expect(screen.getByRole("button", { name: "Padded" }).className.split(" ")).toContain("px-2")
+  })
 })
 
 describe("Avatar", () => {
