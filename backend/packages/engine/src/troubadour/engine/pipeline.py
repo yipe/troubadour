@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from .core import Engine
 
 RESTORE_POINT = "transcript.orig.json"
-ARCHIVE = "before-refresh"  # review.before-refresh-<time>.json, recap.before-refresh.json
+ARCHIVE = "before-refresh"  # review.before-refresh-<ns>.json, recap.before-refresh-<ns>.json
 _stamp_lock = threading.Lock()
 
 
@@ -174,7 +174,7 @@ def _recap(run: Run, job: Job) -> None:
     options = recap_options(old.get("options"))
     built = recap.build(run.memory.llm, run.vault, run.page(), run.record(), options, job)
     path = recap.recap_path(sessions, run.sid)
-    write_atomic(path.with_name(f"recap.{ARCHIVE}.json"), path.read_text(encoding="utf-8"))
+    write_atomic(path.with_name(f"recap.{ARCHIVE}-{time.time_ns()}.json"), path.read_text(encoding="utf-8"))
     write_atomic(path, json.dumps({**built, "options": options.to_json(), "built_at": time.time()}, ensure_ascii=False, indent=1))
 
 
@@ -337,7 +337,7 @@ def reset_review(folder: Path) -> None:
             items = saved["items"]
         except (OSError, ValueError, KeyError, TypeError):
             return
-        write_atomic(folder / f"review.{ARCHIVE}-{time.strftime('%Y%m%d-%H%M%S')}.json", raw)
+        write_atomic(folder / f"review.{ARCHIVE}-{time.time_ns()}.json", raw)
         saved["items"] = [i for i in items if isinstance(i, dict) and i.get("id") in decisions]
         write_atomic(path, json.dumps(saved, ensure_ascii=False))
 

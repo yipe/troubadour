@@ -12,10 +12,12 @@ as nothing keep their old text: an improvement never deletes what was said.
 import json
 import time
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 
 import numpy as np
 from troubadour.core import config, transcript
+from troubadour.core.fsutil import write_atomic
 from troubadour.lore import cleanup, talk
 from troubadour.lore.campaign import Corrector
 from troubadour.sound import asr
@@ -103,23 +105,38 @@ def run(job, engine: Engine, sid: str, emit: Callable[[], None], model: str | No
     new["session"] = new["session"] | {
         "improved": {"at": time.time(), "model": model or config.WHISPER_MODEL, "changed": changed}
     }
-    save(folder, new)
+    save(folder, new, engine._transcript_lock)
     job.message = f"{changed} of {len(new['messages'])} lines changed"
 
 
-def save(folder: Path, record: dict) -> None:
-    """Write a saved session's transcript files, backing the original up the first time."""
+# What meta.json holds that the transcript's session dict may lack or have stale: set from outside the
+# transcript (the Campaign tab, the review page, the pipeline), so a rewrite of the words keeps them.
+NO_LOCK = nullcontext()
+KEEP_META = ("campaign", "title", "present_player_ids", "reviewed_at", "pipeline")
+
+
+def _existing_meta(folder: Path) -> dict:
+    try:
+        meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def save(folder: Path, record: dict, lock: AbstractContextManager = NO_LOCK) -> None:
+    """Write a saved session's transcript files, backing the original up the first time.
+    meta.json keeps the fields set outside the transcript (KEEP_META); `lock` is the engine's
+    transcript lock, so a reviewed-toggle can't interleave with the read-merge-write."""
     backup = folder / "transcript.orig.json"
     if not backup.exists():
-        backup.write_text((folder / "transcript.json").read_text())
-    for name, body in (
-        ("transcript.json", json.dumps(record, ensure_ascii=False, indent=1)),
-        ("transcript.md", transcript.markdown(record)),
-        ("meta.json", json.dumps(record["session"])),
-    ):
-        tmp = folder / f".{name}.tmp"
-        tmp.write_text(body, encoding="utf-8")
-        tmp.replace(folder / name)
+        write_atomic(backup, (folder / "transcript.json").read_bytes())
+    with lock:
+        existing = _existing_meta(folder)
+        kept = {k: existing[k] for k in KEEP_META if k in existing}
+        record = record | {"session": record["session"] | kept}
+        write_atomic(folder / "transcript.json", json.dumps(record, ensure_ascii=False, indent=1))
+        write_atomic(folder / "transcript.md", transcript.markdown(record))
+        write_atomic(folder / "meta.json", json.dumps(record["session"]))
 
 
 def speaker_window(
@@ -142,7 +159,7 @@ def speaker_window(
     return start, end
 
 
-RETRANSCRIBE_BACKUP = "transcript.before-retranscribe.json"
+RETRANSCRIBE_BACKUP = "transcript.before-retranscribe.json"  # the base name; each run adds a timestamp
 
 
 def reassign_speakers(job, engine: Engine, sid: str, emit: Callable[[], None]) -> None:
@@ -151,10 +168,9 @@ def reassign_speakers(job, engine: Engine, sid: str, emit: Callable[[], None]) -
     in the file, so they move too. The transcript as it is now is copied aside first."""
     folder = engine.sessions_dir() / sid
     current = (folder / "transcript.json").read_text()
-    backup = folder / RETRANSCRIBE_BACKUP
-    tmp = folder / ".transcript.before-retranscribe.json.tmp"
-    tmp.write_text(current)
-    tmp.replace(backup)
+    # A timestamp per run: a second run must not overwrite the copy of the first run's input.
+    backup_name = RETRANSCRIBE_BACKUP.replace(".json", f"-{time.time_ns()}.json")
+    write_atomic(folder / backup_name, current)
     record = json.loads(current)
     path, end = session_audio(sid)
     audio = load_audio(path, 0.0, end)
@@ -162,7 +178,7 @@ def reassign_speakers(job, engine: Engine, sid: str, emit: Callable[[], None]) -
         raise ValueError("Name the people in the voices panel first; there is nobody to match against.")
     messages = sorted(record["messages"], key=lambda m: m["t_start"])
     job.total = len(messages)
-    job.message = f"Backed up the transcript ({RETRANSCRIBE_BACKUP})"
+    job.message = f"Backed up the transcript ({backup_name})"
     emit()
     changed = 0
     heard_next = 0
@@ -220,7 +236,7 @@ def reassign_speakers(job, engine: Engine, sid: str, emit: Callable[[], None]) -
     summary = f"{changed} of {len(messages)} lines reassigned"
     if why:
         summary += ": " + "; ".join(why)
-    summary += f". Previous transcript saved as {RETRANSCRIBE_BACKUP}."
+    summary += f". Previous transcript saved as {backup_name}."
     record["session"] = record["session"] | {
         "retranscribed": {
             "at": time.time(),
@@ -228,10 +244,10 @@ def reassign_speakers(job, engine: Engine, sid: str, emit: Callable[[], None]) -
             "lines": len(messages),
             "heard_next": heard_next,
             "rematch": rematch,
-            "backup": RETRANSCRIBE_BACKUP,
+            "backup": backup_name,
         }
     }
-    save(folder, record)
+    save(folder, record, engine._transcript_lock)
     job.message = summary
 
 
@@ -251,7 +267,7 @@ def fix_spellings(job, engine: Engine, sid: str, emit: Callable[[], None]) -> No
     new, fixed, decided = cleanup.clean_record(record, speller, engine.cleanup_llm.json, progress=progress)
     engine.learn(decided, speller, cleanup.Learner())
     new["session"] = new["session"] | {"spelling": {"at": time.time(), "fixed": fixed}}
-    save(folder, new)
+    save(folder, new, engine._transcript_lock)
     job.message = f"{fixed} spellings fixed"
 
 
@@ -266,20 +282,24 @@ def label_in_character(job, engine: Engine, sid: str, llm) -> None:
 
     new, counts = talk.label_in_character(llm, record, progress)
     new["session"] = new["session"] | {"in_character": {"at": time.time()} | counts}
-    save(folder, new)
+    save(folder, new, engine._transcript_lock)
     share = counts["in_character"] / counts["lines"] if counts["lines"] else 0.0
     unread = f"; {counts['unread']} the AI didn't label" if counts["unread"] else ""
     job.update(message=f"{share:.0%} of the players' lines in character{unread}")
 
 
-def restore(folder: Path) -> bool:
-    """Put the original transcript back; False if it was never improved."""
+def restore(folder: Path, lock: AbstractContextManager = NO_LOCK) -> bool:
+    """Put the original transcript back; False if it was never improved. Every file is written
+    atomically and the backup goes last, so an interruption leaves it to try again."""
     backup = folder / "transcript.orig.json"
     if not backup.exists():
         return False
-    record = json.loads(backup.read_text())
-    (folder / "transcript.json").write_text(backup.read_text())
-    (folder / "transcript.md").write_text(transcript.markdown(record), encoding="utf-8")
-    (folder / "meta.json").write_text(json.dumps(record["session"]))
+    body = backup.read_text(encoding="utf-8")
+    record = json.loads(body)
+    with lock:
+        kept = {k: v for k, v in _existing_meta(folder).items() if k in KEEP_META and k != "pipeline"}
+        write_atomic(folder / "transcript.json", body)
+        write_atomic(folder / "transcript.md", transcript.markdown(record))
+        write_atomic(folder / "meta.json", json.dumps(record["session"] | kept))
     backup.unlink()
     return True

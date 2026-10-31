@@ -3400,14 +3400,6 @@
                     "endColumn": 80,
                     "lineCount": 1
                 }
-            },
-            {
-                "code": "reportAttributeAccessIssue",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 22,
-                    "lineCount": 1
-                }
             }
         ],
         "./packages/lore/src/troubadour/lore/ask.py": [

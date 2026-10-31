@@ -18,6 +18,7 @@ from pathlib import Path
 
 import numpy as np
 from troubadour.core import config, settings, transcript
+from troubadour.core.fsutil import write_atomic
 from troubadour.sound import asr, levels
 from troubadour.sound.audio import load_audio
 
@@ -49,9 +50,7 @@ def talk_seconds(messages: list[dict]) -> dict[str, float]:
 
 def _write_files(folder: Path, files: dict[str, str]) -> None:
     for name, body in files.items():
-        tmp = folder / f".{name}.tmp"
-        tmp.write_text(body, encoding="utf-8")
-        tmp.replace(folder / name)
+        write_atomic(folder / name, body)
 
 
 class SessionsMixin:
@@ -148,6 +147,13 @@ class SessionsMixin:
             if not meta:
                 raise KeyError(sid)
             meta["reviewed_at"] = round(time.time(), 3) if reviewed else None
+            # Both files: a later Improve or merge starts from transcript.json and must not undo this.
+            try:
+                record = json.loads((folder / "transcript.json").read_text(encoding="utf-8"))
+                record["session"]["reviewed_at"] = meta["reviewed_at"]
+                _write_files(folder, {"transcript.json": json.dumps(record, ensure_ascii=False, indent=1)})
+            except (OSError, ValueError, KeyError, TypeError):
+                pass  # no readable transcript to keep in step; meta.json is what the list reads
             _write_files(folder, {"meta.json": json.dumps(meta)})
             return meta["reviewed_at"]
 
@@ -243,14 +249,19 @@ class SessionsMixin:
             raise ValueError("That session belongs to another campaign; open it first.")
         return folder
 
-    def _to_trash(self, folder: Path) -> str:
-        """Move a session folder to sessions/.trash/ (a timestamp suffix if the name is taken); the
-        name it got. Nothing is ever deleted: the folder can be moved back."""
+    def _trash_name(self, folder: Path) -> str:
+        """The name `folder` will have in sessions/.trash/ (a timestamp suffix if its own is taken)."""
+        name = folder.name
+        if (self.sessions_dir() / TRASH / name).exists():
+            name = f"{folder.name}.{time.time_ns()}"
+        return name
+
+    def _to_trash(self, folder: Path, name: str | None = None) -> str:
+        """Move a session folder to sessions/.trash/ as `name` (default: _trash_name); the name it got.
+        Nothing is ever deleted: the folder can be moved back."""
         trash = self.sessions_dir() / TRASH
         trash.mkdir(exist_ok=True)
-        name = folder.name
-        if (trash / name).exists():
-            name = f"{folder.name}.{time.time_ns()}"
+        name = name or self._trash_name(folder)
         folder.rename(trash / name)
         return name
 
@@ -267,16 +278,29 @@ class SessionsMixin:
             raise KeyError(sid)
         trash = self.sessions_dir() / TRASH
         with _structure_lock:
-            held = sorted(
-                (p for p in trash.glob(f"{sid}*") if p.name == sid or p.name.startswith(f"{sid}.")),
-                key=lambda p: p.stat().st_mtime_ns,
-            )
-            if not held:
+            mine = [p for p in trash.glob(f"{sid}*") if p.name == sid or p.name.startswith(f"{sid}.")]
+            if not mine:
                 raise KeyError(sid)
+            # A folder some merge dropped belongs to that merge's restore point: moving it out would
+            # strand the unmerge. Deleted-by-hand copies of the same id are still fair game.
+            merged = self._merge_trash_names()
+            held = sorted((p for p in mine if p.name not in merged), key=lambda p: p.stat().st_mtime_ns)
+            if not held:
+                raise FileExistsError("Undo the merge instead")
             if (self.sessions_dir() / sid).exists():
                 raise FileExistsError(sid)
             held[-1].rename(self.sessions_dir() / sid)
         return next((s for s in self.list_sessions() if s["id"] == sid), {"id": sid})
+
+    def _merge_trash_names(self) -> set[str]:
+        """Trash folders that a merge restore point (`<id>/.premerge*/merge.json`) points at."""
+        names = set()
+        for path in self.sessions_dir().glob(f"*/{PREMERGE}*/merge.json"):
+            try:
+                names.add(json.loads(path.read_text(encoding="utf-8"))["trash"])
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+        return names
 
     def merge_sessions(self, ids: list[str]) -> dict:
         """Append one saved session onto an earlier one; the later folder goes to the trash.
@@ -336,21 +360,26 @@ class SessionsMixin:
         meta = {**session, **self._read_meta(keep_dir), **changed, "campaign": campaign}
 
         # Everything the merge replaces is set aside first, so any failure (or a later unmerge) can put it back.
+        # merge.json is complete (with the trash name) before anything moves, so a restore always has it.
         pre = keep_dir / PREMERGE
+        stranded = None
         if pre.exists():  # an earlier merge's restore point stays, under another name
-            pre.rename(keep_dir / f"{PREMERGE}.{time.time_ns()}")
-        pre.mkdir()
+            stranded = keep_dir / f"{PREMERGE}.{time.time_ns()}"
+            pre.rename(stranded)
         audio_bytes = keep_audio.stat().st_size if keep_audio.is_file() else None
-        for name in RESTORED:
-            if (keep_dir / name).is_file():
-                shutil.copy2(keep_dir / name, pre / name)
-        if audio_bytes is not None:
-            # The concat replaces the file, so a hard link keeps the original. Without links, unmerge truncates.
-            with contextlib.suppress(OSError):
-                os.link(keep_audio, pre / "audio.wav")
-        _write_files(pre, {"merge.json": json.dumps({"dropped": drop["session"]["id"], "audio_bytes": audio_bytes})})
+        trashed = self._trash_name(drop_dir)
         try:
+            pre.mkdir()
+            _write_files(
+                pre, {"merge.json": json.dumps({"dropped": drop["session"]["id"], "audio_bytes": audio_bytes, "trash": trashed})}
+            )
+            for name in RESTORED:
+                if (keep_dir / name).is_file():
+                    shutil.copy2(keep_dir / name, pre / name)
             if audio_bytes is not None:
+                # The concat replaces the file, so a hard link keeps the original. Without links, unmerge truncates.
+                with contextlib.suppress(OSError):
+                    os.link(keep_audio, pre / "audio.wav")
                 _concat_wav(keep_audio, drop_audio)
             _write_files(
                 keep_dir,
@@ -363,13 +392,13 @@ class SessionsMixin:
             for name in ("quality.json", "transcript.orig.json"):  # both describe the old content
                 if (keep_dir / name).is_file():
                     (keep_dir / name).replace(pre / name)
-            trashed = self._to_trash(drop_dir)
+            self._to_trash(drop_dir, trashed)
         except BaseException:
-            self._restore_premerge(keep_dir)
+            if (pre / "merge.json").is_file():
+                self._restore_premerge(keep_dir)
+            if stranded is not None and not pre.exists():
+                stranded.rename(pre)  # the earlier restore point is the live one again
             raise
-        _write_files(
-            pre, {"merge.json": json.dumps({"dropped": drop["session"]["id"], "audio_bytes": audio_bytes, "trash": trashed})}
-        )
         return next((s for s in self.list_sessions() if s["id"] == keep["session"]["id"]), {"id": keep["session"]["id"]})
 
     @staticmethod

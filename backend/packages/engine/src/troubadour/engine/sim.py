@@ -22,6 +22,14 @@ import warnings
 from collections import Counter
 from pathlib import Path
 
+from troubadour.core import config, transcript
+from troubadour.sound import audio
+
+from .bus import Bus
+from .core import Engine
+from .paths import session_audio
+from .state import MAIN_CAMPAIGN
+
 WINDOW_S = 60  # text is compared per minute: whole-session difflib is quadratic
 
 
@@ -121,15 +129,10 @@ def main(argv: list[str] | None = None) -> None:
         logging.getLogger(noisy).setLevel(logging.WARNING)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
-    from troubadour.core import config, transcript
-    from troubadour.sound import audio
-
-    from . import live as eng
-
     data_dir = config.DATA_DIR
     session_dir = data_dir / "sessions" / args.session
     try:
-        wav, end = eng.session_audio(args.session)
+        wav, end = session_audio(args.session)
     except KeyError:
         raise SystemExit(f"no audio for session {args.session!r} under {data_dir / 'sessions'}") from None
     original_path = session_dir / "transcript.json"
@@ -140,8 +143,8 @@ def main(argv: list[str] | None = None) -> None:
     config.DATA_DIR, config.SAMPLES_DIR = work, wav.parent.resolve()  # the engine reads these at call time
     audio.FileSource.MAX_SPEED = max(audio.FileSource.MAX_SPEED, args.speed)
 
-    engine = eng.Engine(eng.Bus())
-    campaign = (original or {}).get("session", {}).get("campaign", eng.MAIN_CAMPAIGN)
+    engine = Engine(Bus())
+    campaign = (original or {}).get("session", {}).get("campaign", MAIN_CAMPAIGN)
     if campaign in engine.campaigns:  # --setup current: today's state may have another campaign open
         engine.open_campaign(campaign)
     engine.start_background()
@@ -149,6 +152,8 @@ def main(argv: list[str] | None = None) -> None:
         if engine.load_error:
             raise SystemExit(f"models failed to load: {engine.load_error}")
     engine.start({"kind": "file", "name": wav.name, "speed": args.speed, "end": end})
+    if engine.live is None:
+        raise SystemExit("the engine did not start a session")
     total = len(engine.live.source.audio) / config.SR
     print(f"re-running {args.session} ({total / 60:.1f} min of audio at {args.speed:g}×, setup={args.setup})")
     t0, next_report = time.monotonic(), 0.0
@@ -164,6 +169,8 @@ def main(argv: list[str] | None = None) -> None:
     engine._refine()  # the final relabel the live refine loop would do
 
     record = engine.transcript_record()
+    if record is None:
+        raise SystemExit("the engine kept no session to save")
     run = record["session"]["id"]
     record["session"]["source"] = {"kind": "session", "id": args.session, "speed": args.speed}
     record["session"]["sim"] = {"of": args.session, "setup": args.setup}
