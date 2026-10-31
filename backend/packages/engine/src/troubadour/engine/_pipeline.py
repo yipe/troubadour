@@ -11,6 +11,7 @@ import os
 import queue
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -50,15 +51,36 @@ CONTEXT_MIN_S = 1.0  # shorter clips get the names but not the last lines in the
 CLEANUP_BATCH, CLEANUP_GATHER_S, CLEANUP_CONTEXT = 8, 1.5, 4  # lines per LLM call, wait to fill it, lines before
 
 
+# Windows: the flag lasts while the thread that set it lives, so a helper process sets it and waits for us.
+_WINDOWS_AWAKE = (
+    "$k = Add-Type -Name Power -Namespace Troubadour -PassThru -MemberDefinition "
+    "'[DllImport(\"kernel32.dll\")] public static extern uint SetThreadExecutionState(uint f);'; "
+    "[void]$k::SetThreadExecutionState(0x80000001); Wait-Process -Id {pid}"  # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+)
+
+
+def awake_command(pid: int) -> list[str] | None:
+    """A process that keeps the computer from idle-sleeping until it is stopped or `pid` exits; None when
+    this system has no way to ask."""
+    if exe := shutil.which("caffeinate"):  # macOS
+        return [exe, "-i", "-w", str(pid)]
+    if (exe := shutil.which("systemd-inhibit")) and (tail := shutil.which("tail")):  # most Linux desktops
+        why = ["--what=idle:sleep", "--who=Troubadour", "--why=A session is running"]
+        return [exe, *why, tail, f"--pid={pid}", "-f", "/dev/null"]
+    if sys.platform == "win32" and (exe := shutil.which("powershell")):
+        return [exe, "-NoProfile", "-NonInteractive", "-Command", _WINDOWS_AWAKE.format(pid=pid)]
+    return None
+
+
 def keep_awake() -> subprocess.Popen | None:
-    """macOS: hold an idle-sleep assertion while a session runs; it also dies with this process."""
-    exe = shutil.which("caffeinate")
-    if exe is None:
+    """Hold off idle sleep while a session runs; the helper also dies with this process."""
+    command = awake_command(os.getpid())
+    if command is None:
         return None
     try:
-        return subprocess.Popen([exe, "-i", "-w", str(os.getpid())], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError:  # start() has already taken the session live; a missing sleep assertion is no reason to fail it
-        log.warning("couldn't start caffeinate; the Mac may idle-sleep during this session", exc_info=True)
+        log.warning("couldn't hold off sleep; the computer may idle-sleep during this session", exc_info=True)
         return None
 
 
@@ -137,7 +159,7 @@ class PipelineMixin:
                 self.live, self.buffer, self.source_desc, self.status = sess, sess.buffer, desc, "running"
                 sess.leave_out_absent(self.matcher, self.voices)
                 snapshot = self.snapshot()
-            sess.awake = keep_awake()  # a 4-hour session must not stop when the Mac idles to sleep
+            sess.awake = keep_awake()  # a 4-hour session must not stop when the computer idles to sleep
             self._snapshot_setup(sess, "start")
             self.bind_notebook(sess)
             sess.meter = levels.LevelMeter(self.bus.emit) if self.audio_monitor else None

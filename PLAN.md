@@ -59,8 +59,8 @@ train length); replay files must live in `samples/eval/`. State writes are
 atomic; Train recordings live in `backend/data/voices/` and are deleted with
 their voice.
 
-Long sessions: a session holds a `caffeinate -i` assertion so the Mac doesn't
-idle-sleep mid-game (closing the lid still sleeps it). If a mic delivers no
+Long sessions: a session holds off idle sleep (`caffeinate -i` on macOS, `systemd-inhibit` on Linux,
+`SetThreadExecutionState` on Windows) so the computer doesn't idle-sleep mid-game (closing the lid still sleeps it). If a mic delivers no
 frames for `MIC_STALL_S` (5 s), the UI gets an error toast once. Session audio
 costs ~230 MB/hour of RAM.
 
@@ -569,7 +569,7 @@ clone's own (`clone_wpm`, measured on the preview at build), clamped to 0.85–1
 
 ## Troubadour Cloud (opt-in backup)
 
-Besides an opt-in hosted language model (next section), the one thing Troubadour sends off the Mac, and only
+Besides an opt-in hosted language model (next section), the one thing Troubadour sends off the computer, and only
 after the user connects: a copy of the open campaign's vault, kept as snapshots by a separate service
 (Troubadour Cloud: Next.js on Vercel, Clerk, Neon, private Vercel Blob) that shows it read-only in a browser.
 Troubadour works the same without it.
@@ -596,7 +596,7 @@ Troubadour works the same without it.
   left alone (no empty vault). An automatic backup that fails (offline at the table) doesn't put
   an error chip in the header; the Cloud backup panel shows it and the next attempt retries.
 - **Restore** (a job, kind `restore`): the newest snapshot of any of the account's vaults into the campaign
-  with the vault's id (one this Mac lacks is created, so it joins the picker). Each file is checked
+  with the vault's id (one this computer lacks is created, so it joins the picker). Each file is checked
   against its sha256 before it's written; a note that differs is moved to
   `.trash/Before restore <time>/` first; files the snapshot doesn't have are left alone (a restore
   never deletes). Paths go through the same rules as backups and must land inside the folder (no
@@ -616,17 +616,17 @@ Troubadour works the same without it.
 
 ## Hosted language models (opt-in)
 
-Account menu → **Models** → **Language model**: this Mac (LM Studio or any OpenAI-compatible server, the
+Account menu → **Models** → **Language model**: this computer (LM Studio or any OpenAI-compatible server, the
 default) or a hosted provider. The choice covers every LLM call (live spelling, Improve's spelling pass,
-write-ups, note import, Ask); Whisper and voices always stay on the Mac. Nothing is sent to a provider until
-the user signs in or adds a key **and** picks it. Signing out of the provider in use switches back to this Mac.
+write-ups, note import, Ask); Whisper and voices always stay on the computer. Nothing is sent to a provider until
+the user signs in or adds a key **and** picks it. Signing out of the provider in use switches back to this computer.
 
 - `troubadour.core.providers`. Secrets in `data/llm_accounts.json` (mode 600), never in API responses (`key …abcd` only).
   `settings.json` keeps `provider` and each hosted provider's own `{llm, memory}` pair (`hosted`), so
   switching back and forth loses nothing. `MemoryLLM.wire` picks the API: `chat`, `anthropic`, `responses`.
 - **ChatGPT plan** (`openai`): Sign in with ChatGPT with plan usage, the only way a subscription can pay
   (https://developers.openai.com/siwc/token-sharing-open-source). Dynamic client registration
-  (`dynamic_agent_client` → an issued `oaiapp_…` id, kept), a per-Mac `ext_agent_host_id` (`urn:uuid:`,
+  (`dynamic_agent_client` → an issued `oaiapp_…` id, kept), a per-computer `ext_agent_host_id` (`urn:uuid:`,
   kept across sign-outs), PKCE + nonce, loopback `http://127.0.0.1:8765/auth/callback`. The ID token is
   verified against OpenAI's JWKS (PyJWT). No `chatgpt.tokens.use.direct` in the granted scopes: not
   connected, and the next sign-in asks again (`prompt=consent`). Access tokens last 1 h; refreshes are

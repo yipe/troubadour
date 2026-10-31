@@ -97,7 +97,7 @@ class Engine(SessionsMixin, LibraryMixin, VoicesMixin, PipelineMixin, TrainingMi
 
     def _load_models(self) -> None:
         if config.env("MODELS", "1") == "0":
-            # Scratch servers run many at once; loading Whisper and the embedder in each would swamp the Mac.
+            # Scratch servers run many at once; loading Whisper and the embedder in each would swamp the computer.
             log.info("TROUBADOUR_MODELS=0: not loading Whisper, the speaker embedder or the VAD; asr.state stays 'loading'")
             return
         if os.environ.get("HUGGING_FACE_TOKEN") and not os.environ.get("HF_TOKEN"):

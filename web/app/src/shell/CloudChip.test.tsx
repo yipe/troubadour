@@ -39,7 +39,7 @@ it("opens the first-connect dialog when not connected, without calling the servi
   const m = setup(cloudStatus())
   fireEvent.click(screen.getByRole("button", { name: "Cloud backup" }))
   expect(screen.getByText("Goes up")).toBeInTheDocument()
-  expect(screen.getByText("Stays on this Mac")).toBeInTheDocument()
+  expect(screen.getByText("Stays on this computer")).toBeInTheDocument()
   expect(m.writes()).toEqual([])
 })
 
@@ -64,13 +64,13 @@ it("shows the backup age on the chip and 'Back up now' calls the endpoint", asyn
   )
   fireEvent.click(screen.getByRole("button", { name: "Backed up 4 min ago" }))
   expect(await screen.findByText("Troubadour Cloud")).toBeInTheDocument()
-  expect(screen.getByText(/This Mac is the main copy/)).toBeInTheDocument()
+  expect(screen.getByText(/This computer is the main copy/)).toBeInTheDocument()
   expect(await screen.findByText(/1,212 files · 14 changed/)).toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", { name: "Back up now" }))
   await waitFor(() => expect(m.writes()).toMatchObject([{ method: "POST", url: "/api/cloud/backup" }]))
 })
 
-it("says another Mac is newest when this one is not the main copy", async () => {
+it("says another computer is newest when this one is not the main copy", async () => {
   setup(connected({ is_main: false, main_device: "Studio Mac" }))
   fireEvent.click(screen.getByRole("button", { name: /Backed up/ }))
   expect(await screen.findByText("Studio Mac backed up last; newest backup wins")).toBeInTheDocument()

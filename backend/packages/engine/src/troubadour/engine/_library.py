@@ -134,7 +134,7 @@ class LibraryMixin:
         return c.to_json()
 
     def adopt_campaign(self, cid: str, name: str) -> dict:
-        """The campaign with this id, created (as an empty one called `name`) when this Mac doesn't have it,
+        """The campaign with this id, created (as an empty one called `name`) when this computer doesn't have it,
         so a campaign restored from Troubadour Cloud shows in the picker and keeps backing up to its own
         vault. The id names a folder, so only the shape the service accepts gets through."""
         with self.lock:

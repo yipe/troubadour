@@ -24,7 +24,7 @@ Keep shadcn/Tailwind. Remap the CSS variables in `web/src/index.css` (`.dark` bl
 Top nav (`Troubadour Nav.dc.html`, replaces the header in `App.tsx`), 56px tall, bottom border border.default:
 - Left: feather icon (accent.fg) + "Troubadour" wordmark (Georgia 18px bold), then the campaign switcher (a 32px button on bg.surface with a class-colored square, campaign name, chevrons-up-down).
 - Tabs: **Home · Sessions · Timeline · Codex · Facts · Ask**. Underlined-tab style: 14px; active is fg.default, weight 600, with a 2px accent.emphasis underline; inactive is fg.subtle. Sessions shows a red dot while recording.
-- Right: a recording pill when live (danger.bg, "RECORDING" 12px bold with 0.06em tracking, plus tabular elapsed time); the cloud backup chip (see 2b); "On this Mac · AI ready" status (opens Models); account avatar.
+- Right: a recording pill when live (danger.bg, "RECORDING" 12px bold with 0.06em tracking, plus tabular elapsed time); the cloud backup chip (see 2b); "On this computer · AI ready" status (opens Models); account avatar.
 
 Player identity: **each player's color is their D&D class color** (`--color-class-*`), and the GM uses `class-paladin`. Avatars are 30–36px circles: a 22% tint of the color with a 1.5px inset ring and initials in the color. The same color is used for transcript names, talk-share bars, facts' "said by", and recaps.
 
@@ -57,7 +57,7 @@ IDs match the badges on the canvas.
 | **4a** | Screen Timeline C | **Chosen** timeline: "The story so far", vertical | new |
 | 3d | Screen Cloud Player | Troubadour Cloud player web view | new (cloud service) |
 
-Decisions from the user: one person runs the app on a laptop (no shared table screen). The live session is **1f** and the review is **1h**. The timeline is the **vertical story so far (4a)**. The app icon is the **Listening die**. The cloud is **backup only**, from one main Mac, and the newest backup wins. Changed facts are **updated and keep their history**. Ask only **answers with sources** (no saving answers as facts).
+Decisions from the user: one person runs the app on a laptop (no shared table screen). The live session is **1f** and the review is **1h**. The timeline is the **vertical story so far (4a)**. The app icon is the **Listening die**. The cloud is **backup only**, from one main computer, and the newest backup wins. Changed facts are **updated and keep their history**. Ask only **answers with sources** (no saving answers as facts).
 
 ### Common page shell
 - Page: bg.canvas. Body text is the system sans stack (`-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`) at 14px with line-height 1.45.
@@ -70,7 +70,7 @@ Decisions from the user: one person runs the app on a laptop (no shared table sc
 - Timestamps: `ui-monospace, Menlo, monospace` 12px, fg.subtle; as links, accent.fg.
 
 ### 1a Setup wizard
-Left 300px step rail (Campaign ✓, The table [current], Microphone, Existing notes, AI & privacy), each with a 24px numbered circle: done is success.bg ✓, current is accent.emphasis, upcoming has a border.strong ring. Footer note: "Everything here stays on this Mac unless you choose a hosted model in step 5."
+Left 300px step rail (Campaign ✓, The table [current], Microphone, Existing notes, AI & privacy), each with a 24px numbered circle: done is success.bg ✓, current is accent.emphasis, upcoming has a border.strong ring. Footer note: "Everything here stays on this computer unless you choose a hosted model in step 5."
 
 Main area (padding 36px 56px): a "STEP 2 OF 5" label, H1 "Who's at the table?" (Georgia 30px), and an explainer. An info banner (accent.subtle bg, accent border at 40%) reads "3 players from Lantern Road already have trained voices." with an "Add Sam, Jo and Rin" button.
 
@@ -108,7 +108,7 @@ Three columns below the nav.
 **Center:**
 - A 44px scene breadcrumb ("1:12 Saltreach docks › 1:36 Entering the abbey", with the current scene in accent.subtle).
 - The transcript, bottom-anchored: a grid with a 64px timestamp column, then **name** (bold, player color), an "as NPC" note in fg.subtle 13px, and the text at 15px with line-height 1.55. Lines from an unnamed voice are italic fg.subtle. Highlighted lines use accent.subtle with an accent inset ring for 2.5s. A "X is speaking…" line sits at the bottom.
-- An ask bar, 44px with a border.strong border (accent on focus). Placeholder: "Ask a question (end with ?) or type a note to pin at the current time". Enter submits. Text ending in "?" opens an inline answer panel above the bar: question, a searching state ("Searching 13 transcripts and 214 notes on this Mac…"), then the answer with numbered citations and source rows ("1 · quote · Orsa · S13 1:39:30"); clicking a source highlights its line. Anything else is saved as a **Pin** at the current timestamp, the Pins tab opens, and a toast confirms.
+- An ask bar, 44px with a border.strong border (accent on focus). Placeholder: "Ask a question (end with ?) or type a note to pin at the current time". Enter submits. Text ending in "?" opens an inline answer panel above the bar: question, a searching state ("Searching 13 transcripts and 214 notes on this computer…"), then the answer with numbered citations and source rows ("1 · quote · Orsa · S13 1:39:30"); clicking a source highlights its line. Anything else is saved as a **Pin** at the current timestamp, the Pins tab opens, and a toast confirms.
 
 **Right "Tonight's notebook" (440px, bg.subtle):**
 - Tabs Facts / Names / Pins, each with a count.
@@ -120,7 +120,7 @@ Three columns below the nav.
 End session opens a modal: "Session 13 saved", a summary (duration, facts kept, pins), and "Review later from Home". The live view should stay virtualized (react-virtuoso) as it is today.
 
 ### 1g Ask during a session
-A centered modal (900px) over the live view. Header: the question (20px) and "asked by Sam · 1:42". Answer in Georgia 24px, with quoted phrases highlighted in accent.subtle and superscript citation numbers. Source rows: number, avatar, "who · Session N · time", the quote, and "▶ Play line". Footer: "Answered on this Mac in 4 s from 13 transcripts and 214 notes" and "Ask a follow-up". **Answers are not turned into facts.**
+A centered modal (900px) over the live view. Header: the question (20px) and "asked by Sam · 1:42". Answer in Georgia 24px, with quoted phrases highlighted in accent.subtle and superscript citation numbers. Source rows: number, avatar, "who · Session N · time", the quote, and "▶ Play line". Footer: "Answered on this computer in 4 s from 13 transcripts and 214 notes" and "Ask a follow-up". **Answers are not turned into facts.**
 
 ### 1h Post-session review (chosen)
 Header: "Review · Session 12 · date", title in Georgia 22px, a progress bar ("5 of 14 reviewed", success fill), filter pills (All / Facts / Spellings / New entries with counts), "Accept all GM-stated (3)", and primary "Finish review".
@@ -180,9 +180,9 @@ The existing merge-sessions logic moves behind that merge link.
 ### 1q Models & privacy
 - **Settings rail (260px):** Models & privacy, Microphone, Players & voices, Obsidian vault, Troubadour Cloud, Appearance.
 - **Fixed local rows:** Speech to text and Who's speaking, each with a "Local only" success badge and lock icon.
-- **"Notes, write-ups and answers":** radio cards for LM Studio on this Mac (Connected), ChatGPT plan, OpenRouter, Anthropic or DeepSeek key.
+- **"Notes, write-ups and answers":** radio cards for LM Studio on this computer (Connected), ChatGPT plan, OpenRouter, Anthropic or DeepSeek key.
 - **Right:**
-  - "What leaves this Mac" checklist: Audio never; Voiceprints never; Transcripts & notes and Questions never with a local model; Cloud backup Off/On.
+  - "What leaves this computer" checklist: Audio never; Voiceprints never; Transcripts & notes and Questions never with a local model; Cloud backup Off/On.
   - Storage bar with "Delete recordings after review: Never".
 
 ### 1r App icon: Listening die (chosen)
@@ -197,24 +197,24 @@ Final artwork should be redrawn as a proper SVG/ICNS by a designer. Replace `web
 The behavior matches today's `CloudBackupButton`: opt-in; automatic backup a couple of minutes after notes change, at most every 10 min; transcripts optional; restore with replaced files moved to `.trash`.
 
 New rules:
-- **One main Mac per campaign.** If another Mac backs up the same campaign, **the newest backup wins**. Show "Main Mac: Alex's MacBook Pro (this one)".
+- **One main computer per campaign.** If another computer backs up the same campaign, **the newest backup wins**. Show "Main computer: Alex's MacBook Pro (this one)".
 - No backups during a live session.
 - Audio and voiceprints never go up.
 
 Screens:
-- **2a First connect** (modal over Home, 640px): "Back up The Sunken Crown". Two columns: "Goes up" (notes, codex, facts; write-ups and recaps; 90-day history; plus an "Also transcripts" toggle, off by default) and "Stays on this Mac" (audio, voiceprints, the AI model and your questions). Buttons: Not now / "Connect ↗" (sign-in happens in the browser).
+- **2a First connect** (modal over Home, 640px): "Back up The Sunken Crown". Two columns: "Goes up" (notes, codex, facts; write-ups and recaps; 90-day history; plus an "Also transcripts" toggle, off by default) and "Stays on this computer" (audio, voiceprints, the AI model and your questions). Buttons: Not now / "Connect ↗" (sign-in happens in the browser).
 - **2b Nav chip and popover (380px, tooltip bg):**
   - The chip reads "Backed up 4 min ago" (cloud icon), or "Cloud backup" with cloud-off when not connected; accent styling while open.
-  - Popover: Up to date status; files and changes; "This Mac is the main copy · players see it at troubadour.cloud".
+  - Popover: Up to date status; files and changes; "This computer is the main copy · players see it at troubadour.cloud".
   - A waiting-files box ("in about 2 min").
   - Toggles: auto backup, include transcripts.
   - Buttons: Back up now, Restore…, "All settings".
 - **2c Settings page:**
   - Status card with "Back up now" and "Open player view ↗".
   - "What goes up" list: fixed badges Always/Never, transcripts toggle.
-  - Main Mac row.
+  - Main computer row.
   - Auto backup toggle.
-  - Right column: **Backup history** (90 days; rows with time, change summary, failures in danger; "Restore…" on hover) and "Other campaigns in your cloud" with "Bring to this Mac" (this makes it the main Mac).
+  - Right column: **Backup history** (90 days; rows with time, change summary, failures in danger; "Restore…" on hover) and "Other campaigns in your cloud" with "Bring to this computer" (this makes it the main computer).
   - Footer: "Signed in as…", Disconnect.
 
 ### 3d Troubadour Cloud player view (web, read-only)

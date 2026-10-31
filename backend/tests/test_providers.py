@@ -42,7 +42,7 @@ class FakeOpenAI:
         self.revoked: list[str] = []
         self.registrations = 0
         self.nonce_override: str | None = None
-        self.clock_skew = 0  # seconds OpenAI's clock is ahead of this Mac's
+        self.clock_skew = 0  # seconds OpenAI's clock is ahead of this computer's
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
@@ -136,7 +136,7 @@ def test_sign_in_with_chatgpt_registers_once_and_keeps_secrets_private(openai):
     assert saved["openai"]["client_id"] == "oaiapp_1"
     assert stat.S_IMODE(accounts.path().stat().st_mode) == 0o600
     host = saved["host_id"]
-    # Signing in again reuses the registration and this Mac's host id, and says hello only once.
+    # Signing in again reuses the registration and this computer's host id, and says hello only once.
     url = accounts.start_login("openai")
     q = parse_qs(urlparse(url).query)
     assert q["client_id"] == ["oaiapp_1"]
@@ -332,7 +332,7 @@ def test_a_rate_limit_is_waited_out_but_a_used_up_plan_is_not(monkeypatch):
 
 def test_a_clock_a_little_off_still_signs_in(openai):
     fake, accounts = openai
-    fake.clock_skew = 30  # OpenAI's clock 30 s ahead of this Mac's: the ID token is "issued in the future"
+    fake.clock_skew = 30  # OpenAI's clock 30 s ahead of this computer's: the ID token is "issued in the future"
     assert sign_in(fake, accounts) is True
 
 
@@ -411,7 +411,7 @@ def test_anthropic_messages_with_a_schema_and_without(monkeypatch):
 def api(dirs, monkeypatch):
     fake = FakeOpenAI()
     monkeypatch.setattr(deps, "accounts", Accounts(http=httpx.Client(transport=fake.transport())))
-    monkeypatch.setattr(deps, "_installed_llms", list)  # never this Mac's LM Studio
+    monkeypatch.setattr(deps, "_installed_llms", list)  # never this computer's LM Studio
     events = []
     monkeypatch.setattr(deps.bus, "emit", lambda kind, data: events.append((kind, data)))
     # Never a real health check from these tests; record that one was asked for.

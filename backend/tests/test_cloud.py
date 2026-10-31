@@ -844,7 +844,7 @@ def _backed_up_vault(api, service) -> dict:
 
 def test_api_restoring_a_campaign_from_another_mac_adds_it_to_the_picker(api, service):
     vault = _backed_up_vault(api, service)
-    vault["campaign_id"], vault["name"] = "c0123456789", "The Sunken Gate"  # as another Mac's campaign
+    vault["campaign_id"], vault["name"] = "c0123456789", "The Sunken Gate"  # as another computer's campaign
     job = wait_job(api.post("/api/cloud/restore", json={"vault_id": vault["id"]}).json()["id"])
     assert job["state"] == "done", job["message"]
     assert job["title"] == "The Sunken Gate"
@@ -854,28 +854,28 @@ def test_api_restoring_a_campaign_from_another_mac_adds_it_to_the_picker(api, se
     assert (config.DATA_DIR / "campaigns" / "c0123456789" / "Facts.md").read_text() == "The gate opens at dawn.\n"
 
 
-def test_api_bring_to_this_mac_refuses_a_campaign_this_mac_already_has(api, service):
+def test_api_bring_to_this_computer_refuses_a_campaign_this_computer_already_has(api, service):
     vault = _backed_up_vault(api, service)
     deps.engine.adopt_campaign("c0123456789", "The Sunken Gate")  # already here, not the open one
     local = config.DATA_DIR / "campaigns" / "c0123456789"
     local.mkdir(parents=True, exist_ok=True)
-    (local / "Facts.md").write_text("Newer notes on this Mac.\n")
+    (local / "Facts.md").write_text("Newer notes on this computer.\n")
     vault["campaign_id"], vault["name"] = "c0123456789", "The Sunken Gate"
     job = wait_job(api.post("/api/cloud/restore", json={"vault_id": vault["id"]}).json()["id"])
     assert job["state"] == "error"
-    assert "already on this Mac" in job["message"]
-    assert (local / "Facts.md").read_text() == "Newer notes on this Mac.\n"
+    assert "already on this computer" in job["message"]
+    assert (local / "Facts.md").read_text() == "Newer notes on this computer.\n"
 
 
-def test_api_bring_to_this_mac_refuses_the_open_campaign_too(api, service):
+def test_api_bring_to_this_computer_refuses_the_open_campaign_too(api, service):
     """Both Macs' first campaign is `main`: bringing the other Mac's `main` here must not replace the open one."""
     vault = _backed_up_vault(api, service)
     assert vault["campaign_id"] == "main"
-    (config.vault_dir() / "Facts.md").write_text("Newer notes on this Mac.\n")
+    (config.vault_dir() / "Facts.md").write_text("Newer notes on this computer.\n")
     job = wait_job(api.post("/api/cloud/restore", json={"vault_id": vault["id"]}).json()["id"])
     assert job["state"] == "error"
-    assert "already on this Mac" in job["message"]
-    assert (config.vault_dir() / "Facts.md").read_text() == "Newer notes on this Mac.\n"
+    assert "already on this computer" in job["message"]
+    assert (config.vault_dir() / "Facts.md").read_text() == "Newer notes on this computer.\n"
     # Naming the restore point is the deliberate way to put a backup over the open campaign.
     job = wait_job(
         api.post("/api/cloud/restore", json={"vault_id": vault["id"], "snapshot": vault["head_snapshot"]}).json()["id"]

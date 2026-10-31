@@ -16,6 +16,7 @@ from troubadour.engine import (
     LiveSession,
     Message,
     Voice,
+    _pipeline,
     keep_awake,
     sample_path,
     short_id,
@@ -378,6 +379,27 @@ def test_keep_awake_survives_a_spawn_failure(monkeypatch):
     monkeypatch.setattr("troubadour.engine._pipeline.shutil.which", lambda name: "/usr/bin/caffeinate")
     monkeypatch.setattr("troubadour.engine._pipeline.subprocess.Popen", boom)
     assert keep_awake() is None
+
+
+@pytest.mark.parametrize(
+    ("found", "platform", "expected"),
+    [
+        ({"caffeinate"}, "darwin", ["/bin/caffeinate", "-i", "-w", "42"]),
+        ({"systemd-inhibit", "tail"}, "linux", ["/bin/systemd-inhibit", "--what=idle:sleep"]),
+        ({"powershell"}, "win32", ["/bin/powershell", "-NoProfile"]),
+        ({"tail"}, "linux", None),  # no systemd: nothing to ask
+    ],
+)
+def test_each_system_holds_off_sleep_its_own_way(monkeypatch, found, platform, expected):
+    monkeypatch.setattr("troubadour.engine._pipeline.shutil.which", lambda name: f"/bin/{name}" if name in found else None)
+    monkeypatch.setattr("troubadour.engine._pipeline.sys.platform", platform)
+    command = _pipeline.awake_command(42) or []
+    assert command[: len(expected or [])] == (expected or [])
+    assert bool(command) == (expected is not None)
+    if platform == "linux" and command:
+        assert command[-4:] == ["/bin/tail", "--pid=42", "-f", "/dev/null"]  # ends when Troubadour does
+    if platform == "win32":
+        assert "Wait-Process -Id 42" in command[-1]
 
 
 def test_start_refused_when_models_failed(engine):

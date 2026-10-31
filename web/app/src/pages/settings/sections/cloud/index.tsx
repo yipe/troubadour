@@ -63,7 +63,7 @@ function NotConnected({ campaignName }: { campaignName: string }) {
           <div className="text-16 font-bold">Not connected</div>
           <div className="text-13 text-ink-subtle">
             Notes, codex entries and write-ups go up with a history you can restore from. Nothing leaves this
-            Mac until you connect.
+            computer until you connect.
           </div>
         </div>
         <Button variant="primary" onClick={() => setOpen(true)}>
@@ -88,11 +88,12 @@ function Connected({ campaignName }: { campaignName: string }) {
           <Laptop size={18} className="text-ink-muted" aria-hidden />
           <div className="flex-1">
             <div className="font-semibold">
-              Main Mac: {status.main_device}
+              Main computer: {status.main_device}
               {status.is_main ? <span className="font-medium text-ink-subtle"> (this one)</span> : null}
             </div>
             <div className="text-12 text-ink-subtle">
-              Only one Mac should run this campaign. If another Mac backs it up too, the newest backup wins.
+              Only one computer should run this campaign. If another computer backs it up too, the newest
+              backup wins.
             </div>
           </div>
         </Card>

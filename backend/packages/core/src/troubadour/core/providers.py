@@ -1,6 +1,6 @@
 """Hosted language models: an opt-in alternative to the local LLM for spelling cleanup, session write-ups,
 note import and Ask. Nothing here contacts a provider until the user picks one in Models and signs in or
-pastes a key. Whisper and voices stay on this Mac whichever model is chosen.
+pastes a key. Whisper and voices stay on this computer whichever model is chosen.
 
 - openai: Sign in with ChatGPT with ChatGPT plan usage. Requests go to the Responses API and count against
   the user's ChatGPT plan, not an API key (https://developers.openai.com/siwc/token-sharing-open-source).
@@ -408,7 +408,7 @@ class Accounts:
             }
             url = f"{OPENROUTER_AUTH}?{urlencode(query)}"
         else:
-            # This Mac's ext_agent_host_id: chosen once, before the first sign-in, and kept across sign-outs.
+            # This computer's ext_agent_host_id: chosen once, before the first sign-in, and kept across sign-outs.
             data = self._update(lambda d: d.setdefault("host_id", f"urn:uuid:{uuid.uuid4()}"))
             rec = data.get("openai") if isinstance(data.get("openai"), dict) else {}
             returning = not fresh and isinstance(rec.get("client_id"), str)
@@ -567,7 +567,7 @@ class Accounts:
                 audience=client_id,
                 issuer=OPENAI_ISSUER,
                 options={"require": ["exp", "iat", "sub", "aud", "iss"]},
-                leeway=60,  # this Mac's clock a little ahead of or behind OpenAI's must not break sign-in
+                leeway=60,  # this computer's clock a little ahead of or behind OpenAI's must not break sign-in
             )
         except (jwt.PyJWTError, StopIteration) as e:
             raise ProviderError(f"ChatGPT's sign-in couldn't be verified ({type(e).__name__}).") from None
@@ -622,7 +622,7 @@ class Accounts:
             return tokens["access_token"]
 
     def _clear_openai(self) -> None:
-        """Forget the tokens; keep the registration (client id, account) and this Mac's host id for next time."""
+        """Forget the tokens; keep the registration (client id, account) and this computer's host id for next time."""
 
         def change(d: dict) -> None:
             rec = d.get("openai") if isinstance(d.get("openai"), dict) else {}

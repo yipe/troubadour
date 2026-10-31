@@ -26,7 +26,7 @@
       <section style="display:flex;flex-direction:column;gap:18px">
         <div>
           <x-import component-from-global-scope="YipeUi.PageHeading" hint-size="300px,40px">Models &amp; privacy</x-import>
-          <div style="color:var(--color-fg-subtle);font-size:13px">Where each part of Troubadour runs. Audio and voices never leave this Mac.</div>
+          <div style="color:var(--color-fg-subtle);font-size:13px">Where each part of Troubadour runs. Audio and voices never leave this computer.</div>
         </div>
         <sc-for list="{{ fixed }}" as="f" hint-placeholder-count="2">
           <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:8px;background:var(--color-bg-surface);border:1px solid var(--color-border-default)">
@@ -48,7 +48,7 @@
       </section>
       <aside style="display:flex;flex-direction:column;gap:16px;padding-top:56px">
         <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;overflow:hidden">
-          <div style="padding:12px 16px;border-bottom:1px solid var(--color-border-default);font-weight:700">What leaves this Mac</div>
+          <div style="padding:12px 16px;border-bottom:1px solid var(--color-border-default);font-weight:700">What leaves this computer</div>
           <sc-for list="{{ leaves }}" as="l" hint-placeholder-count="5">
             <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--color-border-subtle);font-size:13px"><span style="width:18px;font-weight:700;color:{{ l.c }}">{{ l.m }}</span><span style="flex:1">{{ l.t }}</span><span style="color:var(--color-fg-subtle);font-size:12px">{{ l.v }}</span></div>
           </sc-for>
@@ -74,7 +74,7 @@ class Component extends DCLogic {
       { ic: "users", t: "Who’s speaking", d: "Voiceprints from pyannote, stored per player" }
     ];
     const llms = [
-      ["LM Studio on this Mac", "google/gemma-4-26b · 127.0.0.1:1235", "Connected", 1],
+      ["LM Studio on this computer", "google/gemma-4-26b · 127.0.0.1:1235", "Connected", 1],
       ["ChatGPT plan", "Use your Go, Plus or Pro subscription", "Sign in"],
       ["OpenRouter", "Pick any hosted model", "Sign in"],
       ["Anthropic or DeepSeek key", "Paste an API key", "Add key"]

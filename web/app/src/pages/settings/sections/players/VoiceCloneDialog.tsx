@@ -78,7 +78,7 @@ export function VoiceCloneDialog({
       <DialogContent>
         <DialogHeader
           title={`${player.name}'s voice clone`}
-          description={`Troubadour can speak in ${player.name}'s voice, copied from their Train recording or the cleanest stretch of their talk in your sessions, and in each character they voice. It all stays on this Mac.`}
+          description={`Troubadour can speak in ${player.name}'s voice, copied from their Train recording or the cleanest stretch of their talk in your sessions, and in each character they voice. It all stays on this computer.`}
         />
         <DialogBody className="flex flex-col gap-4">
           <label className="flex items-center gap-2 text-14">

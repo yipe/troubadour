@@ -55,7 +55,7 @@ describe("AskAnswer", () => {
 
   it("shows the stats footer only with stats", () => {
     const first = renderWithProviders(<AskAnswer answer={done} onSource={() => {}} />)
-    expect(screen.queryByText(/Answered on this Mac/)).toBeNull()
+    expect(screen.queryByText(/Answered on this computer/)).toBeNull()
     first.unmount()
     renderWithProviders(
       <AskAnswer
@@ -64,7 +64,7 @@ describe("AskAnswer", () => {
       />,
     )
     expect(
-      screen.getByText(/Answered on this Mac in 4 s from 13 transcripts and 214 notes/),
+      screen.getByText(/Answered on this computer in 4 s from 13 transcripts and 214 notes/),
     ).toBeInTheDocument()
   })
 
@@ -79,7 +79,7 @@ describe("AskAnswer", () => {
         onSource={() => {}}
       />,
     )
-    expect(screen.getByText("Searching 13 transcripts and 214 notes on this Mac…")).toBeInTheDocument()
+    expect(screen.getByText("Searching 13 transcripts and 214 notes on this computer…")).toBeInTheDocument()
     searching.unmount()
     const failed = renderWithProviders(
       <AskAnswer

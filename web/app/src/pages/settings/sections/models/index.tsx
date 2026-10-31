@@ -9,7 +9,7 @@ export function Component() {
       <div className="w-full min-w-0 flex-1">
         <PageHeading
           title="Models & privacy"
-          subtitle="Where each part of Troubadour runs. Audio and voices never leave this Mac."
+          subtitle="Where each part of Troubadour runs. Audio and voices never leave this computer."
           className="mb-6"
         />
         <ModelsSettings />

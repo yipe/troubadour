@@ -68,7 +68,7 @@ cloud = Cloud()  # opt-in backup; contacts the service only once the user connec
 
 
 def session_live() -> bool:
-    """A session is running or paused: backups wait until it ends (the mic and Whisper need the Mac)."""
+    """A session is running or paused: backups wait until it ends (the mic and Whisper need the computer)."""
     return engine.status != "idle"
 
 

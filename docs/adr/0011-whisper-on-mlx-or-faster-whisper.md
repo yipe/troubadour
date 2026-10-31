@@ -41,4 +41,4 @@ POSIX shell.
 - whisper.cpp: fast on every platform, but a native build or a less maintained binding; faster-whisper
   installs from wheels.
 - openai-whisper on torch: one code path everywhere, but several times slower than either backend.
-- Asking for an NVIDIA GPU off the Mac: simpler, but it shuts out most laptops.
+- Asking for an NVIDIA GPU off the computer: simpler, but it shuts out most laptops.

@@ -57,7 +57,7 @@ export function StepRail({
       <div className="flex-1" />
       <p className="flex gap-2 px-3 text-12 text-ink-subtle">
         <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-        <span>Everything here stays on this Mac unless you choose a hosted model in step 5.</span>
+        <span>Everything here stays on this computer unless you choose a hosted model in step 5.</span>
       </p>
     </nav>
   )

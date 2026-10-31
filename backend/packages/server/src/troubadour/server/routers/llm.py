@@ -96,7 +96,7 @@ class LlmConnectIn(BaseModel):
 
 
 def _llm_choices(installed: list[str] | None = None) -> list[str]:
-    """The local server's current models (`installed`, else asked now), plus any this Mac has chosen before."""
+    """The local server's current models (`installed`, else asked now), plus any this computer has chosen before."""
     out = list(deps._installed_llms() if installed is None else installed)
     for model in settings.known_llms():
         if model not in out:
@@ -272,7 +272,7 @@ def _llm_changed() -> list[dict]:
     """After a sign-in, key or sign-out: use the new credentials now and tell every open tab."""
     chosen = settings.current()
     if chosen["provider"] != providers.LOCAL and not deps.accounts.connected(chosen["provider"]):
-        chosen = settings.update({"provider": providers.LOCAL})  # signed out of the one in use: back to this Mac
+        chosen = settings.update({"provider": providers.LOCAL})  # signed out of the one in use: back to this computer
     _apply_models(chosen)
     deps._recheck_llm_soon()
     status = _llm_providers()
@@ -334,7 +334,7 @@ def llm_key(provider: str, body: LlmKeyIn):
 
 @router.post("/api/llm/{provider}/disconnect")
 def llm_disconnect(provider: str):
-    """Forget a sign-in or key on this Mac. If it was in use, the language model goes back to this Mac's."""
+    """Forget a sign-in or key on this computer. If it was in use, the language model goes back to this computer's."""
     confirmed = deps._call(deps.accounts.logout, provider)
     return {"providers": _llm_changed(), "revoked": confirmed}
 

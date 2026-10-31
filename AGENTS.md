@@ -53,7 +53,7 @@ Deeper guides: `backend/AGENTS.md`, `web/AGENTS.md`, and a short `AGENTS.md` in 
    tests never reach either (`httpx.MockTransport`): **Troubadour Cloud** backup (`troubadour.cloud.backup`; nothing is
    sent until the user clicks Connect, and it only uploads the vault) and a **hosted language model**
    (`troubadour.core.providers`: ChatGPT plan, OpenRouter, Anthropic API, DeepSeek API; nothing is sent until the user
-   signs in or adds a key *and* picks it in Models). Whisper and voices never leave the Mac. Never use a
+   signs in or adds a key *and* picks it in Models). Whisper and voices never leave the computer. Never use a
    subscription sign-in a provider doesn't allow for third-party apps (Claude's).
 4. **Only restart the server (`:8765`) when `GET /api/state` shows `session.status == "idle"`.**
    A real game may be running.

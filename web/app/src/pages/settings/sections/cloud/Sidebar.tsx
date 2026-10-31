@@ -17,7 +17,7 @@ import { dateShort } from "../../../../lib/format.ts"
 import { attemptTime, attemptSummary } from "./attempts.ts"
 
 const BRING_BODY =
-  "Bringing a campaign here makes this its main Mac. Notes that differ are replaced; the old versions move to the vault’s .trash folder."
+  "Bringing a campaign here makes this its main computer. Notes that differ are replaced; the old versions move to the vault’s .trash folder."
 const RESTORE_BODY =
   "This brings back the notes as they were in that backup. Files it replaces go to .trash in your vault first, so nothing is lost."
 
@@ -29,7 +29,7 @@ export function Sidebar() {
   const [bring, setBring] = useState<CloudVault | null>(null)
   const thisVault = vaults?.find((v) => v.campaign_id === status.campaign)
   const others = vaults?.filter((v) => v.campaign_id !== status.campaign && v.head_snapshot) ?? []
-  // A campaign this Mac already has is never offered for "Bring to this Mac": that would replace newer
+  // A campaign this computer already has is never offered for "Bring to this computer": that would replace newer
   // local notes with the cloud copy. It is restored from its own Cloud settings once opened.
   const local = new Set(useCampaigns().data?.campaigns.map((c) => c.id) ?? [])
 
@@ -50,10 +50,10 @@ export function Sidebar() {
                 </div>
               </div>
               {local.has(v.campaign_id) ? (
-                <span className="text-12 text-ink-subtle">On this Mac</span>
+                <span className="text-12 text-ink-subtle">On this computer</span>
               ) : (
                 <Button size="sm" variant="secondary" onClick={() => setBring(v)}>
-                  Bring to this Mac
+                  Bring to this computer
                 </Button>
               )}
             </div>
@@ -79,9 +79,9 @@ export function Sidebar() {
       <ConfirmDialog
         open={bring !== null}
         onOpenChange={(open) => !open && setBring(null)}
-        title={`Bring ${bring?.name ?? "this campaign"} to this Mac?`}
+        title={`Bring ${bring?.name ?? "this campaign"} to this computer?`}
         body={BRING_BODY}
-        confirmLabel="Bring to this Mac"
+        confirmLabel="Bring to this computer"
         tone="primary"
         onConfirm={async () => {
           if (bring) await restore.mutateAsync({ vaultId: bring.id })
@@ -146,7 +146,7 @@ function Account() {
         open={confirm}
         onOpenChange={setConfirm}
         title="Disconnect from Troubadour Cloud?"
-        body="Backups stop and this Mac signs out. What is already in your cloud stays there, and your notes here are untouched."
+        body="Backups stop and this computer signs out. What is already in your cloud stays there, and your notes here are untouched."
         confirmLabel="Disconnect"
         tone="danger"
         onConfirm={async () => {

@@ -49,23 +49,23 @@ ACCOUNT_TTL_S = 600  # who is signed in barely changes; the header asks whenever
 AVATAR_MAX_BYTES = 2_000_000  # animated GIFs are far bigger than a still avatar
 AVATAR_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif")  # DPRcalc avatars can be GIFs
 MESSAGE_MAX = 200  # the contract's maxMessageChars
-MAIN_CHECK_TTL_S = 60  # how long the vault list is reused when working out which Mac is main
+MAIN_CHECK_TTL_S = 60  # how long the vault list is reused when working out which computer is main
 MAIN_CHECK_TIMEOUT_S = 3  # status() never waits on the network longer than this (token refresh included)
 MAIN_CHECK_FAIL_TTL_S = 30  # after a failed check, status() doesn't try again for this long
 HISTORY_DAYS = 90
 SEP = " \u00b7 "  # "<device> · <summary>": the device is what comes before the first one
-UNKNOWN_DEVICE = "another Mac"
+UNKNOWN_DEVICE = "another computer"
 
 
 @functools.cache
 def device_name() -> str:
-    """This Mac's name for the backup message: the name in System Settings, else the hostname."""
+    """This computer's name for the backup message: the name in System Settings, else the hostname."""
     try:
         out = subprocess.run(["scutil", "--get", "ComputerName"], capture_output=True, text=True, timeout=2, check=False)
         name = out.stdout.strip()
     except (OSError, subprocess.SubprocessError):
         name = ""
-    return (name or socket.gethostname() or "This Mac").replace(SEP, " ")[:60]
+    return (name or socket.gethostname() or "This computer").replace(SEP, " ")[:60]
 
 
 class CloudError(Exception):
@@ -245,7 +245,7 @@ class Cloud:
         return self.campaign_settings(campaign_id)
 
     def status(self, campaign_id: str, main: bool = True) -> dict:
-        """Settings and last backup, plus which Mac is main. Only `main` may reach the service (never
+        """Settings and last backup, plus which computer is main. Only `main` may reach the service (never
         before connecting, and for at most MAIN_CHECK_TIMEOUT_S); callers that just need the settings pass False."""
         data = self._load()
         connected = bool(data.get("refresh_token") or data.get("access_token"))
@@ -262,11 +262,11 @@ class Cloud:
             "is_main": main_device == self.device,
         }
 
-    # ---------------------------------------------------------------- which Mac is main
+    # ---------------------------------------------------------------- which computer is main
 
     def _check_main(self, campaign_id: str, last_snapshot: str) -> str:
         """The device that made the campaign's newest backup (newest wins), or the last answer when the
-        service can't be reached in time. This Mac when its last backup is the newest or none is."""
+        service can't be reached in time. This computer when its last backup is the newest or none is."""
         now = self.clock()
         if self._main_failed_at is not None and now - self._main_failed_at < MAIN_CHECK_FAIL_TTL_S:
             return self._main.get(campaign_id, self.device)  # the service was unreachable a moment ago
@@ -469,7 +469,7 @@ class Cloud:
             try:
                 last = self._push(campaign_id, name, root, progress)
             except CloudError as e:
-                # Another Mac pushed, a note changed mid-way, or an upload went missing: start over once.
+                # Another computer pushed, a note changed mid-way, or an upload went missing: start over once.
                 if e.code not in ("conflict", "missing_blobs", "changed", "upload"):
                     raise
                 log.info("cloud backup: retrying after %s", e.code)
@@ -495,7 +495,7 @@ class Cloud:
                 "error": None,
             },
         )
-        # This Mac made the newest backup, so it is main now; the cached vault list still names the old head.
+        # This computer made the newest backup, so it is main now; the cached vault list still names the old head.
         self._main[campaign_id], self._vault_list, self._main_failed_at = self.device, None, None
         return last
 
@@ -584,7 +584,7 @@ class Cloud:
     # ---------------------------------------------------------------- restore
 
     def vaults(self) -> list[dict]:
-        """The campaigns this account has in Troubadour Cloud (any Mac's)."""
+        """The campaigns this account has in Troubadour Cloud (any computer's)."""
         result = self._api("GET", "/vaults")
         return result if isinstance(result, list) else []
 

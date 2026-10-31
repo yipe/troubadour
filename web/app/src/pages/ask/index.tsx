@@ -132,7 +132,7 @@ export function Component() {
             </p>
           ) : null}
           <p className="text-12 text-ink-subtle">
-            Answers come from your transcripts and notes, on this Mac. They aren't saved as facts.
+            Answers come from your transcripts and notes, on this computer. They aren't saved as facts.
           </p>
         </form>
         {current ? (

@@ -17,7 +17,7 @@ export const saveModelSettings = (
   },
 ) => req<ModelSettings>("PUT", "/api/settings/models", body)
 
-/** The usual local model server ports on this Mac, and which of them answer. */
+/** The usual local model server ports on this computer, and which of them answer. */
 export const localServers = () =>
   req<{ port: number; name: string; url: string; running: boolean; models: number }[]>(
     "GET",

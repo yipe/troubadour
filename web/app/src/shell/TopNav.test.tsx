@@ -73,7 +73,7 @@ describe("AiStatus", () => {
   it("says AI ready only when both models are up", () => {
     const up = renderWithProviders(<AiStatus />, { live: { session: session() }, queryData: [llm("local")] })
     expect(screen.getByText("AI ready")).toBeInTheDocument()
-    expect(screen.getByText("On this Mac")).toBeInTheDocument()
+    expect(screen.getByText("On this computer")).toBeInTheDocument()
     up.unmount()
 
     const noLlm = renderWithProviders(<AiStatus />, {
@@ -93,10 +93,10 @@ describe("AiStatus", () => {
     expect(screen.getByText("AI off")).toBeInTheDocument()
   })
 
-  it("names a hosted provider instead of saying On this Mac, and opens Models", () => {
+  it("names a hosted provider instead of saying On this computer, and opens Models", () => {
     renderWithProviders(<AiStatus />, { live: { session: session() }, queryData: [llm("openai")] })
     expect(screen.getByText("ChatGPT")).toBeInTheDocument()
-    expect(screen.queryByText("On this Mac")).not.toBeInTheDocument()
+    expect(screen.queryByText("On this computer")).not.toBeInTheDocument()
     expect(screen.getByRole("link")).toHaveAttribute("href", "/settings/models")
   })
 })

@@ -145,7 +145,7 @@ export function AccountMenu() {
         open={confirming}
         onOpenChange={setConfirming}
         title="Disconnect Troubadour Cloud?"
-        body="Backups stop and this Mac forgets the sign-in. Backups already in the cloud are kept."
+        body="Backups stop and this computer forgets the sign-in. Backups already in the cloud are kept."
         confirmLabel="Disconnect"
         tone="danger"
         onConfirm={async () => {

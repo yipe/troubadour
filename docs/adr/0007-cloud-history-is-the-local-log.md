@@ -12,7 +12,7 @@ The cloud settings page shows past backups and restores by snapshot.
 
 ## Consequences
 
-It works offline and needs nothing from the cloud service. It shows only this Mac's attempts, not other devices' snapshots.
+It works offline and needs nothing from the cloud service. It shows only this computer's attempts, not other devices' snapshots.
 
 ## Alternatives
 

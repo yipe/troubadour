@@ -1,4 +1,4 @@
-"""Voice clones: say anything, or read a session page aloud, in a player's voice. All on this Mac.
+"""Voice clones: say anything, or read a session page aloud, in a player's voice. All on this computer.
 
 Opt-in per player (`Player.clone_ok`): nothing is built or spoken in someone's voice until it is on,
 and turning it off deletes everything made from it (`Clones.forget`).

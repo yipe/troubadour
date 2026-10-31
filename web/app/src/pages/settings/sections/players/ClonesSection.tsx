@@ -16,7 +16,7 @@ export function ClonesSection() {
     <section aria-label="Voice clones" className="flex flex-col gap-2">
       <h2 className="font-serif text-20 font-bold">Voice clones</h2>
       <p className="text-13 text-ink-muted">
-        With a player&apos;s consent, Troubadour can speak in their voice. It all stays on this Mac.
+        With a player&apos;s consent, Troubadour can speak in their voice. It all stays on this computer.
       </p>
       <ul className="overflow-hidden rounded-card border border-line">
         {players.map((p) => (

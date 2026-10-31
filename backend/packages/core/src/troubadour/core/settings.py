@@ -84,7 +84,7 @@ def saved() -> dict:
 
 
 def known_llms() -> list[str]:
-    """Model ids this Mac has used, so the menu still lists them when LM Studio is offline."""
+    """Model ids this computer has used, so the menu still lists them when LM Studio is offline."""
     raw = _read().get("known_llms")
     remembered = [m.strip() for m in raw if isinstance(m, str) and m.strip()] if isinstance(raw, list) else []
     chosen = saved()
