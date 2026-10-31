@@ -6,7 +6,7 @@ import time
 
 import numpy as np
 import pytest
-from conftest import NullSource, RecordingBus, speak, tone, write_wav
+from conftest import SR, NullSource, RecordingBus, speak, tone, write_wav
 from troubadour.core import config
 from troubadour.core.transcript import utf16_offset, utf16_to_py
 from troubadour.engine import (
@@ -200,15 +200,27 @@ def test_remove_player_returns_their_voices_to_pending(engine):
 def test_assigning_one_line_moves_only_that_line_and_refine_leaves_it(engine):
     alice, bob = engine.add_player("Alice"), engine.add_player("Bob")
     a_vid = named_voice(engine, alice["id"], ALICE)
-    m1, m2 = say(engine, ALICE, 2.0), say(engine, ALICE, 2.0)  # both heard as Alice
+    m1 = say(engine, ALICE, 2.0)
+    # Bob's line: Alice's pitch with a little of his. Heard as Alice; with audio identical to m1, his new print
+    # would tie hers for m1 and float rounding (Accelerate vs OpenBLAS) would pick the winner.
+    buf = engine.live.buffer
+    buf.append(np.zeros(int(0.3 * SR), np.float32))
+    t0 = buf.n / SR
+    buf.append(tone(ALICE, 2.0) + 0.3 * tone(BOB, 2.0))
+    engine._process_utterance(engine.live, t0, buf.n / SR)
+    m2 = engine.bus.of("message.created")[-1]
+    assert engine.messages[m2["id"]].voice_id == a_vid  # both heard as Alice
     engine.bus.events.clear()
     out = engine.assign_message(m2["id"], bob["id"])  # but Bob said the second one
     b_vid = out["voice"]["id"]
     assert (out["voice"]["player_id"], out["voice"]["status"]) == (bob["id"], "named")
     assert engine.bus.of("messages.updated") == [[{"id": m2["id"], "voice_id": b_vid, "confidence": 1.0, "provisional": False}]]
     engine._refine()
-    assert engine.messages[m2["id"]].voice_id == b_vid  # pinned: Alice's better score doesn't take it back
+    assert engine.messages[m2["id"]].pinned
+    assert engine.messages[m2["id"]].voice_id == b_vid  # pinned: refine never takes it back
     assert engine.messages[m1["id"]].voice_id == a_vid  # the other line is untouched
+    scores = dict(zip(engine.matcher.names, engine.matcher.scores(engine.messages[m1["id"]].vec), strict=True))
+    assert scores[a_vid] - scores[b_vid] > 0.01  # by a margin no platform's rounding flips
 
 
 def test_a_hand_assigned_line_teaches_the_voice_and_moving_it_again_takes_that_back(engine):

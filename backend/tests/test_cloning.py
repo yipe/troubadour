@@ -25,6 +25,12 @@ from troubadour.sound.audio import wav_bytes
 RATE = 48000  # session recordings at the mic's own rate
 
 
+@pytest.fixture(autouse=True)
+def clones_run_here(monkeypatch):
+    """FakeSynth stands in for MLX, so these tests run the same on any machine."""
+    monkeypatch.setattr(config, "VOICE_CLONES", True)
+
+
 def seat(engine, name: str = "Alice", consent: bool = True, train_s: float = 6) -> str:
     """A seated player with a Train recording (a tone), who agreed to a voice clone."""
     p = engine.add_player(name)
@@ -107,6 +113,15 @@ def test_check_clone_says_what_is_missing(engine, monkeypatch):
         engine.check_clone(p["id"])
     with pytest.raises(KeyError):
         engine.check_clone("p-nobody")
+
+
+def test_without_mlx_only_the_speech_profile_runs(engine, monkeypatch):
+    monkeypatch.setattr(config, "VOICE_CLONES", False)
+    pid = seat(engine)
+    engine.status = "idle"
+    with pytest.raises(ValueError, match="Voice clones need a Mac with Apple Silicon"):
+        engine.check_clone(pid)
+    assert engine.check_clone(pid, needs_idle=False) == "Alice"  # the speech profile
 
 
 def test_a_benched_player_can_keep_their_clone_but_not_use_it(engine):
@@ -381,7 +396,7 @@ def test_api_build_say_listen_delete(api, engine):
     assert api.get(clip["url"]).status_code == 404
 
     api.patch(f"/api/players/{pid}", json={"clone_ok": False})
-    assert api.get("/api/clones").json() == {"voices": {}, "profiles": {}, "clips": []}
+    assert api.get("/api/clones").json() == {"voices": {}, "profiles": {}, "clips": [], "available": True}
 
 
 def test_api_refuses_without_consent_or_training(api, engine):

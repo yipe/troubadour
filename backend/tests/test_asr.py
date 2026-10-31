@@ -1,8 +1,12 @@
 """The prompt guard around Whisper (the model itself is stubbed)."""
 
+import sys
+import types
+
 import numpy as np
 import pytest
-from troubadour.sound import asr
+from troubadour.core import config
+from troubadour.sound import asr, asr_ct2, asr_mlx
 
 PROMPT = "A D&D session. Elara, Auggie, Kessia, Magenta. Initiative, perception check, saving throw."
 
@@ -95,13 +99,75 @@ def test_the_longest_name_said_wins():
 
 
 def test_segments_in_another_script_are_dropped(monkeypatch):
-    import sys
-    import types
-
     segments = [{"text": " What's your AC? 18."}, {"text": " ож Kobe Thank you."}, {"text": " Café crème, señor."}]
-    fake = types.SimpleNamespace(transcribe=lambda audio, **kw: {"segments": segments})
-    monkeypatch.setitem(sys.modules, "mlx_whisper", fake)
+    fake = types.SimpleNamespace(segments=lambda audio, model, prompt: segments)
+    monkeypatch.setattr(asr, "_backend", lambda: fake)
     assert asr.transcribe(np.zeros(16000 * 3, np.float32)) == "What's your AC? 18. Café crème, señor."
+
+
+def test_the_backend_follows_the_machine(monkeypatch):
+    asr._backend.cache_clear()
+    monkeypatch.setattr(config, "MLX", False)
+    assert asr._backend() is asr_ct2
+    asr._backend.cache_clear()
+    monkeypatch.setattr(config, "MLX", True)
+    assert asr._backend() is asr_mlx
+    asr._backend.cache_clear()
+
+
+def test_prompts_are_counted_like_mlx_whisper_counts_them():
+    tokenizer = pytest.importorskip("mlx_whisper.tokenizer").get_tokenizer(multilingual=True, num_languages=100)
+    for text in (PROMPT, "Ünïcödé café: 12 slashing 🐉 “quotes”", "  spaced  out  ", ""):
+        assert asr.prompt_tokens(text) == len(tokenizer.encode(" " + text.strip())), text
+
+
+class FakeWhisper:
+    """faster_whisper.WhisperModel: records where it loaded; `broken` devices fail on first use."""
+
+    broken: set[str] = set()
+    made: list[tuple[str, str, str]] = []
+
+    def __init__(self, model, device, compute_type):
+        self.device = device
+        FakeWhisper.made.append((model, device, compute_type))
+
+    def transcribe(self, audio, **kw):
+        if self.device in FakeWhisper.broken:
+            raise RuntimeError("Library libcublas.so.12 is not found")
+        seg = types.SimpleNamespace(text=" Roll initiative.", no_speech_prob=0.1, avg_logprob=-0.2)
+        return iter([seg]), None
+
+
+@pytest.fixture
+def ct2(monkeypatch):
+    """asr_ct2 with fake faster_whisper / ctranslate2 modules; returns a setter for the GPU count."""
+    gpus = [0]
+    FakeWhisper.made, FakeWhisper.broken = [], set()
+    monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=FakeWhisper))
+    monkeypatch.setitem(sys.modules, "ctranslate2", types.SimpleNamespace(get_cuda_device_count=lambda: gpus[0]))
+    monkeypatch.setattr(asr_ct2, "_loaded", None)
+    return lambda n: gpus.__setitem__(0, n)
+
+
+def test_faster_whisper_runs_int8_on_the_cpu_without_a_gpu(ct2):
+    out = asr_ct2.segments(np.zeros(16000, np.float32), "small", "A D&D session.")
+    assert out == [{"text": " Roll initiative.", "no_speech_prob": 0.1, "avg_logprob": -0.2}]
+    assert FakeWhisper.made == [("small", "cpu", "int8")]
+
+
+def test_faster_whisper_uses_the_gpu_and_falls_back_when_its_libraries_are_missing(ct2):
+    ct2(1)
+    asr_ct2.segments(np.zeros(16000, np.float32), "large-v3-turbo", None)
+    assert FakeWhisper.made == [("large-v3-turbo", "cuda", "float16")]
+    FakeWhisper.made, FakeWhisper.broken = [], {"cuda"}
+    asr_ct2.segments(np.zeros(16000, np.float32), "large-v3", None)  # another model: loaded fresh
+    assert FakeWhisper.made == [("large-v3", "cuda", "float16"), ("large-v3", "cpu", "int8")]
+
+
+def test_faster_whisper_keeps_one_model_loaded(ct2):
+    for model in ("small", "small", "large-v3-turbo", "large-v3-turbo"):
+        asr_ct2.segments(np.zeros(16000, np.float32), model, None)
+    assert [m for m, _, _ in FakeWhisper.made] == ["small", "large-v3-turbo"]
 
 
 @pytest.mark.parametrize(

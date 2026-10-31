@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, StringConstraints
+from troubadour.core import config
 from troubadour.server import deps
 from troubadour.server.models import CampaignJob
 from troubadour.sound import tts
@@ -29,8 +30,14 @@ class ReadIn(BaseModel):
 
 @router.get("/api/clones")
 def clones():
-    """Built voices and speech profiles by player id, and every clip made with them (newest first)."""
-    return {"voices": deps.engine.clones.voices(), "profiles": deps.engine.clones.profiles(), "clips": deps.engine.clones.clips()}
+    """Built voices and speech profiles by player id, every clip made with them (newest first), and whether
+    voice clones run on this machine (MLX: Apple Silicon only)."""
+    return {
+        "voices": deps.engine.clones.voices(),
+        "profiles": deps.engine.clones.profiles(),
+        "clips": deps.engine.clones.clips(),
+        "available": config.VOICE_CLONES,
+    }
 
 
 @router.post("/api/players/{pid}/profile", status_code=202, response_model=CampaignJob)

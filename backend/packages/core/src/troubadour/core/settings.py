@@ -11,17 +11,22 @@ from urllib.parse import urlparse
 from . import config, providers
 from .fsutil import write_atomic
 
-WHISPER_TURBO = "mlx-community/whisper-large-v3-turbo"
-WHISPER_LARGE = "mlx-community/whisper-large-v3-mlx"
 SPEAKER_MODEL = "pyannote/speaker-diarization-community-1"
 
 # Shown in the menu. A saved id that is not in this list is still kept. Labels name the exact weights:
 # both MLX conversions are unquantized fp16 (809M × 2 B ≈ 1.6 GB and 1.55B × 2 B ≈ 3.1 GB on disk).
-WHISPER_OPTIONS = (
-    {"id": WHISPER_TURBO, "label": "Whisper large-v3-turbo · 809M params · fp16 MLX (faster, live)"},
-    {"id": WHISPER_LARGE, "label": "Whisper large-v3 · 1.55B params · fp16 MLX (slower)"},
+MLX_OPTIONS = (
+    {"id": "mlx-community/whisper-large-v3-turbo", "label": "Whisper large-v3-turbo · 809M params · fp16 MLX (faster, live)"},
+    {"id": "mlx-community/whisper-large-v3-mlx", "label": "Whisper large-v3 · 1.55B params · fp16 MLX (slower)"},
 )
-# Only the pipeline's speaker-embedding model runs (voices.py); its weights are fp32 PyTorch on MPS.
+# faster-whisper (CTranslate2) runs fp16 on an NVIDIA GPU and int8 on the CPU (asr_ct2.py).
+CT2_OPTIONS = (
+    {"id": "large-v3-turbo", "label": "Whisper large-v3-turbo · 809M params · faster-whisper (live)"},
+    {"id": "large-v3", "label": "Whisper large-v3 · 1.55B params · faster-whisper (slower)"},
+    {"id": "small", "label": "Whisper small · 244M params · faster-whisper (for a slow CPU; misses more names)"},
+)
+WHISPER_OPTIONS = MLX_OPTIONS if config.MLX else CT2_OPTIONS
+# Only the pipeline's speaker-embedding model runs (voices.py); its weights are fp32 PyTorch.
 SPEAKER_LABEL = "WeSpeaker ResNet34 (256-d voiceprints, from pyannote community-1) · fp32 PyTorch"
 
 _KEYS = ("whisper", "whisper_improve", "llm", "memory")

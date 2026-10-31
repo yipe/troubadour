@@ -91,7 +91,12 @@ export function VoiceCloneDialog({
 
           <SpeechProfile player={player} profile={profile} job={latest("profile")} />
 
-          {player.clone_ok && (
+          {player.clone_ok && clones?.available === false && (
+            <p className="text-13 text-ink-muted">
+              Voice clones need a Mac with Apple Silicon. The speech profile above works here.
+            </p>
+          )}
+          {player.clone_ok && clones?.available !== false && (
             <div className="flex flex-col gap-4">
               {player.trained ? (
                 <BuildVoice player={player} voice={voice} job={building} blocked={blocked} />

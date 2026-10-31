@@ -1,21 +1,26 @@
-"""Speech-to-text for one utterance (mlx-whisper).
+"""Speech-to-text for one utterance: Whisper on MLX (Apple Silicon, asr_mlx.py) or faster-whisper
+(everywhere else, asr_ct2.py). This module holds what both share: the prompt and the checks on the result.
 
 Calls are serialized: an abandoned session's worker can still be mid-utterance
-when the next session's worker starts, and mlx-whisper isn't meant to run twice
+when the next session's worker starts, and neither backend is meant to run twice
 at once.
 """
 
+import base64
 import functools
 import re
 import threading
 import unicodedata
+from pathlib import Path
+from types import ModuleType
 
 import numpy as np
+from troubadour.core import config
 from troubadour.core.config import SR
 from troubadour.core.settings import current as model_settings
 
-# One MLX model runs at a time: Whisper here, the voice-clone models in tts.py.
-mlx_lock = threading.Lock()
+# One audio model runs at a time: Whisper here, the voice-clone models in tts.py.
+model_lock = threading.Lock()
 
 # Whisper's stock outputs for noise / silence (YouTube outros and subtitle credits).
 HALLUCINATIONS = {
@@ -40,15 +45,20 @@ PROMPT_HEAD, PROMPT_TAIL = "A D&D session.", "Initiative, perception check, savi
 
 
 @functools.cache
-def _tokenizer():
-    from mlx_whisper.tokenizer import get_tokenizer
+def _encoding():
+    """Whisper's multilingual vocabulary (every model the menus list), shipped with the package so prompts
+    are counted the same on every backend without loading a model. From openai/whisper (MIT)."""
+    import tiktoken
 
-    return get_tokenizer(multilingual=True, num_languages=100)  # large-v3 and turbo
+    lines = Path(__file__).with_name("whisper-multilingual.tiktoken").read_text().splitlines()
+    ranks = {base64.b64decode(token): int(rank) for token, rank in (line.split() for line in lines if line)}
+    pattern = r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    return tiktoken.Encoding(name="whisper-multilingual", pat_str=pattern, mergeable_ranks=ranks, special_tokens={})
 
 
 def prompt_tokens(text: str) -> int:
-    """Prompt length the way Whisper counts it (mlx_whisper encodes " " + the stripped prompt)."""
-    return len(_tokenizer().encode(" " + text.strip()))
+    """Prompt length the way Whisper counts it (it encodes " " + the stripped prompt)."""
+    return len(_encoding().encode_ordinary(" " + text.strip()))
 
 
 def build_prompt(names: list[str], lines: list[str], context_tokens: int = CONTEXT_TOKENS) -> str:
@@ -85,27 +95,22 @@ def prompt_names(first: list[str], glossary: list[str], recent: list[str], nickn
     return list(dict.fromkeys(n for n in (*first, *said, *glossary) if n))
 
 
-def _run(audio: np.ndarray, prompt: str | None, model: str | None = None) -> str:
-    import mlx_whisper
+@functools.cache
+def _backend() -> ModuleType:
+    if config.MLX:
+        from . import asr_mlx as backend
+    else:
+        from . import asr_ct2 as backend
+    return backend
 
-    with mlx_lock:
-        result = mlx_whisper.transcribe(
-            audio,
-            path_or_hf_repo=model or model_settings()["whisper"],
-            language="en",
-            verbose=None,
-            # Benchmarked: these stop repetition loops on trailing noise.
-            condition_on_previous_text=False,
-            word_timestamps=True,
-            hallucination_silence_threshold=1.0,
-            initial_prompt=prompt,
-        )
+
+def _run(audio: np.ndarray, prompt: str | None, model: str | None = None) -> str:
+    with model_lock:
+        result = _backend().segments(audio, model or model_settings()["whisper"], prompt)
     # Language is forced to English and every name the table uses is in Latin script: letters from
     # another script mean the segment is Whisper making things up ("образbak Waters factual").
     segments = [
-        s
-        for s in result["segments"]
-        if not (s.get("no_speech_prob", 0) > 0.6 and s.get("avg_logprob", 0) < -1.0) and not _foreign(s["text"])
+        s for s in result if not (s.get("no_speech_prob", 0) > 0.6 and s.get("avg_logprob", 0) < -1.0) and not _foreign(s["text"])
     ]
     text = " ".join(s["text"].strip() for s in segments).strip()
     return "" if text.lower().strip(" .!?,") in HALLUCINATIONS else text
@@ -151,19 +156,10 @@ def transcribe(audio: np.ndarray, prompt: str | None = None, model: str | None =
     return "" if too_fast(text, audio) else text
 
 
-# MLX's buffer cache defaults to ~all of RAM; Whisper sees a new input length every
-# utterance, so an unbounded cache creeps up over a long session. 1 GB keeps reuse.
-MLX_CACHE_LIMIT = 1 << 30
-
-
 def warm_up() -> None:
-    import mlx.core as mx
-
-    mx.set_cache_limit(MLX_CACHE_LIMIT)
+    _backend().warm_up()
     transcribe(np.zeros(16000, np.float32))
 
 
 def memory() -> dict:
-    import mlx.core as mx
-
-    return {"mlx_active_mb": mx.get_active_memory() / 2**20, "mlx_cache_mb": mx.get_cache_memory() / 2**20}
+    return _backend().memory()

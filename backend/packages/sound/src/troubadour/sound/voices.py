@@ -16,6 +16,16 @@ def normalize(v: np.ndarray) -> np.ndarray:
     return v / (np.linalg.norm(v) + 1e-9)
 
 
+def torch_device() -> str:
+    """Where the speaker embedder runs: an NVIDIA GPU, else Apple Silicon's GPU, else the CPU (fast enough:
+    one 256-d voiceprint per utterance)."""
+    import torch
+
+    if torch.cuda.is_available():
+        return "cuda"
+    return "mps" if torch.backends.mps.is_available() else "cpu"
+
+
 def speech_spans(audio: np.ndarray) -> list[tuple[float, float]]:
     """(start, end) seconds of speech in 16 kHz audio, by Silero. Its own model instance: the live
     session's is stateful and owned by the segmenter."""

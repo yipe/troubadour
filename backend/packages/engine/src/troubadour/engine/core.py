@@ -20,6 +20,7 @@ from troubadour.sound.audio import MicSource, list_mics, load_audio
 from troubadour.sound.voices import (
     VoiceMatcher,
     embed_span,
+    torch_device,
 )
 
 from ._library import LibraryMixin
@@ -108,7 +109,7 @@ class Engine(SessionsMixin, LibraryMixin, VoicesMixin, PipelineMixin, TrainingMi
             from silero_vad import load_silero_vad
 
             pipeline = Pipeline.from_pretrained(config.DIARIZER)
-            pipeline.to(torch.device("mps"))
+            pipeline.to(torch.device(torch_device()))
             self.embedder = pipeline._embedding
             load_silero_vad()  # warm the download/cache; each session loads its own instance
             asr.warm_up()

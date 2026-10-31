@@ -1,6 +1,9 @@
 """Runtime settings. Everything runs on this machine; override with env vars."""
 
 import os
+import platform
+import shutil
+import sys
 from pathlib import Path
 
 
@@ -34,10 +37,25 @@ MEMORY_LLM_MODEL = env("MEMORY_MODEL", "swift-qwen3.8-27b")
 # "none" suits gemma (it otherwise spends the budget thinking); gpt-oss wants "low"/"medium"/"high".
 MEMORY_REASONING = env("MEMORY_REASONING", "none")
 
-WHISPER_MODEL = env("WHISPER", "mlx-community/whisper-large-v3-turbo")
-# Re-listen (Improve transcript) only. Full large-v3, not the live turbo model.
-# TROUBADOUR_WHISPER_IMPROVE=mlx-community/whisper-large-v3-turbo keeps both passes the same.
-WHISPER_IMPROVE_MODEL = env("WHISPER_IMPROVE", "mlx-community/whisper-large-v3-mlx")
+# MLX (Whisper, voice clones) runs on Apple Silicon only. Elsewhere Whisper runs on faster-whisper (an NVIDIA
+# GPU when there is one, else the CPU) and voice clones are off. docs/adr/0011.
+MLX = sys.platform == "darwin" and platform.machine() == "arm64"
+NVIDIA = not MLX and shutil.which("nvidia-smi") is not None
+
+
+def whisper_defaults(mlx: bool, nvidia: bool) -> tuple[str, str]:
+    """(live, re-listen) Whisper for this machine. Without a GPU, large-v3-turbo (int8, 4 threads) took 0.6×
+    real time on a fast CPU, too close to falling behind a live table on an ordinary one; small took 0.3×.
+    The background re-listen can afford turbo. Off MLX the ids are faster-whisper names."""
+    if mlx:
+        return "mlx-community/whisper-large-v3-turbo", "mlx-community/whisper-large-v3-mlx"
+    return ("large-v3-turbo", "large-v3") if nvidia else ("small", "large-v3-turbo")
+
+
+WHISPER_MODEL = env("WHISPER", whisper_defaults(MLX, NVIDIA)[0])
+# Re-listen (Improve transcript) only: a bigger model than the live one where there's time for it.
+# TROUBADOUR_WHISPER_IMPROVE=<the live model> keeps both passes the same.
+WHISPER_IMPROVE_MODEL = env("WHISPER_IMPROVE", whisper_defaults(MLX, NVIDIA)[1])
 # Prompt Whisper with the campaign's names and the last few lines (measured on a real 2.6 h
 # session: word errors 12.9% → 11.0%, names spelled right 31% → 86%, same speed). TROUBADOUR_ASR_PROMPT=0: off.
 ASR_PROMPT = env("ASR_PROMPT", "1") != "0"
@@ -46,7 +64,8 @@ ASR_CONTEXT_LINES = 2
 CLEANUP = env("CLEANUP", "1") != "0"
 DIARIZER = "pyannote/speaker-diarization-community-1"  # only its speaker-embedding model is used
 # Voice clones (tts.py): Chatterbox on MLX, zero-shot from a player's Train clip; DeepFilterNet cleans
-# that clip first. Downloaded from Hugging Face on first use, then local.
+# that clip first. Downloaded from Hugging Face on first use, then local. Apple Silicon only.
+VOICE_CLONES = MLX
 TTS_MODEL = env("TTS", "mlx-community/chatterbox-multilingual-v3")
 DENOISE_MODEL = "mlx-community/DeepFilterNet-mlx"
 

@@ -39,6 +39,7 @@ frontmatter doesn't parse is shown read-only and never rewritten.
 
 import difflib
 import glob
+import gzip
 import re
 import shutil
 import threading
@@ -72,7 +73,7 @@ _BAD_NAME = re.compile(r'[\\/:*?"<>|#^\[\]\n\r\t]')
 _DICT: frozenset[str] | None = None
 
 
-# Everyday words the 1934 dictionary in /usr/share/dict doesn't have.
+# Everyday words the 1934 dictionary (web2.txt.gz) doesn't have.
 MODERN = frozenset(
     [
         "okay",
@@ -145,13 +146,12 @@ def everyday(word: str, dictionary: frozenset[str] | None = None) -> bool:
 
 
 def english() -> frozenset[str]:
-    """Lowercase English words (macOS ships /usr/share/dict/words); empty if unavailable."""
+    """Lowercase English words: Webster's Second International (1934, public domain; BSD's web2, the
+    /usr/share/dict/words macOS ships), bundled so every machine reads names the same way."""
     global _DICT
     if _DICT is None:
-        try:
-            _DICT = frozenset(Path("/usr/share/dict/words").read_text().lower().split())
-        except OSError:
-            _DICT = frozenset()
+        with gzip.open(Path(__file__).with_name("web2.txt.gz"), "rt", encoding="utf-8") as f:
+            _DICT = frozenset(f.read().lower().split())
     return _DICT
 
 

@@ -574,7 +574,7 @@ def test_models_fields_are_capped_and_whisper_comes_from_the_menu(api):
     r = client.put("/api/settings/models", json={"whisper": "someone/else"})
     assert r.status_code == 422
     assert client.put("/api/settings/models", json={"whisper_improve": "someone/else"}).status_code == 422
-    assert client.put("/api/settings/models", json={"whisper": settings.WHISPER_LARGE}).status_code == 200
+    assert client.put("/api/settings/models", json={"whisper": settings.WHISPER_OPTIONS[-1]["id"]}).status_code == 200
 
 
 def test_a_blank_scan_key_uses_the_saved_key_only_for_the_saved_server(api, monkeypatch):
