@@ -60,3 +60,4 @@ Items marked done in the git log (cn export, SessionAudioProvider in tests, Reco
 - F15: rename/merge navigation uses a one-tick 'openLater' because codex index redirects to first entry while the cache settles; proper fix in pages/codex/index.tsx.
 - FLAKE #3: a welcome-rail test failed once under load (F25's yarn check), passed on rerun.
 - F30: _concat_wav reads both recordings fully into memory (multi-GB for long sessions); stream it. Unmerge's no-hardlink fallback assumes a 44-byte WAV header. Web list treats the newest row as live while running (no live session id).
+- R1: PageHeading doesn't wrap (pages pass flex-wrap via className) — move into PageHeading. Recap card fixed 620px scrolls below ~700px. Transcript rail stacks above on phones. RailLayout has railToggleLabel + data-slot; breakpoints md 768 / lg 1024 / xl 1280; virtualized lists need definite height below lg.
