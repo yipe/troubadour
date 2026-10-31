@@ -353,6 +353,7 @@ def _assert_one_confirmed_dark_fact():
 
 def test_moving_a_suggestion_onto_an_entry_with_a_pending_twin_keeps_one_confirmed_copy(api, world):
     lore, it = _dark_fact_with_a_pending_twin_on_elara("Mudge")
+    assert it.fact is not None
     deps.vault.add_fact("Mudge", it.fact, suggested=True)
     lore._fact_action(deps.vault, it, "accept", None, "Elara", True)
     _assert_one_confirmed_dark_fact()
@@ -361,6 +362,7 @@ def test_moving_a_suggestion_onto_an_entry_with_a_pending_twin_keeps_one_confirm
 
 def test_moving_a_campaign_fact_onto_an_entry_with_a_pending_twin_keeps_one_confirmed_copy(api, world):
     lore, it = _dark_fact_with_a_pending_twin_on_elara(None)
+    assert it.fact is not None
     deps.vault.add_campaign_fact(it.fact)
     lore._fact_action(deps.vault, it, "accept", None, "Elara", True)
     _assert_one_confirmed_dark_fact()
