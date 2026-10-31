@@ -9,6 +9,7 @@ import json
 import stat
 import threading
 import time
+import types
 import unicodedata
 import uuid
 from pathlib import Path
@@ -17,9 +18,22 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-
-from troubadour import cloud, config, server
-from troubadour.cloud import AutoBackup, Cloud, CloudError, NotConnected, fingerprint, path_problem, scan
+from troubadour.cloud import backup as cloud
+from troubadour.cloud.backup import (
+    MAIN_CHECK_FAIL_TTL_S,
+    MAIN_CHECK_TIMEOUT_S,
+    AutoBackup,
+    Cloud,
+    CloudError,
+    NotConnected,
+    fingerprint,
+    path_problem,
+    scan,
+)
+from troubadour.core import config
+from troubadour.server import deps
+from troubadour.server.app import app
+from troubadour.server.routers import cloud as cloud_router
 
 SERVICE = "https://cloud.test"
 AUTH = "https://auth.test"
@@ -38,6 +52,7 @@ class FakeService:
         self.vaults: dict[str, dict] = {}
         self.snapshots: dict[str, list[dict]] = {}
         self.blobs: dict[str, bytes] = {}
+        self.messages: dict[str, str | None] = {}  # snapshot -> the commit message
         self.fail_next_commit: str | None = None  # an error code to answer the next commit with
         self.tampered: dict[str, bytes] = {}  # sha256 -> bytes served instead of the real ones
         self.rejecting: threading.Barrier | None = None
@@ -137,7 +152,9 @@ class FakeService:
                 return self.error(404, "not_found")
             listed = [f | {"url": f"https://download.test/{f['sha256']}"} for f in files]
             snap = {"id": snap_id, "parent": None, "created_at": "2026-10-17T00:00:00Z", "file_count": len(files)}
-            return httpx.Response(200, json={"snapshot": snap | {"total_bytes": 0, "message": None}, "files": listed})
+            return httpx.Response(
+                200, json={"snapshot": snap | {"total_bytes": 0, "message": self.messages.get(snap_id)}, "files": listed}
+            )
         vault_id, action = path.removeprefix("/vaults/").split("/")
         vault = self.vaults[vault_id]
         files = body["files"]
@@ -184,6 +201,7 @@ class FakeService:
             return httpx.Response(200, json={"snapshot": {"id": head, **snap, "parent": None}, "unchanged": True})
         snap_id = str(uuid.uuid4())
         self.snapshots[snap_id], vault["head_snapshot"] = files, snap_id
+        self.messages[snap_id] = body.get("message")
         return httpx.Response(200, json={"snapshot": {"id": snap_id, **snap}, "unchanged": False})
 
 
@@ -414,6 +432,9 @@ def test_disconnect_forgets_tokens_but_keeps_settings(client, service):
     client.logout()
     assert client.status("main") | {"url": None} == {
         "url": None,
+        "device": client.device,
+        "main_device": client.device,
+        "is_main": True,
         "connected": False,
         "include_transcripts": True,
         "auto_backup": True,
@@ -511,9 +532,9 @@ def test_network_failure_is_a_clean_error(tmp_path):
 def api(dirs, service, monkeypatch):
     monkeypatch.delenv("TROUBADOUR_VAULT", raising=False)
     fake = Cloud(url=SERVICE, http=httpx.Client(transport=service.transport()))
-    monkeypatch.setattr(server, "cloud", fake)
-    monkeypatch.setattr(server.engine, "campaigns", dict(server.engine.campaigns))  # restores add campaigns
-    return TestClient(server.app, base_url="http://127.0.0.1:8765")
+    monkeypatch.setattr(deps, "cloud", fake)
+    monkeypatch.setattr(deps.engine, "campaigns", dict(deps.engine.campaigns))  # restores add campaigns
+    return TestClient(app, base_url="http://127.0.0.1:8765")
 
 
 def test_api_status_and_backup_needs_connecting(api, service):
@@ -555,7 +576,7 @@ def test_api_backup_runs_as_a_job(api, service, dirs):
     job = api.post("/api/cloud/backup").json()
     assert job["kind"] == "backup"
     for _ in range(200):
-        job = next(j for j in server.memory.list_jobs() if j["id"] == job["id"])
+        job = next(j for j in deps.memory.list_jobs() if j["id"] == job["id"])
         if job["state"] in ("done", "error"):
             break
         time.sleep(0.02)
@@ -751,6 +772,21 @@ def test_restore_never_writes_outside_the_campaign_folder(client, service, vault
     assert sorted(s.split(":")[0] for s in result["skipped"]) == ["../escape.md", "People/Elara.md"]
 
 
+def test_restore_skips_entries_without_a_text_path(client, service, vault, tmp_path):
+    vault_id = backed_up(client, service, vault)
+    head = service.vaults[vault_id]["head_snapshot"]
+    service.snapshots[head] += [
+        {"path": 5, "sha256": "0" * 64, "size": 1},
+        {"path": None, "sha256": "1" * 64, "size": 1},
+        {"sha256": "2" * 64, "size": 1},
+    ]
+    fresh = tmp_path / "fresh"
+    result = client.restore(vault_id, fresh, noop)
+    assert result["restored"] >= 1
+    assert len(result["skipped"]) == 3
+    assert (fresh / "Facts.md").read_text() == "The gate opens at dawn.\n"
+
+
 def test_restore_of_unknown_or_empty_vaults(client, service, vault):
     connect(client, service)
     with pytest.raises(CloudError, match="isn't in Troubadour Cloud"):
@@ -763,7 +799,7 @@ def test_restore_of_unknown_or_empty_vaults(client, service, vault):
 
 def wait_job(job_id: str) -> dict:
     for _ in range(300):
-        job = next(j for j in server.memory.list_jobs() if j["id"] == job_id)
+        job = next(j for j in deps.memory.list_jobs() if j["id"] == job_id)
         if job["state"] in ("done", "error"):
             return job
         time.sleep(0.02)
@@ -781,7 +817,8 @@ def test_api_restore_runs_as_a_job(api, service):
     (notes / "Facts.md").unlink()
     (vault_id,) = [v["id"] for v in api.get("/api/cloud/vaults").json()]
     assert api.post("/api/cloud/restore", json={"vault_id": "not-an-id"}).status_code == 422
-    job = wait_job(api.post("/api/cloud/restore", json={"vault_id": vault_id}).json()["id"])
+    (head,) = [v["head_snapshot"] for v in api.get("/api/cloud/vaults").json()]
+    job = wait_job(api.post("/api/cloud/restore", json={"vault_id": vault_id, "snapshot": head}).json()["id"])
     assert job["state"] == "done", job["message"]
     assert job["message"].startswith("Restored 1 files")
     assert (notes / "Facts.md").read_text() == "The gate opens at dawn.\n"
@@ -805,9 +842,39 @@ def test_api_restoring_a_campaign_from_another_mac_adds_it_to_the_picker(api, se
     assert job["state"] == "done", job["message"]
     assert job["title"] == "The Sunken Gate"
     state = api.get("/api/state").json()
-    assert {"id": "c0123456789", "name": "The Sunken Gate"} in state["campaigns"]
+    assert {"id": "c0123456789", "name": "The Sunken Gate", "table_name": ""} in state["campaigns"]
     assert state["campaign"] == "main"  # restoring doesn't switch campaigns
     assert (config.DATA_DIR / "campaigns" / "c0123456789" / "Facts.md").read_text() == "The gate opens at dawn.\n"
+
+
+def test_api_bring_to_this_mac_refuses_a_campaign_this_mac_already_has(api, service):
+    vault = _backed_up_vault(api, service)
+    deps.engine.adopt_campaign("c0123456789", "The Sunken Gate")  # already here, not the open one
+    local = config.DATA_DIR / "campaigns" / "c0123456789"
+    local.mkdir(parents=True, exist_ok=True)
+    (local / "Facts.md").write_text("Newer notes on this Mac.\n")
+    vault["campaign_id"], vault["name"] = "c0123456789", "The Sunken Gate"
+    job = wait_job(api.post("/api/cloud/restore", json={"vault_id": vault["id"]}).json()["id"])
+    assert job["state"] == "error"
+    assert "already on this Mac" in job["message"]
+    assert (local / "Facts.md").read_text() == "Newer notes on this Mac.\n"
+
+
+def test_api_bring_to_this_mac_refuses_the_open_campaign_too(api, service):
+    """Both Macs' first campaign is `main`: bringing the other Mac's `main` here must not replace the open one."""
+    vault = _backed_up_vault(api, service)
+    assert vault["campaign_id"] == "main"
+    (config.vault_dir() / "Facts.md").write_text("Newer notes on this Mac.\n")
+    job = wait_job(api.post("/api/cloud/restore", json={"vault_id": vault["id"]}).json()["id"])
+    assert job["state"] == "error"
+    assert "already on this Mac" in job["message"]
+    assert (config.vault_dir() / "Facts.md").read_text() == "Newer notes on this Mac.\n"
+    # Naming the restore point is the deliberate way to put a backup over the open campaign.
+    job = wait_job(
+        api.post("/api/cloud/restore", json={"vault_id": vault["id"], "snapshot": vault["head_snapshot"]}).json()["id"]
+    )
+    assert job["state"] == "done", job["message"]
+    assert (config.vault_dir() / "Facts.md").read_text() == "The gate opens at dawn.\n"
 
 
 def test_api_restore_refuses_a_campaign_id_that_could_name_another_folder(api, service):
@@ -871,8 +938,81 @@ def test_api_automatic_failure_is_quiet_but_remembered(api, service):
     notes.mkdir(parents=True, exist_ok=True)
     (notes / "Facts.md").write_text("The gate opens at dawn.\n")
     service.fail_next_commit = "quota_exceeded"
-    cid, name, root = server._open_campaign()
-    job = wait_job(server._submit_backup(cid, name, root, automatic=True).id)
+    cid, name, root = cloud_router._open_campaign()
+    job = wait_job(cloud_router._submit_backup(cid, name, root, automatic=True).id)
     assert job["state"] == "done"  # no red chip in the header
     assert job["message"].startswith("Automatic backup didn't run")
     assert api.get("/api/cloud").json()["last_error"]["message"] == "quota_exceeded"
+
+
+# ---------------------------------------------------------------- the main-device check when the cloud is down
+
+
+class Outage:
+    """Wraps the fake service: while `down`, every request fails; records each request's timeouts."""
+
+    def __init__(self, service):
+        self.service, self.down, self.seen = service, False, []
+
+    def __call__(self, request):
+        self.seen.append((request.method, str(request.url), request.extensions.get("timeout")))
+        if self.down:
+            raise httpx.ConnectError("unreachable", request=request)
+        return self.service.handle(request)
+
+    def vault_requests(self):
+        return [u for _, u, _ in self.seen if u.endswith("/api/v1/vaults")]
+
+
+@pytest.fixture
+def outage(client, service, vault):
+    wrapper = Outage(service)
+    clock = types.SimpleNamespace(t=1000.0)
+    client.http = httpx.Client(transport=httpx.MockTransport(wrapper))
+    client.clock = lambda: clock.t
+    connect(client, service)
+    client.backup("main", "The Sunken Gate", vault, noop)
+    client._vault_list = None  # as after a restart: the next status() asks the service
+    wrapper.seen.clear()
+    return wrapper, clock
+
+
+def test_a_failed_main_check_is_not_retried_on_every_status(client, outage):
+    wrapper, clock = outage
+    wrapper.down = True
+    for _ in range(5):
+        assert client.status("main")["is_main"] is True  # the last known answer
+    assert len(wrapper.vault_requests()) == 1
+    clock.t += MAIN_CHECK_FAIL_TTL_S + 1
+    client.status("main")
+    assert len(wrapper.vault_requests()) == 2
+    wrapper.down = False
+    clock.t += MAIN_CHECK_FAIL_TTL_S + 1
+    client.status("main")
+    client.status("main")
+    assert len(wrapper.vault_requests()) == 3  # recovered: the answer is cached again
+
+
+def test_the_token_refresh_inside_a_main_check_uses_the_short_timeout(client, service, outage):
+    wrapper, _ = outage
+    data = json.loads(client.path().read_text())
+    data["expires_at"] = 0  # expired: the check has to refresh first
+    client.path().write_text(json.dumps(data))
+    client.status("main")
+    (refresh,) = [t for m, u, t in wrapper.seen if u == f"{AUTH}/oauth/token"]
+    assert refresh["read"] == MAIN_CHECK_TIMEOUT_S
+
+
+def test_the_history_is_written_atomically_without_a_fixed_temp_name_and_read_once(client, service, vault, monkeypatch):
+    connect(client, service)
+    stray = client.path().with_name(".cloud_history.json.tmp")  # what a second writer on a fixed name would own
+    stray.write_text("half written")
+    reads = []
+    real = client._history_all
+    monkeypatch.setattr(client, "_history_all", lambda: (reads.append(1), real())[1])
+    client.backup("main", "The Sunken Gate", vault, noop)
+    assert stray.read_text() == "half written"
+    assert len(reads) == 1  # _record reads the file once
+    assert len(client.history("main")) == 1
+    assert stat.S_IMODE(client.path().stat().st_mode) == 0o600  # the token file stays private
+    assert sorted(p.name for p in client.path().parent.iterdir() if p.name.endswith(".tmp")) == [".cloud_history.json.tmp"]

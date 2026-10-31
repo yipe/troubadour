@@ -1,4 +1,8 @@
-from troubadour import config, settings
+import json
+import stat
+
+import pytest
+from troubadour.core import config, settings
 
 
 def test_saved_models_override_the_environment(tmp_path, monkeypatch):
@@ -31,3 +35,35 @@ def test_address_accepts_a_port_a_lan_host_or_openrouter():
         pass
     else:
         raise AssertionError("a file URL should be rejected")
+
+
+def test_whisper_ids_must_come_from_the_menu(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    with pytest.raises(ValueError, match="listed Whisper"):
+        settings.update({"whisper": "someone/else"})
+    with pytest.raises(ValueError, match="listed Whisper"):
+        settings.update({"whisper_improve": "x" * 10})
+    assert not (tmp_path / "settings.json").exists()
+    assert settings.update({"whisper_improve": settings.WHISPER_TURBO})["whisper_improve"] == settings.WHISPER_TURBO
+
+
+def test_the_active_whisper_id_is_accepted_even_when_off_the_menu(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(config, "WHISPER_MODEL", "my/env-override")
+    assert settings.update({"whisper": "my/env-override"})["whisper"] == "my/env-override"
+
+
+def test_settings_file_is_private_and_leaves_no_temp_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    settings.update({"api_key": "sk-secret"})
+    assert stat.S_IMODE((tmp_path / "settings.json").stat().st_mode) == 0o600
+    assert [p.name for p in tmp_path.iterdir()] == ["settings.json"]
+
+
+def test_a_broken_settings_file_is_kept_before_a_new_one_is_written(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    (tmp_path / "settings.json").write_text('{"api_key": "sk-secret", "llm": ')
+    settings.update({"memory": "other/gemma"})
+    (kept,) = tmp_path.glob("settings.corrupt-*.json")
+    assert "sk-secret" in kept.read_text()
+    assert json.loads((tmp_path / "settings.json").read_text())["memory"] == "other/gemma"

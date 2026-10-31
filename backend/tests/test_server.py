@@ -7,9 +7,12 @@ import pytest
 from conftest import tone, write_wav
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
-
-from troubadour import config, server
+from troubadour.core import config
 from troubadour.engine import MAIN_CAMPAIGN, Campaign
+from troubadour.server import deps
+from troubadour.server.app import app
+from troubadour.server.routers import audio as audio_router
+from troubadour.server.static import WebFiles
 
 LOCAL = "http://127.0.0.1:8765"
 HOST = {"host": "127.0.0.1:8765"}  # TestClient's WebSocket otherwise sends "testserver", which the host check refuses
@@ -23,18 +26,18 @@ def client(monkeypatch, tmp_path):
     (samples / "broken.wav").write_bytes(b"not a wav")
     monkeypatch.setattr(config, "SAMPLES_DIR", samples)
     monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
-    eng = server.engine
+    eng = deps.engine
     for d in (eng.players, eng.bench, eng.voices, eng.parked, eng._parked_vecs):
         d.clear()
     eng.campaigns, eng.campaign = {MAIN_CAMPAIGN: Campaign(MAIN_CAMPAIGN, "My campaign")}, MAIN_CAMPAIGN
-    return TestClient(server.app, base_url=LOCAL)
+    return TestClient(app, base_url=LOCAL)
 
 
 def test_state_shape(client):
     s = client.get("/api/state").json()
     assert set(s) == {"session", "campaign", "campaigns", "players", "library", "voices", "messages"}
     assert s["campaign"] == "main"
-    assert s["campaigns"] == [{"id": "main", "name": "My campaign"}]
+    assert s["campaigns"] == [{"id": "main", "name": "My campaign", "table_name": ""}]
     assert {"status", "source", "t", "llm", "asr", "training", "error", "audio_monitor"} <= set(s["session"])
 
 
@@ -45,15 +48,15 @@ def test_llm_recheck(client, monkeypatch):
         calls.append(1)
         return True
 
-    monkeypatch.setattr(server.engine.cleanup_llm, "healthy", healthy)
-    server.engine.llm_ok = False
+    monkeypatch.setattr(deps.engine.cleanup_llm, "healthy", healthy)
+    deps.engine.llm_ok = False
     try:
         body = client.post("/api/llm/recheck").json()
         assert body["ok"] is True
         assert calls == [1]
         assert client.get("/api/state").json()["session"]["llm"]["ok"] is True
     finally:
-        server.engine.llm_ok = False
+        deps.engine.llm_ok = False
 
 
 def test_audio_monitor_toggle(client):
@@ -67,7 +70,7 @@ def test_audio_monitor_toggle(client):
 
 
 def test_sources_lists_readable_wavs_only(client, monkeypatch):
-    monkeypatch.setattr(server, "list_mics", lambda: [{"name": "Mic", "default": True}])
+    monkeypatch.setattr(audio_router, "list_mics", lambda: [{"name": "Mic", "default": True}])
     s = client.get("/api/sources").json()
     assert [f["name"] for f in s["files"]] == ["scene.wav"]
     assert s["files"][0]["audio_url"] == "/api/files/scene.wav"
@@ -77,7 +80,7 @@ def test_sources_lists_readable_wavs_only(client, monkeypatch):
 def test_player_crud(client):
     p = client.post("/api/players", json={"name": "  Alice  ", "character": "Elara"}).json()
     assert p["name"] == "Alice"  # trimmed
-    assert p["color"].startswith("#")
+    assert p["color"] is None  # the class colour shows until they pick one
     r = client.patch(f"/api/players/{p['id']}", json={"is_gm": True, "color": "#00ff00"})
     assert r.json()["is_gm"] is True
     assert client.delete(f"/api/players/{p['id']}").status_code == 204
@@ -111,7 +114,7 @@ def test_avatar_can_be_cleared(client):
 
 
 def test_campaigns_switch_and_share_the_library(client, monkeypatch):
-    monkeypatch.setattr(server.memory, "busy", lambda: False)
+    monkeypatch.setattr(deps.memory, "busy", lambda: False)
     jun = client.post("/api/players", json={"name": "Jun", "character": "Auggie"}).json()
     c = client.post("/api/campaigns", json={"name": "  Sunken Crown "}).json()
     assert c["name"] == "Sunken Crown"
@@ -130,7 +133,7 @@ def test_campaigns_switch_and_share_the_library(client, monkeypatch):
 
 
 def test_campaign_validation_and_unknown_ids(client, monkeypatch):
-    monkeypatch.setattr(server.memory, "busy", lambda: False)
+    monkeypatch.setattr(deps.memory, "busy", lambda: False)
     assert client.post("/api/campaigns", json={"name": ""}).status_code == 422
     assert client.post("/api/campaigns", json={"name": "x" * 61}).status_code == 422
     assert client.post("/api/campaigns/c-nope/open").status_code == 404
@@ -140,11 +143,11 @@ def test_campaign_validation_and_unknown_ids(client, monkeypatch):
 
 
 def test_no_switching_while_campaign_jobs_run(client, monkeypatch):
-    monkeypatch.setattr(server.memory, "busy", lambda: True)
+    monkeypatch.setattr(deps.memory, "busy", lambda: True)
     c = client.post("/api/campaigns", json={"name": "B"}).json()
     r = client.post(f"/api/campaigns/{c['id']}/open")
     assert r.status_code == 400
-    assert server.engine.campaign == MAIN_CAMPAIGN
+    assert deps.engine.campaign == MAIN_CAMPAIGN
 
 
 def test_jobs_refuse_another_campaigns_session(client):
@@ -249,7 +252,7 @@ def test_web_cache_headers(tmp_path):
     from starlette.applications import Starlette
     from starlette.routing import Mount
 
-    app = Starlette(routes=[Mount("/", server.WebFiles(directory=tmp_path, html=True))])
+    app = Starlette(routes=[Mount("/", WebFiles(directory=tmp_path, html=True))])
     c = TestClient(app)
     assert c.get("/").headers["cache-control"] == "no-cache"
     assert "immutable" in c.get("/assets/index-abc.js").headers["cache-control"]
@@ -261,10 +264,16 @@ def test_web_serves_index_for_ui_routes(tmp_path):
     from starlette.applications import Starlette
     from starlette.routing import Mount
 
-    app = Starlette(routes=[Mount("/", server.WebFiles(directory=tmp_path, html=True))])
+    app = Starlette(routes=[Mount("/", WebFiles(directory=tmp_path, html=True))])
     c = TestClient(app)
     for path in ("/history", "/history/2026-10-15_193130-762b", "/campaign/St.%20Cuthbert"):
         r = c.get(path)
         assert (r.status_code, r.text, r.headers["cache-control"]) == (200, "<html>ui</html>", "no-cache")
     assert c.get("/api/nope").status_code == 404
     assert c.get("/assets/gone.js").status_code == 404
+
+
+def test_the_engine_reads_the_servers_vault():
+    # Glossary corrections, Whisper name hints, heard-as suggestions, the notebook's known names and Improve
+    # all go through engine.vault; unset, they silently run with no campaign data.
+    assert deps.engine.vault is deps.vault

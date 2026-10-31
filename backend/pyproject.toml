@@ -1,33 +1,35 @@
 [project]
-name = "troubadour"
+name = "troubadour-workspace"
 version = "0.1.0"
-description = "Live, speaker-labeled transcription of an in-person D&D table, all local"
-readme = "README.md"
-authors = [
-    { name = "Michael Margolis", email = "acct@yipe.org" }
-]
+description = "Live, speaker-labeled transcription of an in-person D&D table, all local (uv workspace root)"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.143.0",
-    "httpx>=0.28.1",
-    "mlx-audio>=0.6.3",
-    "mlx-whisper>=0.4.3",
-    "pyannote-audio>=4.0.7",
-    "pyjwt[crypto]>=2.10",
-    "pyyaml>=6.0.3",
-    "scipy>=1.18.1",
-    "silero-vad>=6.2.3",
-    "sounddevice>=0.5.6",
-    "soxr>=1.1.0",
-    "uvicorn[standard]>=0.54.0",
+    "troubadour-core",
+    "troubadour-sound",
+    "troubadour-lore",
+    "troubadour-cloud",
+    "troubadour-engine",
+    "troubadour-server",
 ]
 
-[project.scripts]
-troubadour = "troubadour:main"
-troubadour-sim = "troubadour.sim:main"
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+troubadour-core = { workspace = true }
+troubadour-sound = { workspace = true }
+troubadour-lore = { workspace = true }
+troubadour-cloud = { workspace = true }
+troubadour-engine = { workspace = true }
+troubadour-server = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "basedpyright",
+    "import-linter",
     "pytest>=8.4",
     "ruff>=0.14",
 ]
@@ -38,10 +40,6 @@ spike = [
     "pyannote-metrics>=4.1",
     "whisper-normalizer>=0.1.15",
 ]
-
-[build-system]
-requires = ["uv_build>=0.12.5,<0.13.0"]
-build-backend = "uv_build"
 
 [tool.ruff]
 line-length = 130
@@ -69,3 +67,18 @@ filterwarnings = [
     "ignore::UserWarning:torchaudio",
     "ignore::FutureWarning",
 ]
+
+[tool.importlinter]
+root_packages = ["troubadour.core", "troubadour.sound", "troubadour.lore", "troubadour.cloud", "troubadour.engine", "troubadour.server"]
+
+[[tool.importlinter.contracts]]
+name = "Layers"
+type = "layers"
+layers = ["troubadour.server", "troubadour.engine", "troubadour.cloud", "troubadour.lore | troubadour.sound", "troubadour.core"]
+
+[tool.basedpyright]
+include = ["packages", "tests"]
+exclude = ["spike", "**/__pycache__", "**/.venv"]
+typeCheckingMode = "standard"
+pythonVersion = "3.12"
+reportMissingTypeStubs = false

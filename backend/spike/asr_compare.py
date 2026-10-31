@@ -186,7 +186,7 @@ def main() -> None:
     p.add_argument("--data", type=Path, default=BACKEND / "data")
     p.add_argument("--out", type=Path)
     args = p.parse_args()
-    from troubadour.audio import load_audio
+    from troubadour.sound.audio import load_audio
 
     sdir = args.data / "sessions" / args.session
     record = json.loads((sdir / "transcript.json").read_text())

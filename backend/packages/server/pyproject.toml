@@ -1,0 +1,31 @@
+[project]
+name = "troubadour-server"
+version = "0.1.0"
+description = "Troubadour server: FastAPI app and entry point"
+requires-python = ">=3.12"
+dependencies = [
+    "troubadour-core",
+    "troubadour-sound",
+    "troubadour-lore",
+    "troubadour-cloud",
+    "troubadour-engine",
+    "fastapi>=0.143.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+troubadour = "troubadour.server.main:main"
+
+[tool.uv.sources]
+troubadour-core = { workspace = true }
+troubadour-sound = { workspace = true }
+troubadour-lore = { workspace = true }
+troubadour-cloud = { workspace = true }
+troubadour-engine = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "troubadour.server"

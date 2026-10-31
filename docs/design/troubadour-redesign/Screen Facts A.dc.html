@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <script src="data.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Facts A (ledger)" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="facts" hint-size="1440px,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:380px;flex:none;border-right:1px solid var(--color-border-default);display:flex;flex-direction:column;min-height:0">
+      <div style="padding:16px;display:flex;gap:8px;border-bottom:1px solid var(--color-border-default)">
+        <div style="flex:1;display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border:1px solid var(--color-border-default);border-radius:6px;background:var(--color-bg-surface);color:var(--color-fg-subtle);font-size:13px;white-space:nowrap"><dc-import name="Icon" n="search" s="14" hint-size="14px,14px"></dc-import>Search facts, names, quotes…</div>
+        <button style="height:36px;padding:0 12px;border-radius:6px;border:none;background:var(--color-accent-emphasis);color:var(--color-fg-on-accent);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;display:flex;gap:6px;align-items:center"><dc-import name="Icon" n="plus" s="14" hint-size="14px,14px"></dc-import>Add fact</button>
+      </div>
+      <div style="flex:1;overflow:hidden;padding:8px">
+        <sc-for list="{{ rail }}" as="g" hint-placeholder-count="3">
+          <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle);padding:12px 12px 6px">{{ g.title }}</div>
+          <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;background:{{ it.bg }};box-shadow:{{ it.ring }}">
+              <span style="width:{{ it.dw }};height:{{ it.dw }};border-radius:50%;flex:none;background:{{ it.c }}"></span>
+              <span style="flex:1;font-weight:{{ it.w }}">{{ it.t }}</span>
+              <span style="font-size:12px;color:var(--color-fg-subtle);font-variant-numeric:tabular-nums">{{ it.n }}</span>
+            </div>
+          </sc-for>
+        </sc-for>
+      </div>
+    </aside>
+    <main style="flex:1;min-width:0;padding:24px 40px;display:flex;flex-direction:column;gap:16px;min-height:0;box-sizing:border-box">
+    <div style="display:flex;align-items:flex-end;gap:16px">
+      <div style="flex:1">
+        <x-import component-from-global-scope="YipeUi.PageHeading" hint-size="300px,40px">Facts</x-import>
+        <div style="color:var(--color-fg-subtle);font-size:13px">389 things that stay true between sessions. Every one links to the moment it was said.</div>
+      </div>
+      <span style="color:var(--color-fg-subtle);font-size:13px;white-space:nowrap">Sort: newest session first</span>
+    </div>
+    <div style="flex:1;min-height:0;border:1px solid var(--color-border-default);border-radius:8px;overflow:hidden;background:var(--color-bg-surface)">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 160px 150px 140px 110px;gap:16px;padding:10px 16px;background:var(--color-bg-subtle);border-bottom:1px solid var(--color-border-default);font-family:Georgia,'Iowan Old Style',serif;font-size:14px;font-weight:700;color:var(--color-fg-muted)">
+        <span>Fact</span><span>About</span><span>Said by</span><span>Source</span><span>How sure</span>
+      </div>
+      <sc-for list="{{ facts }}" as="f" hint-placeholder-count="12">
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 160px 150px 140px 110px;gap:16px;padding:10px 16px;border-bottom:1px solid var(--color-border-default);align-items:center;background:{{ f.rowbg }}">
+          <span style="text-wrap:pretty;display:flex;flex-direction:column;gap:2px"><span>{{ f.t }}</span><sc-if value="{{ f.hist }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:var(--color-accent-fg);display:flex;gap:4px;align-items:center"><dc-import name="Icon" n="history" s="12" hint-size="12px,12px"></dc-import>Changed once · history open</span></sc-if></span>
+          <span style="display:flex;flex-direction:column;line-height:1.2"><span style="font-weight:600;color:{{ f.ac }}">{{ f.about }}</span><span style="font-size:12px;color:var(--color-fg-subtle)">{{ f.type }}</span></span>
+          <span style="display:flex;align-items:center;gap:8px"><span style="width:24px;height:24px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;background:color-mix(in oklch, {{ f.c }} 22%, var(--color-bg-surface));color:{{ f.c }};box-shadow:inset 0 0 0 1.5px {{ f.c }}">{{ f.i }}</span>{{ f.who }}</span>
+          <a href="#" style="display:flex;align-items:center;gap:6px;text-decoration:none;font-size:13px"><dc-import name="Icon" n="play" s="12" hint-size="12px,12px"></dc-import>S{{ f.s }} · <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">{{ f.at }}</span></a>
+          <span><span style="font-size:12px;padding:2px 8px;border-radius:4px;font-weight:600;background:{{ f.cbg }};color:{{ f.cfg }};white-space:nowrap">{{ f.conf }}</span></span>
+        </div>
+        <sc-if value="{{ f.hist }}" hint-placeholder-val="{{ false }}"><div style="padding:8px 16px 12px 32px;background:var(--color-bg-subtle);border-bottom:1px solid var(--color-border-default);display:flex;flex-direction:column;gap:6px"><sc-for list="{{ f.versions }}" as="v" hint-placeholder-count="2"><div style="display:flex;gap:12px;align-items:center;font-size:13px;color:{{ v.fg }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ v.dot }}"></span><span style="flex:1;text-decoration:{{ v.td }}">{{ v.v }}</span><span style="font-size:12px;color:var(--color-fg-subtle)">{{ v.who }} · {{ v.s }}</span></div></sc-for></div></sc-if>
+      </sc-for>
+    </div>
+  </main>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  componentDidMount() { if (!window.TB) { const i = setInterval(() => { if (window.TB) { clearInterval(i); this.forceUpdate(); } }, 50); } }
+  renderVals() {
+    const TB = window.TB;
+    const chip = (t, n, on) => ({ t, n, bg: on ? "var(--color-accent-subtle)" : "var(--color-bg-surface)", fg: on ? "var(--color-accent-fg)" : "var(--color-fg-muted)", bd: on ? "var(--color-accent-emphasis)" : "var(--color-border-default)", w: on ? 600 : 500 });
+    const chips = [chip("All", "389", 1), chip("NPCs", "142"), chip("Places", "88"), chip("Items", "51"), chip("Factions", "39"), chip("PCs", "69"), chip("GM stated", "", 0), chip("Party theory", ""), chip("Said by anyone", "")];
+    const facts = TB ? TB.facts.slice(0, 11).map((f, n) => Object.assign({}, f, { rowbg: n % 2 ? "var(--color-bg-surface)" : "color-mix(in oklch, var(--color-bg-surface) 70%, var(--color-bg-subtle))" })) : [];
+    const it = (t, n, c, on) => ({ t, n, c: c || "transparent", dw: c ? "10px" : "0px", bg: on ? "var(--color-bg-surface)" : "transparent", ring: on ? "inset 0 0 0 1px var(--color-accent-emphasis)" : "none", w: on ? 600 : 500 });
+    const rail = [
+      { title: "About", items: [it("Everything", "389", 0, 1), it("NPCs", "142"), it("Places", "88"), it("Items", "51"), it("Factions", "39"), it("PCs", "69")] },
+      { title: "How sure", items: [it("GM stated", "214", "var(--color-success-fg)"), it("Party theory", "98", "var(--color-warning-fg)"), it("Heard once", "77", "var(--color-fg-subtle)")] },
+      { title: "Said by", items: [it("Alex · GM and NPCs", "231", "var(--color-class-paladin)"), it("Pip · Sam", "52", "var(--color-class-bard)"), it("Velis · Maya", "44", "var(--color-class-wizard)"), it("Thessaly · Jo", "33", "var(--color-class-druid)"), it("Brann · Rin", "29", "var(--color-class-barbarian)")] }
+    ];
+    facts.forEach(x => { x.hist = x.t.includes("owes Pip"); x.versions = x.hist ? [
+      { v: "Orsa Vell owes Pip 20 gold.", who: "Pip", s: "S10 0:52:10", fg: "var(--color-fg-default)", dot: "var(--color-accent-emphasis)", td: "none" },
+      { v: "Orsa Vell owes Pip 10 gold.", who: "Pip", s: "S9 1:14:02", fg: "var(--color-fg-subtle)", dot: "var(--color-border-strong)", td: "line-through" }
+    ] : []; });
+    return { facts, rail };
+  }
+}
+</script>
+</body>
+</html>

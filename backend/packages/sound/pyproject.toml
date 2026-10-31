@@ -1,0 +1,26 @@
+[project]
+name = "troubadour-sound"
+version = "0.1.0"
+description = "Troubadour sound: audio, ASR, voices, TTS"
+requires-python = ">=3.12"
+dependencies = [
+    "troubadour-core",
+    "mlx-whisper>=0.4.3",
+    "mlx-audio>=0.6.3",
+    "pyannote-audio>=4.0.7",
+    "silero-vad>=6.2.3",
+    "sounddevice>=0.5.6",
+    "soxr>=1.1.0",
+    "scipy>=1.18.1",
+    "numpy",
+]
+
+[tool.uv.sources]
+troubadour-core = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "troubadour.sound"

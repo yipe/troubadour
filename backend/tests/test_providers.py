@@ -14,10 +14,12 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
-
-from troubadour import config, providers, server, settings
-from troubadour import memory as mem
-from troubadour.providers import Accounts, NotConnected, ProviderError
+from troubadour.core import config, providers, settings
+from troubadour.core.providers import Accounts, NotConnected, ProviderError
+from troubadour.lore import memory as mem
+from troubadour.server import deps
+from troubadour.server.app import app
+from troubadour.server.routers import llm as llm_router
 
 ISSUER = providers.OPENAI_ISSUER
 FULL_SCOPE = "chatgpt.tokens.use.direct email offline_access openid profile resource.invoke"
@@ -408,15 +410,15 @@ def test_anthropic_messages_with_a_schema_and_without(monkeypatch):
 @pytest.fixture
 def api(dirs, monkeypatch):
     fake = FakeOpenAI()
-    monkeypatch.setattr(server, "accounts", Accounts(http=httpx.Client(transport=fake.transport())))
-    monkeypatch.setattr(server, "_installed_llms", list)  # never this Mac's LM Studio
+    monkeypatch.setattr(deps, "accounts", Accounts(http=httpx.Client(transport=fake.transport())))
+    monkeypatch.setattr(deps, "_installed_llms", list)  # never this Mac's LM Studio
     events = []
-    monkeypatch.setattr(server.bus, "emit", lambda kind, data: events.append((kind, data)))
+    monkeypatch.setattr(deps.bus, "emit", lambda kind, data: events.append((kind, data)))
     # Never a real health check from these tests; record that one was asked for.
-    monkeypatch.setattr(server, "_recheck_llm_soon", lambda: events.append(("recheck", None)))
-    llms = (server.engine.cleanup_llm, server.memory.llm, server.asker.llm)
+    monkeypatch.setattr(deps, "_recheck_llm_soon", lambda: events.append(("recheck", None)))
+    llms = (deps.engine.cleanup_llm, deps.memory.llm, deps.asker.llm)
     before = [dict(vars(llm)) for llm in llms]
-    yield TestClient(server.app, base_url=LOCAL), fake, events
+    yield TestClient(app, base_url=LOCAL), fake, events
     for llm, saved in zip(llms, before, strict=True):
         vars(llm).clear()
         vars(llm).update(saved)
@@ -435,7 +437,7 @@ def test_a_provider_needs_a_sign_in_or_key_before_it_is_chosen(api):
 
 def test_chatgpt_needs_both_models_chosen(api):
     client, fake, _ = api
-    sign_in(fake, server.accounts)
+    sign_in(fake, deps.accounts)
     r = client.put("/api/settings/models", json={"provider": "openai"})  # ChatGPT has no default models
     assert r.status_code == 400
     assert "Choose both models for ChatGPT plan" in r.json()["detail"]
@@ -455,14 +457,14 @@ def test_a_key_moves_every_llm_to_the_provider_and_signing_out_brings_it_home(ap
     assert r.status_code == 200, r.text
     assert "sk-ant-secret-9876" not in r.text
     assert r.json()["provider"] == "anthropic"
-    live, memory_llm = server.engine.cleanup_llm, server.memory.llm
+    live, memory_llm = deps.engine.cleanup_llm, deps.memory.llm
     assert (live.wire, live.url, live.api_key, live.model) == (
         "anthropic",
         "https://api.anthropic.com/v1",
         "sk-ant-secret-9876",
         "claude-haiku-5-5",
     )
-    assert (memory_llm.model, server.asker.llm.model) == ("claude-big", "claude-big")
+    assert (memory_llm.model, deps.asker.llm.model) == ("claude-big", "claude-big")
     r = client.post("/api/llm/anthropic/disconnect")
     assert r.status_code == 200
     assert r.json()["revoked"] is True
@@ -486,9 +488,9 @@ def test_chatgpt_sign_in_through_the_server(api):
     assert next(p for p in events[-1][1]["providers"] if p["id"] == "openai")["account"] == "gm@example.com"
     r = client.put("/api/settings/models", json={"provider": "openai", "hosted": {"openai": {"llm": "gpt-a", "memory": "gpt-b"}}})
     assert r.status_code == 200, r.text
-    live = server.engine.cleanup_llm
+    live = deps.engine.cleanup_llm
     assert (live.wire, live.url, live.model) == ("responses", "https://api.openai.com/v1", "gpt-a")
-    assert live.token() == server.accounts.token()
+    assert live.token() == deps.accounts.token()
     assert "ChatGPT plan: not connected" in client.get("/auth/callback", params={"code": "x", "state": "nope"}).text
     assert client.post("/api/llm/deepseek/connect").status_code == 404  # a key, not a sign-in
 
@@ -503,7 +505,7 @@ def test_rescan_asks_the_typed_local_server_for_its_models(api, monkeypatch):
             raise httpx.ConnectError("refused")
         return httpx.Response(200, json={"data": [{"id": "qwen3.8-27b"}, {"id": 7}, {"id": "gemma-4-26b"}]})
 
-    monkeypatch.setattr(server.httpx, "get", get)
+    monkeypatch.setattr(llm_router.httpx, "get", get)
     r = client.post("/api/llm/local/models", json={"llm_url": "1235", "api_key": " k1 "})
     assert r.status_code == 200
     body = r.json()
@@ -526,7 +528,7 @@ def test_local_servers_lists_the_usual_ports_and_which_answer(api, monkeypatch):
             return httpx.Response(500)
         raise httpx.ConnectError("refused")
 
-    monkeypatch.setattr(server.httpx, "get", get)
+    monkeypatch.setattr(llm_router.httpx, "get", get)
     rows = {r["port"]: r for r in client.get("/api/llm/local/servers").json()}
     assert rows[8000] == {"port": 8000, "name": "MTPLX / vLLM", "url": "http://127.0.0.1:8000/v1", "running": True, "models": 2}
     assert (rows[11434]["running"], rows[1234]["running"]) == (False, False)
@@ -538,9 +540,48 @@ def test_the_write_up_model_can_use_another_local_server(api):
     r = client.put("/api/settings/models", json={"llm_url": "1235", "memory_url": "8000", "llm": "gemma", "memory": "qwen"})
     assert r.status_code == 200, r.text
     assert r.json()["memory_url"] == "http://127.0.0.1:8000/v1"
-    assert (server.engine.cleanup_llm.url, server.engine.cleanup_llm.model) == ("http://127.0.0.1:1235/v1", "gemma")
-    assert (server.memory.llm.url, server.memory.llm.model) == ("http://127.0.0.1:8000/v1", "qwen")
-    assert server.asker.llm.url == "http://127.0.0.1:8000/v1"
+    assert (deps.engine.cleanup_llm.url, deps.engine.cleanup_llm.model) == ("http://127.0.0.1:1235/v1", "gemma")
+    assert (deps.memory.llm.url, deps.memory.llm.model) == ("http://127.0.0.1:8000/v1", "qwen")
+    assert deps.asker.llm.url == "http://127.0.0.1:8000/v1"
     client.put("/api/settings/models", json={"memory_url": ""})  # auto: the live-spelling server again
-    assert server.memory.llm.url == "http://127.0.0.1:1235/v1"
+    assert deps.memory.llm.url == "http://127.0.0.1:1235/v1"
     assert client.put("/api/settings/models", json={"memory_url": "ftp://x"}).status_code == 400
+
+
+def test_the_api_key_is_never_sent_back_and_an_empty_one_keeps_it(api):
+    client, _, _ = api
+    r = client.put("/api/settings/models", json={"llm_url": "1235", "api_key": "lm-secret-123"})
+    assert r.status_code == 200, r.text
+    assert "lm-secret-123" not in r.text
+    assert (r.json()["has_api_key"], "api_key" in r.json()) == (True, False)
+    got = client.get("/api/settings/models")
+    assert "lm-secret-123" not in got.text
+    assert got.json()["has_api_key"] is True
+    # Saving the form without retyping the key keeps it, and it still reaches the live model.
+    assert client.put("/api/settings/models", json={"api_key": "", "llm": "gemma"}).json()["has_api_key"] is True
+    assert settings.current()["api_key"] == "lm-secret-123"
+    assert deps.engine.cleanup_llm.api_key == "lm-secret-123"
+    assert client.put("/api/settings/models", json={"api_key": "new-key"}).status_code == 200
+    assert settings.current()["api_key"] == "new-key"
+
+
+def test_models_fields_are_capped_and_whisper_comes_from_the_menu(api):
+    client, _, _ = api
+    for field in ("whisper", "whisper_improve", "llm", "memory"):
+        assert client.put("/api/settings/models", json={field: "x" * 201}).status_code == 422, field
+    assert client.put("/api/settings/models", json={"llm_url": "1" * 301}).status_code == 422
+    assert client.put("/api/settings/models", json={"api_key": "k" * 401}).status_code == 422
+    r = client.put("/api/settings/models", json={"whisper": "someone/else"})
+    assert r.status_code == 422
+    assert client.put("/api/settings/models", json={"whisper_improve": "someone/else"}).status_code == 422
+    assert client.put("/api/settings/models", json={"whisper": settings.WHISPER_LARGE}).status_code == 200
+
+
+def test_a_blank_scan_key_uses_the_saved_key_only_for_the_saved_server(api, monkeypatch):
+    client, _, _ = api
+    client.put("/api/settings/models", json={"llm_url": "1235", "api_key": "lm-secret-123"})
+    seen = []
+    monkeypatch.setattr(deps, "_scan_llms", lambda url, key: (seen.append((url, key)) or [], None))
+    client.post("/api/llm/local/models", json={"llm_url": "1235"})
+    client.post("/api/llm/local/models", json={"llm_url": "http://10.0.0.8:1234/v1"})
+    assert seen == [("http://127.0.0.1:1235/v1", "lm-secret-123"), ("http://10.0.0.8:1234/v1", "")]

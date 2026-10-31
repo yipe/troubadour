@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Models and privacy" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="" hint-size="1440px,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:260px;flex:none;border-right:1px solid var(--color-border-default);padding:24px 14px;display:flex;flex-direction:column;gap:2px;box-sizing:border-box">
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle);padding:0 10px 10px">Settings</div>
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="6">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;background:{{ n.bg }};color:{{ n.fg }};font-weight:{{ n.w }}"><dc-import name="Icon" n="{{ n.ic }}" s="16" hint-size="16px,16px"></dc-import>{{ n.t }}</div>
+      </sc-for>
+    </aside>
+    <main style="flex:1;min-width:0;overflow:hidden;padding:28px 48px;display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:32px">
+      <section style="display:flex;flex-direction:column;gap:18px">
+        <div>
+          <x-import component-from-global-scope="YipeUi.PageHeading" hint-size="300px,40px">Models &amp; privacy</x-import>
+          <div style="color:var(--color-fg-subtle);font-size:13px">Where each part of Troubadour runs. Audio and voices never leave this Mac.</div>
+        </div>
+        <sc-for list="{{ fixed }}" as="f" hint-placeholder-count="2">
+          <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:8px;background:var(--color-bg-surface);border:1px solid var(--color-border-default)">
+            <div style="width:36px;height:36px;border-radius:8px;background:var(--color-bg-elevated);display:flex;align-items:center;justify-content:center"><dc-import name="Icon" n="{{ f.ic }}" s="18" hint-size="18px,18px"></dc-import></div>
+            <div style="flex:1"><div style="font-weight:600">{{ f.t }}</div><div style="font-size:12px;color:var(--color-fg-subtle)">{{ f.d }}</div></div>
+            <span style="font-size:12px;padding:2px 8px;border-radius:4px;background:var(--color-success-bg);color:var(--color-success-fg);font-weight:600;display:flex;gap:5px;align-items:center"><dc-import name="Icon" n="lock" s="11" hint-size="11px,11px"></dc-import>Local only</span>
+          </div>
+        </sc-for>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+          <div style="display:flex;align-items:baseline"><span style="font-weight:700">Notes, write-ups and answers</span><span style="margin-left:auto;font-size:12px;color:var(--color-fg-subtle)">Needs a language model</span></div>
+          <sc-for list="{{ llms }}" as="m" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;border-radius:8px;background:var(--color-bg-surface);border:1px solid {{ m.bd }};box-shadow:{{ m.ring }}">
+              <span style="width:16px;height:16px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 {{ m.dot }} var(--color-accent-emphasis), inset 0 0 0 1.5px var(--color-border-strong)"></span>
+              <div style="flex:1"><div style="font-weight:600">{{ m.t }}</div><div style="font-size:12px;color:var(--color-fg-subtle)">{{ m.d }}</div></div>
+              <span style="font-size:12px;color:{{ m.sc }};font-weight:600">{{ m.s }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+      <aside style="display:flex;flex-direction:column;gap:16px;padding-top:56px">
+        <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;overflow:hidden">
+          <div style="padding:12px 16px;border-bottom:1px solid var(--color-border-default);font-weight:700">What leaves this Mac</div>
+          <sc-for list="{{ leaves }}" as="l" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--color-border-subtle);font-size:13px"><span style="width:18px;font-weight:700;color:{{ l.c }}">{{ l.m }}</span><span style="flex:1">{{ l.t }}</span><span style="color:var(--color-fg-subtle);font-size:12px">{{ l.v }}</span></div>
+          </sc-for>
+        </div>
+        <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:baseline"><span style="font-weight:700">Storage</span><span style="margin-left:auto;font-size:12px;color:var(--color-fg-subtle);font-family:ui-monospace,Menlo,monospace">~/troubador</span></div>
+          <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;gap:2px"><span style="width:72%;background:var(--color-accent-emphasis)"></span><span style="width:6%;background:var(--color-class-bard)"></span><span style="width:4%;background:var(--color-class-druid)"></span><span style="flex:1;background:var(--color-bg-elevated)"></span></div>
+          <div style="display:flex;gap:14px;font-size:12px;color:var(--color-fg-subtle);flex-wrap:wrap"><span>Recordings 3.1 GB</span><span>Voices 240 MB</span><span>Notes 160 MB</span></div>
+          <div style="font-size:13px;display:flex;align-items:center;gap:8px">Delete recordings after review<span style="margin-left:auto;height:28px;padding:0 10px;border-radius:6px;border:1px solid var(--color-border-default);display:flex;align-items:center;gap:6px;font-size:12px">Never<dc-import name="Icon" n="chevron-down" s="12" hint-size="12px,12px"></dc-import></span></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  renderVals() {
+    const nav = [["Models & privacy", "shield-check", 1], ["Microphone", "mic"], ["Players & voices", "users"], ["Obsidian vault", "book-open"], ["Cloud backup", "cloud"], ["Appearance", "palette"]].map(([t, ic, on]) => ({ t, ic, bg: on ? "var(--color-bg-surface)" : "transparent", fg: on ? "var(--color-fg-default)" : "var(--color-fg-muted)", w: on ? 600 : 500 }));
+    const fixed = [
+      { ic: "audio-lines", t: "Speech to text", d: "Whisper large-v3-turbo live · large-v3 for Improve transcript" },
+      { ic: "users", t: "Who’s speaking", d: "Voiceprints from pyannote, stored per player" }
+    ];
+    const llms = [
+      ["LM Studio on this Mac", "google/gemma-4-26b · 127.0.0.1:1235", "Connected", 1],
+      ["ChatGPT plan", "Use your Go, Plus or Pro subscription", "Sign in"],
+      ["OpenRouter", "Pick any hosted model", "Sign in"],
+      ["Anthropic or DeepSeek key", "Paste an API key", "Add key"]
+    ].map(([t, d, s, on]) => ({ t, d, s, sc: on ? "var(--color-success-fg)" : "var(--color-accent-fg)", bd: on ? "var(--color-accent-emphasis)" : "var(--color-border-default)", ring: on ? "0 0 0 1px var(--color-accent-emphasis)" : "none", dot: on ? "5px" : "0px" }));
+    const no = "var(--color-success-fg)";
+    const leaves = [["Audio recordings", "Never"], ["Voiceprints", "Never"], ["Transcripts & notes", "Never with a local model"], ["Questions you ask", "Never with a local model"], ["Cloud backup", "Off"]].map(([t, v]) => ({ t, v, m: "✓", c: no }));
+    return { nav, fixed, llms, leaves };
+  }
+}
+</script>
+</body>
+</html>

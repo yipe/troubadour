@@ -4,8 +4,9 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
-
-from troubadour import config, mics, server
+from troubadour.core import config
+from troubadour.server.app import app
+from troubadour.sound import mics
 
 
 def by_id(checks):
@@ -50,6 +51,14 @@ def test_measurements_add_a_check(dirs):
     assert checks[-1]["ok"] is False
 
 
+def test_an_unknown_verdict_is_described_not_a_crash(dirs):
+    measured = [{"session": "x", "started_at": 2, "verdict": "unknown", "reasons": []}]
+    checks = mics.checks({"connection": "USB", "rate": 48000}, mics.specs("Yeti GX"), measured)
+    assert checks[-1]["id"] == "measured"
+    assert checks[-1]["ok"] is None
+    assert "couldn't be judged" in checks[-1]["detail"]
+
+
 def test_corrections_win_and_measurements_are_found(dirs):
     mics.set_override("Mystery Mic 3000", {"capsule": "condenser", "patterns": ["omni"]})
     assert mics.specs("Mystery Mic 3000") == {"source": "you", "capsule": "condenser", "patterns": ["omni"]}
@@ -68,7 +77,7 @@ def test_api(dirs, monkeypatch):
         "system_devices",
         lambda: [{"name": "Yeti GX", "maker": "Logitech", "connection": "USB", "rate": 48000, "default": True}],
     )
-    client = TestClient(server.app, base_url="http://127.0.0.1:8765")
+    client = TestClient(app, base_url="http://127.0.0.1:8765")
     (gx,) = client.get("/api/mics").json()
     assert gx["specs"]["patterns"] == ["supercardioid"]
     assert by_id(gx["checks"])["around"] is False

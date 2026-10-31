@@ -1,6 +1,6 @@
 """The write-up's notes and page: what a model's reply may put on the page."""
 
-from troubadour import writeup
+from troubadour.lore import writeup
 
 
 def test_notes_keep_real_timestamps_and_drop_junk():
@@ -67,12 +67,12 @@ def test_the_writer_gets_the_notes_and_the_example_and_reads_nothing_else():
     assert llm.think is False
 
 
-def test_facts_come_back_as_pairs():
+def test_facts_come_back_as_suggestions():
     class LLM:
         def json(self, system, user, schema, max_tokens=4000, think=False, progress=None):
             return {"facts": [{"about": "Mudge", "text": "Mudge guards the bridge."}, {"about": "", "text": "x"}, "junk"]}
 
-    assert writeup.facts(LLM(), writeup.Notes()) == [("Mudge", "Mudge guards the bridge.")]
+    assert writeup.facts(LLM(), writeup.Notes()) == [writeup.Suggestion("Mudge", "Mudge guards the bridge.")]
 
 
 def test_snippets_are_the_finished_entries_of_a_reply_still_streaming():

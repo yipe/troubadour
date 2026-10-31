@@ -28,8 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from lab_llm import DEFAULT_MODEL, DEFAULT_URL, LabLLM
-
-from troubadour import memory as m
+from troubadour.lore import memory as m
 
 CACHE = Path("/tmp/writeup_score_cache")
 FACT_BATCH = 10
@@ -342,7 +341,7 @@ def score(gold_path: Path, page_path: Path, llm, spellings: str = "") -> dict:
 
 
 def vault_spellings(vault_dir: Path) -> str:
-    from troubadour.campaign import Vault
+    from troubadour.lore.campaign import Vault
 
     lines = []
     for e in Vault(vault_dir).entities():

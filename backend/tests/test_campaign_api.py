@@ -6,8 +6,9 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 from test_memory import FakeLLM
-
-from troubadour import config, server
+from troubadour.core import config
+from troubadour.server import deps
+from troubadour.server.app import app
 
 LOCAL = "http://127.0.0.1:8765"
 
@@ -16,7 +17,7 @@ LOCAL = "http://127.0.0.1:8765"
 def api(dirs, monkeypatch):
     monkeypatch.delenv("TROUBADOUR_VAULT", raising=False)
     assert str(config.vault_dir()).startswith(str(dirs[0]))  # never the real vault
-    return TestClient(server.app, base_url=LOCAL)
+    return TestClient(app, base_url=LOCAL)
 
 
 def test_entity_lifecycle(api):
@@ -28,7 +29,7 @@ def test_entity_lifecycle(api):
     assert r.json()["aliases"] == ["Elara"]
     assert api.get("/api/campaign/entities/Elara%20Moonwhisper").json()["description"] == "Ranger."
     r = api.post("/api/campaign/entities/Elara%20Moonwhisper/facts", json={"text": "Has an owl.", "suggested": True})
-    assert r.json()["suggested_facts"] == ["Has an owl."]
+    assert [f["text"] for f in r.json()["suggested_facts"]] == ["Has an owl."]
     listing = api.get("/api/campaign").json()
     assert [e["name"] for e in listing["entities"]] == ["Elara Moonwhisper"]
     assert listing["types"][0] == "pc"
@@ -41,8 +42,8 @@ def test_merge_and_campaign_facts(api):
     api.post("/api/campaign/entities", json={"name": "Cassia", "type": "npc"})
     r = api.post("/api/campaign/entities/Cassia/merge", json={"into": "Kessia"})
     assert r.json()["aliases"] == ["Cassia"]
-    assert api.post("/api/campaign/facts", json={"text": "The party is in Dallon."}).json() == ["The party is in Dallon."]
-    assert api.put("/api/campaign/facts", json={"facts": ["A", "B"]}).json() == ["A", "B"]
+    facts = api.post("/api/campaign/facts", json={"text": "The party is in Dallon."}).json()
+    assert [(f["text"], f["about"], f["confidence"]) for f in facts] == [("The party is in Dallon.", None, "once")]
 
 
 def test_campaign_names_its_obsidian_vault_by_registry_id(api, tmp_path, monkeypatch):
@@ -71,7 +72,7 @@ def test_import_runs_as_a_job(api, monkeypatch):
             }
         ]
     )
-    monkeypatch.setattr(server.memory, "llm", llm)
+    monkeypatch.setattr(deps.memory, "llm", llm)
     job = api.post("/api/campaign/import", json={"title": "Session 3", "text": "Magenta sang."}).json()
     assert job["state"] in ("queued", "running", "done")
     deadline = time.monotonic() + 5
@@ -120,7 +121,7 @@ def test_writeup_checks_its_model_before_starting(api, monkeypatch):
     folder.mkdir(parents=True)
     (folder / "transcript.json").write_text(json.dumps({"session": {"id": sid}, "messages": []}))
     (folder / "meta.json").write_text(json.dumps({"id": sid}))
-    monkeypatch.setattr(server.memory.llm, "problem", lambda: "Couldn't reach the model server at x. Is it running?")
+    monkeypatch.setattr(deps.memory.llm, "problem", lambda: "Couldn't reach the model server at x. Is it running?")
     r = api.post(f"/api/campaign/writeup/{sid}")
     assert (r.status_code, r.json()["detail"]) == (503, "Couldn't reach the model server at x. Is it running?")
     assert not any(j["kind"] == "writeup" for j in api.get("/api/campaign").json()["jobs"])

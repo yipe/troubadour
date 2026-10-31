@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <script src="data.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Live session C (notebook)" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="sessions" live="{{ true }}" hint-size="1440px,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:250px;flex:none;border-right:1px solid var(--color-border-default);padding:16px 14px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box">
+      <div style="font-weight:700;margin-bottom:2px">Session 13</div>
+      <div style="font-size:12px;color:var(--color-fg-subtle);margin-bottom:10px">Jabra Speak 710 · all local</div>
+      <sc-for list="{{ talk }}" as="p" hint-placeholder-count="5">
+        <div style="display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:6px;background:{{ p.bg }}">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:color-mix(in oklch, {{ p.c }} 22%, var(--color-bg-surface));color:{{ p.c }};box-shadow:inset 0 0 0 1.5px {{ p.c }}">{{ p.i }}</div>
+            <div style="flex:1;min-width:0;line-height:1.2"><div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.short }}</div><div style="font-size:11px;color:var(--color-fg-subtle)">{{ p.player }}</div></div>
+            <span style="font-size:12px;font-variant-numeric:tabular-nums;color:var(--color-fg-muted)">{{ p.pct }}%</span>
+          </div>
+          <div style="height:3px;border-radius:2px;background:var(--color-bg-elevated)"><div style="height:3px;border-radius:2px;width:{{ p.w }};background:{{ p.c }}"></div></div>
+        </div>
+      </sc-for>
+      <div style="padding:8px 10px;border-radius:6px;border:1px dashed var(--color-border-strong);font-size:12px;color:var(--color-fg-muted)">Voice 3 · 4 s · <a href="#" style="text-decoration:none">name it</a></div>
+      <div style="flex:1"></div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button style="height:34px;border-radius:6px;border:1px solid var(--color-border-default);background:var(--color-bg-surface);color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;white-space:nowrap"><dc-import name="Icon" n="pause" s="14" hint-size="14px,14px"></dc-import>Pause</button>
+        <button style="height:34px;border-radius:6px;border:none;background:var(--color-danger-bg);color:var(--color-danger-fg);font:inherit;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;white-space:nowrap"><dc-import name="Icon" n="square" s="14" hint-size="14px,14px"></dc-import>End session</button>
+      </div>
+    </aside>
+    <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div style="height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid var(--color-border-default);font-size:13px;color:var(--color-fg-subtle);white-space:nowrap">
+        <span style="padding:3px 8px;border-radius:4px;background:var(--color-bg-surface);color:var(--color-fg-muted)">1:12 Saltreach docks</span>
+        <dc-import name="Icon" n="chevron-right" s="14" hint-size="14px,14px"></dc-import>
+        <span style="padding:3px 8px;border-radius:4px;background:var(--color-accent-subtle);color:var(--color-accent-fg);font-weight:600">1:36 Entering the abbey</span>
+        <span style="margin-left:auto">Scenes are guessed from pauses and place names</span>
+      </div>
+      <div style="flex:1;overflow:hidden;padding:8px 20px 16px;display:flex;flex-direction:column;justify-content:flex-end">
+        <sc-for list="{{ lines }}" as="l" hint-placeholder-count="10">
+          <div style="display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;padding:5px 8px;border-radius:6px;background:{{ l.bg }};box-shadow:{{ l.ring }}">
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--color-fg-subtle);padding-top:3px">{{ l.t }}</span>
+            <div style="font-size:15px;line-height:1.55;text-wrap:pretty"><b style="color:{{ l.c }};font-weight:700">{{ l.name }}</b> <span style="color:var(--color-fg-subtle);font-size:13px">{{ l.asx }}</span> <span style="color:{{ l.fg }};font-style:{{ l.fs }}">{{ l.text }}</span></div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="padding:0 20px 16px">
+        <div style="display:flex;align-items:center;gap:8px;height:44px;padding:0 12px;border-radius:8px;border:1px solid var(--color-border-strong);background:var(--color-bg-surface)">
+          <dc-import name="Icon" n="message-circle-question" s="16" c="var(--color-accent-fg)" hint-size="16px,16px"></dc-import>
+          <span style="flex:1;color:var(--color-fg-subtle)">Ask about the campaign, or type a note to pin at 1:42…</span>
+          <span style="font-size:11px;padding:2px 6px;border-radius:4px;border:1px solid var(--color-border-strong);color:var(--color-fg-subtle)">/</span>
+        </div>
+      </div>
+    </main>
+    <aside style="width:440px;flex:none;border-left:1px solid var(--color-border-default);display:flex;flex-direction:column;min-height:0;background:var(--color-bg-subtle)">
+      <div style="padding:16px 18px 0;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:8px"><dc-import name="Icon" n="notebook-pen" s="18" c="var(--color-accent-fg)" hint-size="18px,18px"></dc-import><span style="font-weight:700;font-size:16px">Tonight’s notebook</span><span style="margin-left:auto;font-size:12px;color:var(--color-fg-subtle)">updates every few minutes</span></div>
+        <div style="display:flex;gap:18px;border-bottom:1px solid var(--color-border-default)">
+          <x-import component-from-global-scope="YipeUi.UnderlinedTab" is-active="{{ true }}" hint-size="70px,36px">Facts 4</x-import>
+          <x-import component-from-global-scope="YipeUi.UnderlinedTab" is-active="{{ false }}" hint-size="70px,36px">Names 3</x-import>
+          <x-import component-from-global-scope="YipeUi.UnderlinedTab" is-active="{{ false }}" hint-size="70px,36px">Pins 1</x-import>
+        </div>
+      </div>
+      <div style="flex:1;overflow:hidden;padding:14px 18px;display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{ facts }}" as="f" hint-placeholder-count="4">
+          <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:14px;text-wrap:pretty">{{ f.t }}</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-fg-subtle)">
+              <span style="width:8px;height:8px;border-radius:50%;background:{{ f.c }}"></span><span>{{ f.who }}</span><a href="#" style="text-decoration:none;font-family:ui-monospace,Menlo,monospace">{{ f.at }}</a>
+              <span style="padding:1px 7px;border-radius:4px;font-weight:600;background:{{ f.cbg }};color:{{ f.cfg }}">{{ f.conf }}</span>
+              <span style="margin-left:auto;display:flex;gap:4px"><span style="padding:3px 8px;border-radius:4px;background:var(--color-bg-elevated);color:var(--color-fg-default);font-weight:600">Keep</span><span style="padding:3px 6px;color:var(--color-fg-subtle)">Dismiss</span></span>
+            </div>
+          </div>
+        </sc-for>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1px dashed var(--color-border-strong);font-size:13px;color:var(--color-fg-muted)">
+          <dc-import name="Icon" n="spell-check" s="16" hint-size="16px,16px"></dc-import><span style="flex:1"><b style="color:var(--color-fg-default)">Isolde → Ysolde</b> fixed twice tonight</span><span style="color:var(--color-fg-subtle);font-size:12px">Undo</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  componentDidMount() { if (!window.TB) { const i = setInterval(() => { if (window.TB) { clearInterval(i); this.forceUpdate(); } }, 50); } }
+  renderVals() {
+    const TB = window.TB;
+    if (!TB) return { talk: [], lines: [], facts: [] };
+    const talk = TB.talk.map(p => Object.assign({}, p, { bg: p.speaking ? "var(--color-bg-surface)" : "transparent" }));
+    const hot = ["1:38:02", "1:40:31", "1:41:55"];
+    const lines = TB.lines(1).map(l => Object.assign({}, l, {
+      asx: l.as.startsWith("as ") ? l.as : "",
+      bg: hot.includes(l.t) ? "var(--color-accent-subtle)" : "transparent",
+      ring: "none",
+      fg: l.unsure ? "var(--color-fg-subtle)" : "var(--color-fg-default)", fs: l.unsure ? "italic" : "normal"
+    }));
+    const k = (t, who, c, at, key) => Object.assign({ t, who, c, at, conf: TB.conf[key].label, cbg: TB.conf[key].bg, cfg: TB.conf[key].fg });
+    const facts = [
+      k("Necromantic magic lies beneath the abbey bell’s shadow.", "Alex", TB.C.gm, "1:41:55", "gm"),
+      k("The Diamond of Ysolde is hidden in the bell clapper.", "Velis", TB.C.ve, "1:40:31", "theory"),
+      k("The tide turns at the second bell.", "Orsa Vell", TB.C.gm, "1:38:02", "gm"),
+      k("The abbey’s doors were swollen shut with seawater.", "Alex", TB.C.gm, "1:36:14", "once")
+    ];
+    return { talk, lines, facts };
+  }
+}
+</script>
+</body>
+</html>

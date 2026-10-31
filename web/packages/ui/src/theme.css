@@ -1,0 +1,127 @@
+@import "tailwindcss";
+@import "@yipe/tokens/tokens.css";
+/* Tailwind v4 only scans the app's own root; without this the classes used in this package are missing. */
+@source "./";
+
+@theme inline {
+  --color-canvas: var(--color-bg-canvas);
+  --color-surface: var(--color-bg-surface);
+  --color-sunken: var(--color-bg-subtle);
+  --color-elevated: var(--color-bg-elevated);
+
+  --color-ink: var(--color-fg-default);
+  --color-ink-muted: var(--color-fg-muted);
+  --color-ink-subtle: var(--color-fg-subtle);
+  --color-ink-on-accent: var(--color-fg-on-accent);
+
+  --color-line: var(--color-border-default);
+  --color-line-subtle: var(--color-border-subtle);
+  --color-line-strong: var(--color-border-strong);
+
+  --color-accent: var(--color-accent-fg);
+  --color-accent-strong: var(--color-accent-emphasis);
+  --color-accent-soft: var(--color-accent-subtle);
+
+  --color-success: var(--color-success-fg);
+  --color-success-soft: var(--color-success-bg);
+  --color-success-faint: var(--color-success-subtle);
+  --color-warning: var(--color-warning-fg);
+  --color-warning-soft: var(--color-warning-bg);
+  --color-warning-faint: var(--color-warning-subtle);
+  --color-danger: var(--color-danger-fg);
+  --color-danger-soft: var(--color-danger-bg);
+  --color-danger-faint: var(--color-danger-subtle);
+  --color-info: var(--color-info-fg);
+  --color-info-soft: var(--color-info-bg);
+  --color-info-faint: var(--color-info-subtle);
+
+  --color-badge: var(--color-subtle-badge-bg);
+  --color-badge-ink: var(--color-subtle-badge-fg);
+  --color-popover: var(--color-tooltip-bg);
+  --color-popover-line: var(--color-tooltip-border);
+
+  --color-legendary: var(--color-rarity-legendary);
+  --color-very-rare: var(--color-rarity-veryrare);
+  --color-rare: var(--color-rarity-rare);
+  --color-uncommon: var(--color-rarity-uncommon);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+  --font-mono: ui-monospace, Menlo, monospace;
+
+  --text-*: initial;
+  --text-11: 11px;
+  --text-12: 12px;
+  --text-13: 13px;
+  --text-14: 14px;
+  --text-14--line-height: 1.45;
+  --text-15: 15px;
+  --text-16: 16px;
+  --text-18: 18px;
+  --text-20: 20px;
+  --text-22: 22px;
+  --text-24: 24px;
+  --text-26: 26px;
+  --text-30: 30px;
+  --text-32: 32px;
+  --text-34: 34px;
+
+  --radius-badge: 4px;
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-dialog: 12px;
+
+  --shadow-popover: 0 24px 60px -16px rgba(0, 0, 0, 0.75);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  html[data-theme="light"] {
+    color-scheme: light;
+  }
+  body {
+    @apply bg-canvas font-sans text-14 text-ink;
+  }
+  ::placeholder {
+    @apply text-ink-subtle;
+  }
+  a {
+    @apply text-accent hover:text-ink;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent-strong;
+  }
+}
+
+/* Whole-line highlight when a transcript line is jumped to. */
+@keyframes flash {
+  0%,
+  60% {
+    background-color: var(--color-accent-subtle);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes speak-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.35);
+  }
+}
+
+@utility animate-flash {
+  animation: flash 2.5s ease-out;
+}
+
+@utility animate-speak-pulse {
+  animation: speak-pulse 1.4s ease-in-out infinite;
+}

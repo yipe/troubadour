@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <script src="data.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}input::placeholder{color:var(--color-fg-subtle)}</style>
+</helmet>
+<div data-screen-label="Live session prototype" style="width:1440px;height:900px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="sessions" live="{{ recording }}" hint-size="1440px,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:250px;flex:none;border-right:1px solid var(--color-border-default);padding:16px 14px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box">
+      <div style="font-weight:700;margin-bottom:2px">Session 13</div>
+      <div style="font-size:12px;color:{{ statusColor }};margin-bottom:10px;display:flex;gap:6px;align-items:center"><span style="width:7px;height:7px;border-radius:50%;background:{{ statusColor }}"></span>{{ statusText }}</div>
+      <sc-for list="{{ talk }}" as="p" hint-placeholder-count="5">
+        <div style="display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:6px;background:{{ p.bg }};box-shadow:{{ p.ring }};transition:background 200ms">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:color-mix(in oklch, {{ p.c }} 22%, var(--color-bg-surface));color:{{ p.c }};box-shadow:inset 0 0 0 1.5px {{ p.c }}">{{ p.i }}</div>
+            <div style="flex:1;min-width:0;line-height:1.2"><div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.short }}</div><div style="font-size:11px;color:var(--color-fg-subtle)">{{ p.sub }}</div></div>
+            <span style="font-size:12px;font-variant-numeric:tabular-nums;color:var(--color-fg-muted)">{{ p.pct }}%</span>
+          </div>
+          <div style="height:3px;border-radius:2px;background:var(--color-bg-elevated)"><div style="height:3px;border-radius:2px;width:{{ p.w }};background:{{ p.c }}"></div></div>
+        </div>
+      </sc-for>
+      <sc-if value="{{ voicePending }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:10px;border-radius:6px;border:1px dashed var(--color-border-strong);display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:12px;color:var(--color-fg-muted)"><b style="color:var(--color-fg-default)">Voice 3</b> · 4 s heard · who is it?</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button onClick="{{ nameNpc }}" style="font:inherit;font-size:12px;font-weight:600;padding:4px 8px;border-radius:5px;border:none;background:var(--color-accent-subtle);color:var(--color-accent-fg);cursor:pointer">Alex as NPC</button>
+            <button onClick="{{ nameMaya }}" style="font:inherit;font-size:12px;padding:4px 8px;border-radius:5px;border:1px solid var(--color-border-default);background:transparent;color:var(--color-fg-default);cursor:pointer">Maya</button>
+            <button onClick="{{ nameLater }}" style="font:inherit;font-size:12px;padding:4px 8px;border-radius:5px;border:none;background:transparent;color:var(--color-fg-subtle);cursor:pointer">Later</button>
+          </div>
+        </div>
+      </sc-if>
+      <div style="flex:1"></div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button onClick="{{ togglePause }}" style="height:34px;border-radius:6px;border:1px solid var(--color-border-default);background:var(--color-bg-surface);color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;white-space:nowrap"><dc-import name="Icon" n="{{ pauseIcon }}" s="14" hint-size="14px,14px"></dc-import>{{ pauseLabel }}</button>
+        <button onClick="{{ endSession }}" style="height:34px;border-radius:6px;border:none;background:var(--color-danger-bg);color:var(--color-danger-fg);font:inherit;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;white-space:nowrap"><dc-import name="Icon" n="square" s="14" hint-size="14px,14px"></dc-import>End session</button>
+      </div>
+    </aside>
+    <main style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+      <div style="height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid var(--color-border-default);font-size:13px;color:var(--color-fg-subtle);white-space:nowrap">
+        <span style="padding:3px 8px;border-radius:4px;background:var(--color-bg-surface);color:var(--color-fg-muted)">1:12 Saltreach docks</span>
+        <dc-import name="Icon" n="chevron-right" s="14" hint-size="14px,14px"></dc-import>
+        <span style="padding:3px 8px;border-radius:4px;background:var(--color-accent-subtle);color:var(--color-accent-fg);font-weight:600">1:36 Entering the abbey</span>
+        <span style="margin-left:auto">Lines appear every few seconds · click a fact’s time to find its line</span>
+      </div>
+      <div style="flex:1;overflow:hidden;padding:8px 20px 12px;display:flex;flex-direction:column;justify-content:flex-end">
+        <sc-for list="{{ lines }}" as="l" hint-placeholder-count="10">
+          <div style="display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;padding:5px 8px;border-radius:6px;background:{{ l.bg }};box-shadow:{{ l.ring }};transition:background 300ms">
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--color-fg-subtle);padding-top:3px">{{ l.t }}</span>
+            <div style="font-size:15px;line-height:1.55;text-wrap:pretty"><b style="color:{{ l.c }};font-weight:700">{{ l.name }}</b> <span style="color:var(--color-fg-subtle);font-size:13px">{{ l.asx }}</span> <span style="color:{{ l.fg }};font-style:{{ l.fs }}">{{ l.text }}</span></div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ speakingNow }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 8px 0 84px;font-size:12px;color:var(--color-fg-subtle)"><span style="width:6px;height:6px;border-radius:50%;background:{{ speakerColor }}"></span>{{ speakerName }} is speaking…</div>
+        </sc-if>
+      </div>
+      <sc-if value="{{ askOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="margin:0 20px 10px;background:var(--color-bg-surface);border:1px solid var(--color-border-strong);border-radius:10px;box-shadow:0 16px 40px -16px rgba(0,0,0,0.7);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--color-border-default)">
+            <dc-import name="Icon" n="message-circle-question" s="16" c="var(--color-accent-fg)" hint-size="16px,16px"></dc-import>
+            <span style="font-weight:600;flex:1">{{ askQ }}</span>
+            <button onClick="{{ closeAsk }}" style="border:none;background:transparent;color:var(--color-fg-subtle);cursor:pointer;display:flex;padding:4px"><dc-import name="Icon" n="x" s="16" hint-size="16px,16px"></dc-import></button>
+          </div>
+          <sc-if value="{{ askThinking }}" hint-placeholder-val="{{ false }}"><div style="padding:16px;color:var(--color-fg-subtle);display:flex;gap:8px;align-items:center"><dc-import name="Icon" n="loader" s="14" hint-size="14px,14px"></dc-import>Searching 13 transcripts and 214 notes on this Mac…</div></sc-if>
+          <sc-if value="{{ askDone }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+              <div style="font-size:16px;line-height:1.5;text-wrap:pretty">Orsa never said “under the bell.” Tonight she said the diamond is “beneath the tide’s tongue” <sup style="color:var(--color-accent-fg)">1</sup>, and in session 10 that the abbot keeps it “close to his voice” <sup style="color:var(--color-accent-fg)">2</sup>.</div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <button onClick="{{ jumpOrsa }}" style="text-align:left;font:inherit;font-size:13px;border:1px solid var(--color-border-default);background:var(--color-bg-subtle);color:var(--color-fg-default);border-radius:6px;padding:8px 10px;cursor:pointer;display:flex;gap:10px"><b style="color:var(--color-accent-fg)">1</b><span style="flex:1">“I said beneath the tide’s tongue…”</span><span style="color:var(--color-fg-subtle)">Orsa · S13 1:39:30</span></button>
+                <div style="font-size:13px;border:1px solid var(--color-border-default);background:var(--color-bg-subtle);border-radius:6px;padding:8px 10px;display:flex;gap:10px"><b style="color:var(--color-accent-fg)">2</b><span style="flex:1">“The abbot keeps what he stole close to his voice.”</span><span style="color:var(--color-fg-subtle)">Orsa · S10 0:51:44</span></div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+      <div style="padding:0 20px 16px">
+        <div style="display:flex;align-items:center;gap:8px;height:44px;padding:0 12px;border-radius:8px;border:1px solid {{ inputBd }};background:var(--color-bg-surface)">
+          <dc-import name="Icon" n="message-circle-question" s="16" c="var(--color-accent-fg)" hint-size="16px,16px"></dc-import>
+          <input value="{{ q }}" onChange="{{ onQ }}" onKeyDown="{{ onKey }}" onFocus="{{ onFocus }}" onBlur="{{ onBlur }}" placeholder="Ask a question (end with ?) or type a note to pin at the current time" style="flex:1;border:none;outline:none;background:transparent;color:var(--color-fg-default);font:inherit;font-size:14px"></input>
+          <span style="font-size:11px;padding:2px 6px;border-radius:4px;border:1px solid var(--color-border-strong);color:var(--color-fg-subtle)">Enter</span>
+        </div>
+      </div>
+    </main>
+    <aside style="width:440px;flex:none;border-left:1px solid var(--color-border-default);display:flex;flex-direction:column;min-height:0;background:var(--color-bg-subtle)">
+      <div style="padding:16px 18px 0;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:8px"><dc-import name="Icon" n="notebook-pen" s="18" c="var(--color-accent-fg)" hint-size="18px,18px"></dc-import><span style="font-weight:700;font-size:16px">Tonight’s notebook</span><span style="margin-left:auto;font-size:12px;color:var(--color-fg-subtle)">{{ keptText }}</span></div>
+        <div style="display:flex;gap:18px;border-bottom:1px solid var(--color-border-default)">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+            <button onClick="{{ t.go }}" style="font:inherit;font-size:14px;font-weight:{{ t.w }};color:{{ t.fg }};background:transparent;border:none;border-bottom:2px solid {{ t.line }};margin-bottom:-1px;padding:8px 2px;cursor:pointer;display:flex;gap:6px;align-items:center">{{ t.label }}<span style="font-size:11px;padding:0 6px;border-radius:999px;background:var(--color-bg-elevated);color:var(--color-fg-muted)">{{ t.n }}</span></button>
+          </sc-for>
+        </div>
+      </div>
+      <div style="flex:1;overflow:hidden;padding:14px 18px;display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{ cards }}" as="f" hint-placeholder-count="4">
+          <div style="background:var(--color-bg-surface);border:1px solid {{ f.bd }};border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;opacity:{{ f.op }}">
+            <sc-if value="{{ f.isUpdate }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;font-weight:700;color:var(--color-info-fg);display:flex;gap:6px;align-items:center"><dc-import name="Icon" n="history" s="12" hint-size="12px,12px"></dc-import>Updates a fact</div><div style="font-size:13px;color:var(--color-fg-subtle);text-decoration:line-through">{{ f.old }}</div></sc-if>
+            <div style="font-size:14px;text-wrap:pretty">{{ f.t }}</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-fg-subtle)">
+              <span style="width:8px;height:8px;border-radius:50%;background:{{ f.c }}"></span><span>{{ f.who }}</span>
+              <button onClick="{{ f.jump }}" style="font:inherit;font-size:12px;font-family:ui-monospace,Menlo,monospace;border:none;background:transparent;color:var(--color-accent-fg);cursor:pointer;padding:0">{{ f.at }}</button>
+              <span style="padding:1px 7px;border-radius:4px;font-weight:600;background:{{ f.cbg }};color:{{ f.cfg }}">{{ f.conf }}</span>
+              <span style="margin-left:auto;display:flex;gap:4px">
+                <sc-if value="{{ f.open }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ f.keep }}" style="font:inherit;font-size:12px;padding:3px 8px;border-radius:4px;border:none;background:var(--color-bg-elevated);color:var(--color-fg-default);font-weight:600;cursor:pointer">{{ f.keepLabel }}</button>
+                  <button onClick="{{ f.dismiss }}" style="font:inherit;font-size:12px;padding:3px 6px;border:none;background:transparent;color:var(--color-fg-subtle);cursor:pointer">Dismiss</button>
+                </sc-if>
+                <sc-if value="{{ f.kept }}" hint-placeholder-val="{{ false }}"><span style="color:var(--color-success-fg);font-weight:600">✓ Kept</span></sc-if>
+              </span>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}"><div style="padding:24px;text-align:center;color:var(--color-fg-subtle);font-size:13px">{{ emptyText }}</div></sc-if>
+      </div>
+    </aside>
+  </div>
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:8px;background:var(--color-tooltip-bg);border:1px solid var(--color-tooltip-border);box-shadow:0 12px 30px -10px rgba(0,0,0,0.7);font-size:13px">
+      <span>{{ toastText }}</span>
+      <sc-if value="{{ canUndo }}" hint-placeholder-val="{{ false }}"><button onClick="{{ undo }}" style="font:inherit;font-size:13px;font-weight:600;border:none;background:transparent;color:var(--color-accent-fg);cursor:pointer">Undo</button></sc-if>
+    </div>
+  </sc-if>
+  <sc-if value="{{ ended }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;background:rgba(10,11,16,0.75);display:flex;align-items:center;justify-content:center">
+      <div style="width:520px;background:var(--color-bg-surface);border:1px solid var(--color-border-strong);border-radius:12px;padding:24px;display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:24px;font-weight:700">Session 13 saved</div>
+        <div style="color:var(--color-fg-muted)">{{ endSummary }} The local model is drafting the write-up now; review it when you’re ready.</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button onClick="{{ resume }}" style="height:36px;padding:0 14px;border-radius:6px;border:1px solid var(--color-border-default);background:transparent;color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;cursor:pointer">Back to session</button>
+          <button style="height:36px;padding:0 14px;border-radius:6px;border:none;background:var(--color-accent-emphasis);color:#fff;font:inherit;font-size:13px;font-weight:600;cursor:pointer">Review later from Home</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+const EXTRA = [
+  ["1:42:20", "gm", null, "A thin, wavering hymn drifts up from somewhere below the bell."],
+  ["1:42:41", "pip", null, "Orsa, before we go down there. You still owe me twenty gold."],
+  ["1:42:58", "gm", "Captain Orsa Vell", "Fine. Twenty gold, there. Now we’re square, halfling."],
+  ["1:43:15", "br", null, "Brann starts down the stairs. Weapon out."],
+  ["1:43:30", "ve", null, "Velis sends a mote of light ahead of him."],
+  ["1:43:52", "gm", null, "The stairs end in black water. Something pale floats just under the surface."],
+  ["1:44:10", "th", null, "Thessaly wants to know if it’s breathing."],
+  ["1:44:22", "gm", null, "It isn’t. It’s a body in abbot’s robes, and it’s holding a bell clapper."]
+];
+const CARDS = [
+  { id: "f1", t: "Necromantic magic lies beneath the abbey bell’s shadow.", who: "Alex", k: "gm", at: "1:41:55", c: "gm", after: 0 },
+  { id: "f2", t: "The Diamond of Ysolde is hidden in the bell clapper.", who: "Velis", k: "theory", at: "1:40:31", c: "ve", after: 0 },
+  { id: "f3", t: "The tide turns at the second bell.", who: "Orsa Vell", k: "gm", at: "1:38:02", c: "gm", after: 0 },
+  { id: "u1", t: "Orsa Vell paid Pip back. They’re square.", old: "Orsa Vell owes Pip 20 gold.", who: "Orsa Vell", k: "gm", at: "1:42:58", c: "gm", after: 3, update: true },
+  { id: "f4", t: "A drowned abbot lies under the abbey, holding a bell clapper.", who: "Alex", k: "gm", at: "1:44:22", c: "gm", after: 8 }
+];
+const NAMES = [
+  { id: "n1", t: "The Abbot · new NPC", who: "Pip", k: "once", at: "1:39:12", c: "pip", after: 0, name: true },
+  { id: "n2", t: "Isolde → Ysolde · fixed twice tonight", who: "Velis", k: "gm", at: "1:40:31", c: "ve", after: 0, name: true, spell: true }
+];
+class Component extends DCLogic {
+  state = { shown: 0, paused: false, tab: "facts", status: {}, voice: "pending", q: "", focus: false, ask: null, askPhase: 0, hi: null, toast: null, pins: [], ended: false };
+  componentDidMount() {
+    this.wait = setInterval(() => { if (window.TB) { clearInterval(this.wait); this.forceUpdate(); } }, 50);
+    this.tick = setInterval(() => {
+      if (this.state.paused || this.state.ended) return;
+      this.setState(s => (s.shown < EXTRA.length ? { shown: s.shown + 1 } : null));
+    }, 3500);
+  }
+  componentWillUnmount() { clearInterval(this.tick); clearInterval(this.wait); clearTimeout(this.tt); clearTimeout(this.at); clearTimeout(this.ht); }
+  showToast(text, undo) { clearTimeout(this.tt); this.setState({ toast: { text, undo } }); this.tt = setTimeout(() => this.setState({ toast: null }), 4000); }
+  jump(at) { clearTimeout(this.ht); this.setState({ hi: at }); this.ht = setTimeout(() => this.setState({ hi: null }), 2500); }
+  setStatus(id, v) { this.setState(s => ({ status: Object.assign({}, s.status, { [id]: v }) })); }
+  submit() {
+    const q = this.state.q.trim();
+    if (!q) return;
+    if (q.endsWith("?")) {
+      clearTimeout(this.at);
+      this.setState({ ask: q, askPhase: 1, q: "" });
+      this.at = setTimeout(() => this.setState({ askPhase: 2 }), 1400);
+    } else {
+      const at = this.currentTime();
+      this.setState(s => ({ pins: [{ id: "p" + Date.now(), t: q, at }].concat(s.pins), q: "", tab: "pins" }));
+      this.showToast("Pinned at " + at);
+    }
+  }
+  currentTime() { const TB = window.TB; const all = TB.lines(1).length; return this.state.shown ? EXTRA[this.state.shown - 1][0] : "1:42:05"; }
+  renderVals() {
+    const TB = window.TB;
+    const S = this.state;
+    if (!TB) return { talk: [], lines: [], cards: [], tabs: [] };
+    const voiceName = S.voice === "npc" ? { name: "Alex", asx: "as Choir voice", c: TB.C.gm } : S.voice === "maya" ? { name: "Velis", asx: "", c: TB.C.ve } : null;
+    const base = TB.lines(1).map(l => Object.assign({}, l));
+    const extra = EXTRA.slice(0, S.shown).map(([t, k, ch, text]) => { const p = TB.P[k]; return { t, text, name: ch ? p.player : k === "gm" ? "Alex" : p.short, as: ch ? "as " + ch : "", c: p.c, unsure: false }; });
+    const all = base.concat(extra).slice(-14);
+    const hot = all.map(l => l.t);
+    const lines = all.map(l => {
+      const un = l.unsure && !voiceName;
+      const nm = l.unsure && voiceName ? voiceName : null;
+      const lit = S.hi === l.t;
+      return {
+        t: l.t, text: l.text, name: nm ? nm.name : l.name, c: nm ? nm.c : l.c,
+        asx: nm ? nm.asx : (l.as && l.as.startsWith("as ") ? l.as : ""),
+        bg: lit ? "var(--color-accent-subtle)" : "transparent", ring: lit ? "inset 0 0 0 1px var(--color-accent-emphasis)" : "none",
+        fg: un ? "var(--color-fg-subtle)" : "var(--color-fg-default)", fs: un ? "italic" : "normal"
+      };
+    });
+    const last = extra.length ? EXTRA[S.shown - 1][1] : "un";
+    const speakingKey = S.paused ? null : last === "un" ? (voiceName ? (S.voice === "maya" ? "ve" : "gm") : null) : last;
+    const talk = TB.talk.map(p => { const on = p.k === speakingKey; return Object.assign({}, p, { sub: p.player, bg: on ? "var(--color-bg-surface)" : "transparent", ring: on ? `inset 0 0 0 1px ${p.c}` : "none" }); });
+    const mk = c => {
+      const st = S.status[c.id];
+      const cf = TB.conf[c.k];
+      return {
+        t: c.t, old: c.old, isUpdate: !!c.update, who: c.who, at: c.at, c: TB.C[c.c], conf: c.spell ? "Spelling" : cf.label, cbg: c.spell ? "var(--color-info-bg)" : cf.bg, cfg: c.spell ? "var(--color-info-fg)" : cf.fg,
+        open: !st, kept: st === "kept", op: st === "kept" ? 0.75 : 1,
+        bd: c.update && !st ? "color-mix(in oklch, var(--color-info-fg) 40%, transparent)" : "var(--color-border-default)",
+        keepLabel: c.update ? "Keep update" : c.name && !c.spell ? "Add to codex" : c.spell ? "OK" : "Keep",
+        keep: () => { this.setStatus(c.id, "kept"); },
+        dismiss: () => { this.setStatus(c.id, "gone"); this.showToast("Dismissed", () => this.setStatus(c.id, undefined)); },
+        jump: () => this.jump(c.at)
+      };
+    };
+    const visible = list => list.filter(c => c.after <= S.shown && S.status[c.id] !== "gone").sort((a, b) => b.after - a.after);
+    const facts = visible(CARDS), names = visible(NAMES);
+    const pins = S.pins.map(p => ({ t: p.t, who: "Pinned by you", at: p.at, c: "var(--color-accent-fg)", conf: "Note", cbg: "var(--color-accent-subtle)", cfg: "var(--color-accent-fg)", open: false, kept: false, op: 1, bd: "var(--color-border-default)", isUpdate: false, jump: () => this.jump(p.at) }));
+    const cards = S.tab === "facts" ? facts.map(mk) : S.tab === "names" ? names.map(mk) : pins;
+    const tab = (id, label, n) => ({ label, n, w: S.tab === id ? 600 : 500, fg: S.tab === id ? "var(--color-fg-default)" : "var(--color-fg-subtle)", line: S.tab === id ? "var(--color-accent-emphasis)" : "transparent", go: () => this.setState({ tab: id }) });
+    const keptN = Object.values(S.status).filter(v => v === "kept").length;
+    const spk = speakingKey ? TB.P[speakingKey] : null;
+    return {
+      recording: !S.paused && !S.ended,
+      statusText: S.ended ? "Saved" : S.paused ? "Paused · not listening" : "Listening · Jabra Speak 710",
+      statusColor: S.paused || S.ended ? "var(--color-warning-fg)" : "var(--color-danger-fg)",
+      talk, lines, cards,
+      tabs: [tab("facts", "Facts", facts.length), tab("names", "Names", names.length), tab("pins", "Pins", S.pins.length)],
+      empty: cards.length === 0, emptyText: S.tab === "pins" ? "Type a note in the bar below and press Enter to pin it to the current moment." : "Nothing new yet. Facts show up a few minutes after they’re said.",
+      keptText: keptN ? keptN + " kept for review" : "kept facts go to the review",
+      voicePending: S.voice === "pending",
+      nameNpc: () => { this.setState({ voice: "npc" }); this.showToast("Voice 3 is Alex (as Choir voice). Past lines relabeled."); },
+      nameMaya: () => { this.setState({ voice: "maya" }); this.showToast("Voice 3 is Maya. Past lines relabeled."); },
+      nameLater: () => this.setState({ voice: "later" }),
+      pauseIcon: S.paused ? "play" : "pause", pauseLabel: S.paused ? "Resume" : "Pause",
+      togglePause: () => this.setState(s => ({ paused: !s.paused })),
+      endSession: () => this.setState({ ended: true }),
+      resume: () => this.setState({ ended: false }),
+      endSummary: `1:44 recorded, ${keptN} fact${keptN === 1 ? "" : "s"} kept, ${S.pins.length} pin${S.pins.length === 1 ? "" : "s"}.`,
+      ended: S.ended,
+      speakingNow: !!spk, speakerName: spk ? (speakingKey === "gm" ? "Alex" : spk.short) : "", speakerColor: spk ? spk.c : "transparent",
+      q: S.q, inputBd: S.focus ? "var(--color-accent-emphasis)" : "var(--color-border-strong)",
+      onQ: e => this.setState({ q: e.target.value }),
+      onKey: e => { if (e.key === "Enter") this.submit(); if (e.key === "Escape") this.setState({ ask: null }); },
+      onFocus: () => this.setState({ focus: true }), onBlur: () => this.setState({ focus: false }),
+      askOpen: !!S.ask, askQ: S.ask || "", askThinking: S.askPhase === 1, askDone: S.askPhase === 2,
+      closeAsk: () => this.setState({ ask: null, askPhase: 0 }),
+      jumpOrsa: () => this.jump("1:39:30"),
+      toast: !!S.toast, toastText: S.toast ? S.toast.text : "", canUndo: !!(S.toast && S.toast.undo),
+      undo: () => { if (S.toast && S.toast.undo) S.toast.undo(); this.setState({ toast: null }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

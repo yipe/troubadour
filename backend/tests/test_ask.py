@@ -7,10 +7,12 @@ import httpx
 import pytest
 from conftest import RecordingBus
 from fastapi.testclient import TestClient
-
-from troubadour import ask, config, server
-from troubadour.campaign import Vault
-from troubadour.transcript import build
+from troubadour.core import config
+from troubadour.core.transcript import build
+from troubadour.lore import ask
+from troubadour.lore.campaign import Vault
+from troubadour.server import deps
+from troubadour.server.app import app
 
 SID = "2026-10-08_193401-eebf"
 LINES = [
@@ -210,16 +212,16 @@ def test_answers_belong_to_their_campaign(setup):
 def test_ask_api(dirs, monkeypatch):
     monkeypatch.delenv("TROUBADOUR_VAULT", raising=False)
     assert str(config.vault_dir()).startswith(str(dirs[0]))  # never the real vault
-    monkeypatch.setattr(server.asker, "llm", FakeLLM())
-    monkeypatch.setattr(server.asker, "answers", {})
-    client = TestClient(server.app, base_url="http://127.0.0.1:8765")
+    monkeypatch.setattr(deps.asker, "llm", FakeLLM())
+    monkeypatch.setattr(deps.asker, "answers", {})
+    client = TestClient(app, base_url="http://127.0.0.1:8765")
     assert client.post("/api/campaign/ask", json={"question": ""}).status_code == 422
     assert client.post("/api/campaign/ask", json={"question": "x" * 501}).status_code == 422
     assert client.post("/api/campaign/ask", json={"question": "  "}).status_code == 400
     r = client.post("/api/campaign/ask", json={"question": "Who has the gem?"})
     assert r.status_code == 200
     assert r.json()["question"] == "Who has the gem?"
-    a = wait(server.asker.answers[r.json()["id"]])
+    a = wait(deps.asker.answers[r.json()["id"]])
     assert (a.state, a.answer) == ("done", ask.NOT_FOUND)  # an empty campaign
     assert client.get("/api/campaign").json()["answers"][0]["id"] == a.id
 

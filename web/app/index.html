@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" sizes="64x64" href="/favicon-64.svg" />
+    <link rel="icon" type="image/svg+xml" sizes="32x32" href="/favicon-32.svg" />
+    <title>Troubadour</title>
+    <script>
+      // Themes the page before first paint. Mirrors src/lib/theme.ts; keep the two in step.
+      try {
+        var t = localStorage.getItem("troubadour.theme")
+        if (t !== "dark" && t !== "light" && t !== "midnight") {
+          t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"
+        }
+        document.documentElement.dataset.theme = t
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

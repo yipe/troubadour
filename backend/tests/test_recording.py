@@ -9,12 +9,13 @@ import pytest
 from conftest import NullSource, tone, write_wav
 from fastapi.testclient import TestClient
 from test_engine import ALICE, BOB, named_voice
-
-from troubadour import config, server, sim
-from troubadour.audio import FRAME, Recorder, read_wav, wav_bytes
-from troubadour.config import SR
-from troubadour.engine import LiveSession, session_audio
-from troubadour.transcript import build
+from troubadour.core import config
+from troubadour.core.config import SR
+from troubadour.core.transcript import build
+from troubadour.engine import LiveSession, session_audio, sim
+from troubadour.server import deps
+from troubadour.server.app import app
+from troubadour.sound.audio import FRAME, Recorder, read_wav, wav_bytes
 
 A, B, C, D = (f"2026-10-08_1400{i:02d}-abcd" for i in range(4))
 
@@ -88,8 +89,7 @@ def test_disk_error_stops_the_recording_not_the_session(tmp_path, monkeypatch):
 
 def test_mic_records_native_audio_and_feeds_the_pipeline_16k(monkeypatch):
     import sounddevice
-
-    from troubadour.audio import MicSource
+    from troubadour.sound.audio import MicSource
 
     opened = {}
 
@@ -130,15 +130,15 @@ def test_mic_records_native_audio_and_feeds_the_pipeline_16k(monkeypatch):
 @pytest.fixture
 def mic_start(engine, monkeypatch):
     """engine.start for a 48 kHz mic, with the real segmenter; returns (tap, sink, end)."""
-    monkeypatch.setattr("troubadour.engine.keep_awake", lambda: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.keep_awake", lambda: None)
     monkeypatch.setattr(engine, "_worker_loop", lambda sess: None)
-    monkeypatch.setattr("troubadour.engine.MicSource.native_rate", lambda self: 48000)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.native_rate", lambda self: 48000)
     fed = {}
 
     def capture(self, sink, on_end):
         fed.update(tap=self.tap, sink=sink, end=on_end)
 
-    monkeypatch.setattr("troubadour.engine.MicSource.start", capture)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.start", capture)
 
     def start():
         engine.start({"kind": "mic", "device": None})
@@ -175,12 +175,12 @@ def test_recording_failure_mid_session_reaches_the_ui(engine, mic_start, monkeyp
 
 
 def test_mic_that_fails_to_open_leaves_no_recording(engine, monkeypatch):
-    monkeypatch.setattr("troubadour.engine.MicSource.native_rate", lambda self: 48000)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.native_rate", lambda self: 48000)
 
     def broken(self, sink, on_end):
         raise RuntimeError("device busy")
 
-    monkeypatch.setattr("troubadour.engine.MicSource.start", broken)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.start", broken)
     with pytest.raises(ValueError, match="Couldn't open mic"):
         engine.start({"kind": "mic", "device": None})
     assert list(engine.sessions_dir().glob("*/audio.wav")) == []
@@ -193,8 +193,8 @@ def test_recording_can_be_turned_off(engine, mic_start, monkeypatch):
 
 
 def test_file_replays_are_not_recorded(engine, dirs, monkeypatch):
-    monkeypatch.setattr("troubadour.engine.keep_awake", lambda: None)
-    monkeypatch.setattr("troubadour.engine.FileSource.start", lambda self, sink, on_end: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.keep_awake", lambda: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.FileSource.start", lambda self, sink, on_end: None)
     monkeypatch.setattr(engine, "_segment_loop", lambda sess: None)
     monkeypatch.setattr(engine, "_worker_loop", lambda sess: None)
     write_wav(dirs[1] / "scene.wav", tone(ALICE, 1.0))
@@ -255,7 +255,7 @@ def test_wav_round_trips_at_16_and_24_bits(tmp_path):
 
 def test_train_on_its_own_mic_keeps_a_lossless_full_rate_clip(engine, monkeypatch, fake_vad):
     engine.status, engine.live = "idle", None
-    monkeypatch.setattr("troubadour.engine.MicSource.native_rate", lambda self: 48000)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.native_rate", lambda self: 48000)
     native = (0.3 * np.sin(2 * np.pi * 9000 * np.arange(6 * 48000) / 48000)).astype(np.float32)  # above 16 kHz's 8 kHz limit
 
     def mic(self, sink, on_end):  # the device delivers 6 s at once; the job wants 5
@@ -264,7 +264,7 @@ def test_train_on_its_own_mic_keeps_a_lossless_full_rate_clip(engine, monkeypatc
         for frame in frames(tone(ALICE, 6)):
             sink(frame)
 
-    monkeypatch.setattr("troubadour.engine.MicSource.start", mic)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.start", mic)
     p = engine.add_player("Alice")
     engine.train(p["id"], 5)
     _train_done(engine)
@@ -308,7 +308,6 @@ def test_retrain_from_a_replay_drops_the_older_full_rate_clip(engine, fake_vad):
 
 def test_full_rate_clips_survive_a_restart_and_go_with_their_voice(engine):
     from conftest import RecordingBus
-
     from troubadour.engine import Engine
 
     p = engine.add_player("Alice")
@@ -363,6 +362,14 @@ def test_session_audio_follows_recordings_samples_and_replays(dirs):
             session_audio(bad)
 
 
+def test_a_session_with_no_recorded_source_has_no_audio(dirs):
+    folder = config.DATA_DIR / "sessions" / A
+    folder.mkdir(parents=True)
+    (folder / "meta.json").write_text(json.dumps({"id": A, "started_at": 1, "source": None}))
+    with pytest.raises(KeyError):
+        session_audio(A)
+
+
 def test_replay_stops_where_the_session_stopped(dirs):
     # A replay stopped after 30 s of a 600 s sample, then a replay of that stopped at 12 s.
     write_wav(dirs[1] / "long.wav", tone(BOB, 0.5))
@@ -375,7 +382,7 @@ def test_replay_stops_where_the_session_stopped(dirs):
 
 
 def test_file_source_honours_end(dirs):
-    from troubadour.audio import FileSource
+    from troubadour.sound.audio import FileSource
 
     path = write_wav(dirs[1] / "two.wav", tone(BOB, 2.0))
     assert len(FileSource(path, 1, end=0.5).audio) == SR // 2
@@ -384,9 +391,9 @@ def test_file_source_honours_end(dirs):
 
 def test_api_cannot_pass_end(engine, monkeypatch, dirs):
     seen = {}
-    monkeypatch.setattr(engine, "start", lambda source: seen.update(source) or {})
-    monkeypatch.setattr(server, "engine", engine)
-    client = TestClient(server.app, base_url="http://127.0.0.1:8765")
+    monkeypatch.setattr(engine, "start", lambda source, **options: seen.update(source) or engine.session_json())
+    monkeypatch.setattr(deps, "engine", engine)
+    client = TestClient(app, base_url="http://127.0.0.1:8765")
     r = client.post("/api/session/start", json={"source": {"kind": "file", "name": "x.wav", "speed": 1, "end": 1}})
     assert r.status_code == 200
     assert seen["name"] == "x.wav"  # start() was reached: the check below isn't vacuous
@@ -409,8 +416,8 @@ def test_list_sessions_says_what_can_be_replayed(engine):
 
 @pytest.fixture
 def api(engine, monkeypatch):
-    monkeypatch.setattr(server, "engine", engine)
-    return TestClient(server.app, base_url="http://127.0.0.1:8765")
+    monkeypatch.setattr(deps, "engine", engine)
+    return TestClient(app, base_url="http://127.0.0.1:8765")
 
 
 def test_replay_api(api, engine, monkeypatch):
@@ -422,8 +429,8 @@ def test_replay_api(api, engine, monkeypatch):
     start = lambda src: api.post("/api/session/start", json={"source": src})  # noqa: E731
     assert start({"kind": "session", "id": "2026-01-01_000000-ffff", "speed": 1}).status_code == 404
     assert start({"kind": "session", "id": A, "speed": 99}).status_code == 422
-    monkeypatch.setattr("troubadour.engine.keep_awake", lambda: None)
-    monkeypatch.setattr("troubadour.engine.FileSource.start", lambda self, sink, on_end: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.keep_awake", lambda: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.FileSource.start", lambda self, sink, on_end: None)
     monkeypatch.setattr(engine, "_segment_loop", lambda sess: None)
     monkeypatch.setattr(engine, "_worker_loop", lambda sess: None)
     r = start({"kind": "session", "id": A, "speed": 2})

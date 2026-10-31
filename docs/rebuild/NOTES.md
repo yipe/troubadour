@@ -1,0 +1,63 @@
+# Rebuild: orchestrator notes
+
+Carry-overs collected while merging tasks: gaps, backend follow-ups, AGENTS.md material for X2, and polish for X3.
+Items marked done in the git log (cn export, SessionAudioProvider in tests, RecordPlayer fields, norm dedupe, session_numbers, meter caption, checklist wrap, End/notebook fix, _Overview wiring, lint-imports, TheirWordsSwitch dedupe, recap refetch) are already fixed.
+
+- A1: no `clearToasts` test helper (needs sonner; api pkg can't depend on it). Belongs in app test setup.
+- A1: spec said 22 ServerEvent types; backend emits 21 (incl. train.status). Spec miscount.
+- A2: old store behaviour "snapshot of another campaign clears the open glossary entry" not ported; whoever owns campaign/glossary state (A3 bridge or codex page) must handle it.
+- U1: ui package vitest has no globals → tests need afterEach(cleanup). Could add a setupFiles in ui vitest config.
+- B4: S12 facts link to a write-up page that doesn't exist (only S1–S11 written up).
+- AGENTS.md (X2): backend/AGENTS.md + engine AGENTS.md stale paths (live.py, src/troubadour).
+- U2/U1: no visual check vs design yet (gallery not mounted until S1, shot tool W2). Do a gallery screenshot pass after S1+W2.
+- S2: legacy cloudStore/ModelsDialog sign-in callers: new pages must use lib/signIn.openSignIn. U3: notify+Toaster same file → only-export-components lint warning; Command needs ResizeObserver stub in tests.
+- A3: bridgeSocket(…, { onCampaignSwitch }) — S1 must pass a callback clearing open glossary entry/hidden rows. useCampaigns has no GET (fails before socket connects). Hooks now exported per domain (@troubadour/api/<domain>); query/ exports infra only.
+- C5: facts.py has its own copy of norm (to avoid cycle); C6 should dedupe.
+- B6: no GET /api/campaigns (useCampaigns cache-only). Recipe: pydantic model + response_model + gen + Schemas["X"] in types.ts.
+- C1: RecordPlayer (sessions/types.ts, C2-owned) needs dnd_class + color: string|null — add after C2 merges. Class label validation returns 422 (pydantic) not 400. Deleted class leaves players with unknown class id; UI must handle.
+- S1: /dev/ui loads gallery via import.meta.glob in routes.tsx because ui gallery's own ImportMeta.glob declaration collides with vite/client (TS2300). Fix in ui later. Orchestrator added tailwindcss dev+peer dep to @troubadour/ui (needed by prettier plugin).
+- C12: useCloudRestore now takes {vaultId, snapshot?}. paused_live has no push event when session ends w/o pending backup → UI should combine with session status. GET /api/cloud may call service (connected only, 3s cap, 60s cache).
+- S6: JobStatus onDismiss is caller's job (legacy dismissed map not ported). ui Progress has no aria-label prop.
+- C6: PUT /api/campaign/facts removed; EntityPatch no longer takes facts. facts.py norm dedupe still pending (one-liner). router _session_index → switch to C2's lore.pages.session_numbers.
+- S3: useSessionAudio throws without SessionAudioProvider; render.tsx doesn't mount it (orchestrator to add). S7: MicDetails (mic specs form) dropped — not in spec.
+- S3/S7: @troubadour/ui doesn't export cn → orchestrator to add "./cn" export.
+- S11: 60-char campaign name cap copied from legacy.
+- C2: session_page strips leading date from heading. Retranscribe/Improve don't update talk in meta.json (stale). present_player_ids [] = everyone.
+- S12: 'Waiting to go up' block (pending files) not built — CloudStatus has no pending-files field (backend gap). S13: old 'Back up now' in account menu dropped (chip has it).
+- F18 polish: eyebrow+h1 both 'Models & privacy' (design has eyebrow only); cards show full selects (design shows compact summary lines); no Appearance rail item. Section stubs must export Component.
+- S4: lib/record.ts loadRecord replaces null colour with palette colour — conflicts with C1 class-colour rule; fix or drop loadRecord.
+- S8: useAddClass returns unknown (C1 typing gap). LibraryPlayer has no origin-campaign field. backend/AGENTS.md stale paths misled an agent (backend/src).
+- F4: LevelMeter48 caption "Say a few words from each seat" wrong in live quality popover (fix in components/mic). Voice assign/unassign hooks wrapped locally in page (api lacks them). Notebook tab ids: facts/pins/names. highlightT null = none.
+- C7: scenes need ≥2 usable else none stored. source_line threshold 0.35.
+- C3: Engine.bind_notebook(sess) needed for sessions created without start().
+- F11: TalkShareBar typed to live Player, not RecordPlayer (widen). ::highlight style inline in page. Query retries once → error tests need ~4s findBy.
+- F22: vaults API lacks device name / last-backup time (backend gap) for "Other campaigns" rows. History lacks "retried" info.
+- FLAKE: browser tests (cloud index.browser.test) failed once right after F22 merge with 'Cannot read properties of null (reading useContext)' (duplicate React from Vite dep optimization?). Not reproducible in 4 cold-cache runs. Consider optimizeDeps.include in vitest.browser.config.ts if it recurs.
+- F9: open-suggestion count is local (suggested_facts sourced to session) — swap for C8 count. Base-ui Button as Link needs nativeButton={false}.
+- C4: NotebookLoop started from _pipeline.bind_notebook; TROUBADOUR_NOTEBOOK=0 off. No final LLM pass for lines transcribed after Stop. Tests spawn idle daemon threads.
+- C8: review.json frozen list; routers/review.py imports _Out, FactSuggestionOut, Kind, EntityName from routers/campaign.py. Kept notebook entries/spellings without suggestion aren't items.
+- F7: stop response has no session id; End reads it from notebook.session_id (fetched if not loaded).
+- F20: per-player jobs: filter useCampaign().jobs by player_id (useJob filters by kind only).
+- C9: timeline not invalidated by bridge (refetchOnMount always); entity detail key ["campaign","entity",name]. Counts from transcripts only.
+- F10: dialogs have no screenshots (shot tool can't open dialogs). Legacy bulk "merge matching sessions" not ported.
+- C10: recap sees only the wrap-up's first paragraph (pages.session_page caps 600 chars). Recap job title = session id.
+- F1: PageHeading title white vs design accent-blue on Home. No class level in API ('Bard 6'). An unidentified test flaked once under load in F1's yarn check.
+- C14: useAsk() takes {question, t?}. Answer.to_json shape == CampaignAnswer model (keep in step).
+- C13: troubadour-cloud imports lore only under TYPE_CHECKING; consider declaring the dep. PC class/player read from optional frontmatter keys.
+- FLAKE #2: S10 also saw one unidentified waitFor failure under load in yarn check. Hunt in X3 (run web tests repeatedly).
+- S10: useImportNotes job updates only via campaign.job → read job from useCampaign().data.jobs by id.
+- F12: seed scenes give almost all sessions the same places → timeline travel line is flat in demo; vary seed places. PageHeading larger than design on several pages (consider a size prop).
+- F3: "Use an existing folder" vault option disabled — backend has no endpoint to adopt a user-chosen vault folder (backend gap).
+- F21: buttonVariants not exported from @troubadour/ui/button; links as Button need role="link".
+- Home: some seed facts show "0:00" timestamps (sources without t) — render without time when t missing?
+- S5: AskAnswer transcript source avatar parses label 'who · Session N · time' (undocumented backend format). renderWithProviders rerender doesn't re-wrap providers.
+- F16: recap page has no browser shot() test for hard states. F2: localStorage key troubadour.mic (migrates bard.mic). Agents left scratch servers running twice (F11, W2) — orchestrator now sweeps ports after each wave.
+- F5: live Session has no id (treats newest saved session as current). AskAnswer's TimestampLink on a tonight source can navigate away from /sessions/live when no audio — needs onJump override in AskAnswer/TimestampLink.
+- F6: SuggestionCard has no click-only timestamp hook (F6 put a JumpButton in actions). Spelling count not shown.
+- F14: entries don't carry the session that suggested them ("suggested from S12" impossible). /codex picks first in server order.
+- F13: FactsTable windowing verified OK inside scrolling main (browser test).
+- F8: unknown-word accept always creates a 'term' (ReviewAction has no type). Entry edit links to codex. SuggestionCard entry heading/double 'Spelling' label. Rows styled via :has() on data-review (TranscriptList has no per-row class).
+- F15: rename/merge navigation uses a one-tick 'openLater' because codex index redirects to first entry while the cache settles; proper fix in pages/codex/index.tsx.
+- FLAKE #3: a welcome-rail test failed once under load (F25's yarn check), passed on rerun.
+- F30: _concat_wav reads both recordings fully into memory (multi-GB for long sessions); stream it. Unmerge's no-hardlink fallback assumes a 44-byte WAV header. Web list treats the newest row as live while running (no live session id).
+- R1: PageHeading doesn't wrap (pages pass flex-wrap via className) — move into PageHeading. Recap card fixed 620px scrolls below ~700px. Transcript rail stacks above on phones. RailLayout has railToggleLabel + data-slot; breakpoints md 768 / lg 1024 / xl 1280; virtualized lists need definite height below lg.

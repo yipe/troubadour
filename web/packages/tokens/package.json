@@ -1,0 +1,15 @@
+{
+  "name": "@yipe/tokens",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./tokens.css": "./tokens.css",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "TZ=UTC vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit",
+    "sync": "node scripts/sync.ts"
+  }
+}

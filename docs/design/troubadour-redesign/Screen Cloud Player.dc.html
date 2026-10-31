@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Troubadour Cloud player view" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <header style="height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:1px solid var(--color-border-default);white-space:nowrap">
+    <dc-import name="Icon" n="feather" s="18" c="var(--color-accent-fg)" hint-size="18px,18px"></dc-import>
+    <span style="font-family:Georgia,'Iowan Old Style',serif;font-weight:700;font-size:16px">Troubadour Cloud</span>
+    <span style="color:var(--color-fg-subtle)">/</span>
+    <span style="font-weight:600">The Sunken Crown</span>
+    <span style="font-size:12px;padding:2px 8px;border-radius:4px;background:var(--color-bg-elevated);color:var(--color-fg-muted)">Read only</span>
+    <span style="margin-left:auto;font-size:12px;color:var(--color-fg-subtle)">Synced from Alex’s MacBook Pro · 4 min ago</span>
+    <div style="display:flex;align-items:center;gap:8px;height:32px;width:260px;padding:0 10px;border:1px solid var(--color-border-default);border-radius:6px;background:var(--color-bg-surface);color:var(--color-fg-subtle);font-size:13px"><dc-import name="Icon" n="search" s="14" hint-size="14px,14px"></dc-import>Search the vault</div>
+    <div style="width:28px;height:28px;border-radius:50%;background:color-mix(in oklch, var(--color-class-bard) 22%, var(--color-bg-surface));color:var(--color-class-bard);box-shadow:inset 0 0 0 1.5px var(--color-class-bard);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">SM</div>
+  </header>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:290px;flex:none;border-right:1px solid var(--color-border-default);padding:14px 10px;display:flex;flex-direction:column;gap:2px;box-sizing:border-box;overflow:hidden">
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle);padding:4px 10px 6px;display:flex">Overview<span style="margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500">made each sync</span></div>
+      <sc-for list="{{ meta }}" as="m" hint-placeholder-count="5">
+        <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;background:{{ m.bg }};color:{{ m.fg }};font-weight:{{ m.w }}"><dc-import name="Icon" n="{{ m.ic }}" s="15" hint-size="15px,15px"></dc-import>{{ m.t }}</div>
+      </sc-for>
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle);padding:16px 10px 6px">Vault</div>
+      <sc-for list="{{ tree }}" as="f" hint-placeholder-count="10">
+        <div style="display:flex;align-items:center;gap:8px;padding:5px 10px 5px {{ f.pad }};border-radius:6px;font-size:13px;color:{{ f.fg }}"><dc-import name="Icon" n="{{ f.ic }}" s="14" c="var(--color-fg-subtle)" hint-size="14px,14px"></dc-import><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.t }}</span><span style="font-size:11px;color:var(--color-fg-subtle)">{{ f.n }}</span></div>
+      </sc-for>
+    </aside>
+    <main style="flex:1;min-width:0;overflow:hidden;padding:32px 56px;display:flex;justify-content:center">
+      <article style="width:100%;max-width:860px;display:flex;flex-direction:column;gap:22px">
+        <div>
+          <div style="font-size:12px;color:var(--color-fg-subtle)">Overview · generated Oct 22, 10:31 pm from reviewed notes</div>
+          <h1 style="margin:4px 0 0;font-family:Georgia,'Iowan Old Style',serif;font-size:34px">Campaign overview</h1>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px">
+          <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle)">Last time · Session 12</div>
+            <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:20px;font-weight:700">The Drowned Abbey</div>
+            <p style="margin:0;color:var(--color-fg-muted);font-family:Georgia,'Iowan Old Style',serif;font-size:15px;line-height:1.6;text-wrap:pretty">Captain Orsa Vell left the party at the abbey doors with a warning: the tide turns at the second bell. Velis decoded her riddle as the bell’s clapper, and Thessaly sensed necromancy waiting below.</p>
+            <a href="#" style="font-size:13px;text-decoration:none">Read the full session page →</a>
+          </div>
+          <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle)">Open threads</div>
+            <sc-for list="{{ threads }}" as="t" hint-placeholder-count="4"><div style="display:flex;gap:8px;font-size:14px"><span style="color:var(--color-warning-fg)">?</span><span style="text-wrap:pretty">{{ t }}</span></div></sc-for>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:20px;font-weight:700">The party</div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
+            <sc-for list="{{ party }}" as="p" hint-placeholder-count="4">
+              <div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:8px;background:var(--color-bg-surface);border:1px solid var(--color-border-default)">
+                <div style="width:32px;height:32px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:color-mix(in oklch, {{ p.c }} 22%, var(--color-bg-surface));color:{{ p.c }};box-shadow:inset 0 0 0 1.5px {{ p.c }}">{{ p.i }}</div>
+                <div style="line-height:1.25;min-width:0"><div style="font-weight:700;color:{{ p.c }};font-size:13px">{{ p.n }}</div><div style="font-size:12px;color:var(--color-fg-subtle)">{{ p.cls }}</div></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:20px;font-weight:700;margin-bottom:4px">Recently learned</div>
+          <sc-for list="{{ facts }}" as="f" hint-placeholder-count="4">
+            <div style="display:flex;gap:12px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--color-border-default)"><span style="flex:1;text-wrap:pretty">{{ f.t }}</span><a href="#" style="font-size:12px;text-decoration:none;white-space:nowrap">{{ f.about }}</a><span style="font-size:12px;color:var(--color-fg-subtle);white-space:nowrap">S{{ f.s }}</span></div>
+          </sc-for>
+        </div>
+      </article>
+    </main>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  renderVals() {
+    const meta = [["Campaign overview", "layout-dashboard", 1], ["Session log", "calendar-days"], ["People and places", "users"], ["Facts by session", "list-checks"], ["The journey", "map"]].map(([t, ic, on]) => ({ t, ic, bg: on ? "var(--color-bg-surface)" : "transparent", fg: on ? "var(--color-fg-default)" : "var(--color-fg-muted)", w: on ? 600 : 500 }));
+    const tree = [["NPCs", "folder-open", "58", 0, 1], ["Captain Orsa Vell", "file-text", "", 1], ["Sister Merrow", "file-text", "", 1], ["The Abbot", "file-text", "", 1], ["Places", "folder", "24"], ["Items", "folder", "31"], ["Factions", "folder", "9"], ["Sessions", "folder", "12"], ["Party", "folder", "5"]].map(([t, ic, n, d]) => ({ t, ic, n, pad: d ? "32px" : "10px", fg: d ? "var(--color-fg-muted)" : "var(--color-fg-default)" }));
+    const threads = ["Is the diamond really in the bell clapper?", "Who is singing beneath the abbey?", "What do the Tidecallers want sealed away?", "What did Brann promise the drowned god?"];
+    const party = [["SM", "Pip Tallowmere", "Bard 6 · Sam", "var(--color-class-bard)"], ["JO", "Thessaly", "Druid 6 · Jo", "var(--color-class-druid)"], ["RN", "Brann Coldwater", "Barbarian 6 · Rin", "var(--color-class-barbarian)"], ["MY", "Velis Anwe", "Wizard 6 · Maya", "var(--color-class-wizard)"]].map(([i, n, cls, c]) => ({ i, n, cls, c }));
+    const facts = [["Necromantic magic lies beneath the abbey bell’s shadow.", "Drowned Abbey", 12], ["The tide turns at the second bell.", "Drowned Abbey", 12], ["Orsa Vell won’t set foot in the abbey.", "Captain Orsa Vell", 12], ["The Tidecallers want the abbey sealed for good.", "The Tidecallers", 11]].map(([t, about, s]) => ({ t, about, s }));
+    return { meta, tree, threads, party, facts };
+  }
+}
+</script>
+</body>
+</html>

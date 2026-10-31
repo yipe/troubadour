@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="New campaign setup" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <header style="height:56px;flex:none;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid var(--color-border-default)">
+    <dc-import name="Icon" n="feather" s="20" c="var(--color-accent-fg)" hint-size="20px,20px"></dc-import>
+    <span style="font-family:Georgia,'Iowan Old Style',serif;font-weight:700;font-size:18px">Troubadour</span>
+    <span style="color:var(--color-fg-subtle);margin-left:8px">New campaign</span>
+    <span style="margin-left:auto;color:var(--color-fg-subtle);font-size:13px">Saved as you go · <a href="#" style="text-decoration:none">Finish later</a></span>
+  </header>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:300px;flex:none;border-right:1px solid var(--color-border-default);padding:28px 20px;display:flex;flex-direction:column;gap:4px;box-sizing:border-box">
+      <sc-for list="{{ steps }}" as="s" hint-placeholder-count="5">
+        <div style="display:flex;gap:12px;padding:10px 12px;border-radius:6px;background:{{ s.bg }}">
+          <div style="width:24px;height:24px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:{{ s.dotBg }};color:{{ s.dotFg }};box-shadow:inset 0 0 0 1.5px {{ s.ring }}">{{ s.mark }}</div>
+          <div>
+            <div style="font-weight:600;color:{{ s.fg }}">{{ s.title }}</div>
+            <div style="font-size:12px;color:var(--color-fg-subtle)">{{ s.sub }}</div>
+          </div>
+        </div>
+      </sc-for>
+      <div style="flex:1"></div>
+      <div style="font-size:12px;color:var(--color-fg-subtle);display:flex;gap:8px;padding:0 12px"><dc-import name="Icon" n="lock" s="14" hint-size="14px,14px"></dc-import><span>Everything here stays on this Mac unless you choose a hosted model in step 5.</span></div>
+    </aside>
+    <main style="flex:1;overflow:hidden;padding:36px 56px;display:flex;flex-direction:column;gap:22px;box-sizing:border-box">
+      <div>
+        <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;color:var(--color-fg-subtle);text-transform:uppercase">Step 2 of 5</div>
+        <h1 style="font-family:Georgia,'Iowan Old Style',serif;font-size:30px;margin:6px 0 4px;font-weight:700">Who’s at the table?</h1>
+        <p style="margin:0;color:var(--color-fg-muted);max-width:640px">Names and characters help Troubadour spell them right. Voices don’t need training: unknown speakers show up as “Voice 1” and you name them once.</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:8px;background:var(--color-accent-subtle);border:1px solid color-mix(in oklch, var(--color-accent-emphasis) 40%, transparent)">
+        <dc-import name="Icon" n="users" s="16" c="var(--color-accent-fg)" hint-size="16px,16px"></dc-import>
+        <span style="flex:1">3 players from <b>Lantern Road</b> already have trained voices.</span>
+        <button style="height:30px;padding:0 12px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-bg-surface);color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Add Sam, Jo and Rin</button>
+      </div>
+      <div style="border:1px solid var(--color-border-default);border-radius:8px;overflow:hidden">
+        <div style="display:grid;grid-template-columns:52px 1.1fr 1.3fr 1fr 80px 220px;gap:12px;padding:10px 16px;background:var(--color-bg-subtle);font-size:12px;font-weight:600;color:var(--color-fg-subtle);text-transform:uppercase;letter-spacing:0.05em">
+          <span></span><span>Player</span><span>Character</span><span>Class</span><span>Role</span><span>Voice</span>
+        </div>
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:52px 1.1fr 1.3fr 1fr 80px 220px;gap:12px;padding:10px 16px;align-items:center;border-top:1px solid var(--color-border-default);background:var(--color-bg-surface)">
+            <div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;background:color-mix(in oklch, {{ r.c }} 22%, var(--color-bg-surface));color:{{ r.c }};box-shadow:inset 0 0 0 1.5px {{ r.c }}">{{ r.i }}</div>
+            <div style="height:34px;border:1px solid var(--color-border-default);border-radius:6px;background:var(--color-bg-canvas);display:flex;align-items:center;padding:0 10px">{{ r.name }}</div>
+            <div style="height:34px;border:1px solid var(--color-border-default);border-radius:6px;background:var(--color-bg-canvas);display:flex;align-items:center;padding:0 10px;color:{{ r.chc }}">{{ r.ch }}</div>
+            <div style="height:34px;border:1px solid var(--color-border-default);border-radius:6px;background:var(--color-bg-canvas);display:flex;align-items:center;padding:0 10px;gap:8px"><span style="width:8px;height:8px;border-radius:2px;background:{{ r.c }}"></span><span style="flex:1">{{ r.cls }}</span><dc-import name="Icon" n="chevron-down" s="14" c="var(--color-fg-subtle)" hint-size="14px,14px"></dc-import></div>
+            <span style="font-size:13px;color:{{ r.rc }};font-weight:600">{{ r.role }}</span>
+            <span style="display:flex;align-items:center;gap:10px;font-size:13px"><span style="color:{{ r.vc }};display:flex;align-items:center;gap:5px;white-space:nowrap"><dc-import name="Icon" n="{{ r.vi }}" s="14" hint-size="14px,14px"></dc-import>{{ r.voice }}</span><button style="height:28px;padding:0 10px;border-radius:6px;border:1px solid var(--color-border-default);background:transparent;color:var(--color-fg-default);font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px"><dc-import name="Icon" n="audio-waveform" s="12" hint-size="12px,12px"></dc-import>{{ r.btn }}</button></span>
+          </div>
+        </sc-for>
+        <div style="border-top:1px dashed var(--color-border-strong);padding:12px 16px;display:flex;align-items:center;gap:8px;color:var(--color-accent-fg);font-weight:600;font-size:13px;background:var(--color-bg-surface)"><dc-import name="Icon" n="plus" s="14" hint-size="14px,14px"></dc-import>Add player</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-start;color:var(--color-fg-subtle);font-size:13px">
+        <dc-import name="Icon" n="info" s="16" hint-size="16px,16px"></dc-import>
+        <span>The player colour comes from their class, so lines, charts and recaps match the rest of the app. Quiet players get a 20-second training option on the next step.</span>
+      </div>
+      <div style="flex:1"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--color-border-default);padding-top:18px">
+        <button style="height:38px;padding:0 16px;border-radius:6px;border:1px solid var(--color-border-default);background:transparent;color:var(--color-fg-default);font:inherit;font-weight:600;cursor:pointer;white-space:nowrap">Back</button>
+        <button style="height:38px;padding:0 18px;border-radius:6px;border:none;background:var(--color-accent-emphasis);color:var(--color-fg-on-accent);font:inherit;font-weight:600;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:8px">Continue to microphone<dc-import name="Icon" n="arrow-right" s="16" hint-size="16px,16px"></dc-import></button>
+      </div>
+    </main>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  renderVals() {
+    const steps = [
+      ["Campaign", "The Sunken Crown · new vault folder", "done"],
+      ["The table", "Players, characters, GM", "now"],
+      ["Microphone", "Check it hears the whole table", "todo"],
+      ["Existing notes", "Import Obsidian or Markdown", "todo"],
+      ["AI & privacy", "Local model or hosted", "todo"]
+    ].map(([title, sub, st], i) => ({
+      title, sub,
+      mark: st === "done" ? "✓" : String(i + 1),
+      bg: st === "now" ? "var(--color-bg-surface)" : "transparent",
+      fg: st === "todo" ? "var(--color-fg-muted)" : "var(--color-fg-default)",
+      dotBg: st === "done" ? "var(--color-success-bg)" : st === "now" ? "var(--color-accent-emphasis)" : "transparent",
+      dotFg: st === "done" ? "var(--color-success-fg)" : st === "now" ? "#fff" : "var(--color-fg-subtle)",
+      ring: st === "todo" ? "var(--color-border-strong)" : "transparent"
+    }));
+    const r = (i, name, ch, cls, c, role, voice, vc) => ({ i, name, ch, cls, c, role, rc: role === "GM" ? "var(--color-class-paladin)" : "var(--color-fg-muted)", voice, vc, chc: "var(--color-fg-default)" });
+    const rows = [
+      r("AK", "Alex", "Game master", "—", "var(--color-class-paladin)", "GM", "Trained", "var(--color-success-fg)"),
+      r("SM", "Sam", "Pip Tallowmere", "Bard", "var(--color-class-bard)", "Player", "Trained", "var(--color-success-fg)"),
+      r("JO", "Jo", "Thessaly", "Druid", "var(--color-class-druid)", "Player", "Trained", "var(--color-success-fg)"),
+      r("RN", "Rin", "Brann Coldwater", "Barbarian", "var(--color-class-barbarian)", "Player", "Trained", "var(--color-success-fg)"),
+      r("MY", "Maya", "Velis Anwe", "Wizard", "var(--color-class-wizard)", "Player", "Learns in play", "var(--color-fg-subtle)")
+    ];
+    rows.forEach(x => { const t = x.voice === "Trained"; x.btn = t ? "Retrain" : "Train"; x.vi = t ? "circle-check" : "circle-dashed"; });
+    rows[0].chc = "var(--color-fg-subtle)";
+    return { steps, rows };
+  }
+}
+</script>
+</body>
+</html>

@@ -9,7 +9,7 @@ import os
 import tempfile
 from pathlib import Path
 
-# Must happen before anything imports troubadour.config (server.py builds an Engine at import).
+# Must happen before anything imports troubadour.core.config (server/app.py builds an Engine at import).
 _TMP = Path(tempfile.mkdtemp(prefix="troubadour-tests-"))
 os.environ["TROUBADOUR_DATA"] = str(_TMP / "data")
 os.environ["TROUBADOUR_SAMPLES"] = str(_TMP / "samples")
@@ -18,11 +18,10 @@ os.environ["TROUBADOUR_OBSIDIAN_REGISTRY"] = str(_TMP / "obsidian.json")  # neve
 
 import numpy as np  # noqa: E402
 import pytest  # noqa: E402
-
-from troubadour import config  # noqa: E402
-from troubadour.audio import wav_bytes  # noqa: E402
+from troubadour.core import config  # noqa: E402
 from troubadour.engine import Bus, Engine, LiveSession  # noqa: E402
-from troubadour.voices import VoiceMatcher  # noqa: E402
+from troubadour.sound.audio import wav_bytes  # noqa: E402
+from troubadour.sound.voices import VoiceMatcher  # noqa: E402
 
 SR = config.SR
 
@@ -91,7 +90,7 @@ def engine(dirs, monkeypatch):
     eng.ready.set()
     sess = LiveSession(NullSource(), {"kind": "file", "name": "x.wav", "speed": 1.0})
     eng.live, eng.buffer, eng.status = sess, sess.buffer, "running"
-    monkeypatch.setattr("troubadour.asr.transcribe", lambda audio: "I deal 12 slashing damage")
+    monkeypatch.setattr("troubadour.sound.asr.transcribe", lambda audio: "I deal 12 slashing damage")
     monkeypatch.setattr(config, "ASR_PROMPT", False)  # tests that want the Whisper prompt turn it on
 
     def no_network(*a, **k):
@@ -119,7 +118,21 @@ def write_wav(path: Path, audio: np.ndarray) -> Path:
 @pytest.fixture(autouse=True)
 def hermetic_dnd_terms(tmp_path, monkeypatch):
     """Tests use the built-in D&D names, never a local list in data/dnd_terms.json."""
-    monkeypatch.setattr("troubadour.dnd_terms.generated_path", lambda: tmp_path / "no-dnd-terms.json")
+    monkeypatch.setattr("troubadour.lore.dnd_terms.generated_path", lambda: tmp_path / "no-dnd-terms.json")
+    monkeypatch.setattr("troubadour.lore.dnd_terms.custom_path", lambda: tmp_path / "no-custom-terms.json")
+
+
+@pytest.fixture(autouse=True)
+def no_real_user_data(monkeypatch):
+    """A vault or data dir set in the developer's shell must never reach a test: TROUBADOUR_VAULT would
+    make tests write notes into (and trash files from) the real Obsidian vault. Tests that want a vault
+    set one themselves."""
+    for name in ("VAULT", "DATA", "SAMPLES", "OBSIDIAN_REGISTRY"):
+        monkeypatch.delenv(f"BARD_{name}", raising=False)
+    monkeypatch.delenv("TROUBADOUR_VAULT", raising=False)
+    # DATA, SAMPLES and the registry were pinned to a tmp dir above, at import; keep them pinned.
+    for name, value in (("DATA", _TMP / "data"), ("SAMPLES", _TMP / "samples"), ("OBSIDIAN_REGISTRY", _TMP / "obsidian.json")):
+        monkeypatch.setenv(f"TROUBADOUR_{name}", str(value))
 
 
 # ------------------------------------------------------------- voice clones (tts.py, talk.py, cloning.py)
@@ -144,7 +157,7 @@ class FakeSynth:
         return float(np.abs(audio).mean())
 
     def speak(self, text, voice):
-        from troubadour.tts import OUT_SR
+        from troubadour.sound.tts import OUT_SR
 
         self.said.append(text)
         self.on_speak()
@@ -171,7 +184,7 @@ class ScriptedLLM:
 
 def job():
     """A campaign job outside the job thread (progress updates go nowhere)."""
-    from troubadour.memory import Job
+    from troubadour.lore.memory import Job
 
     return Job(id="test", kind="clone", title="")
 

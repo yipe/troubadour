@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <script src="data.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Session history" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="sessions" hint-size="1440px,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:380px;flex:none;border-right:1px solid var(--color-border-default);display:flex;flex-direction:column;min-height:0">
+      <div style="padding:16px;display:flex;gap:8px;border-bottom:1px solid var(--color-border-default)">
+        <button style="flex:1;height:36px;border-radius:6px;border:none;background:var(--color-accent-emphasis);color:var(--color-fg-on-accent);font:inherit;font-weight:600;cursor:pointer;white-space:nowrap;display:flex;gap:6px;align-items:center;justify-content:center"><dc-import name="Icon" n="mic" s="14" hint-size="14px,14px"></dc-import>Prepare session 13</button>
+        <button style="height:36px;padding:0 12px;border-radius:6px;border:1px solid var(--color-border-default);background:var(--color-bg-surface);color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Import audio</button>
+      </div>
+      <div style="flex:1;overflow:hidden;padding:8px">
+        <sc-for list="{{ sessions }}" as="s" hint-placeholder-count="8">
+          <div style="display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:6px;background:{{ s.bg }};box-shadow:{{ s.ring }}">
+            <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:12px;color:var(--color-fg-subtle);width:28px">S{{ s.n }}</span><span style="font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.t }}</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--color-fg-subtle)">{{ s.d }}</span></div>
+            <div style="display:flex;align-items:center;gap:8px;padding-left:36px;font-size:12px;color:var(--color-fg-subtle)"><span>{{ s.date }}</span><span style="margin-left:auto;padding:1px 7px;border-radius:4px;font-weight:600;background:{{ s.sbg }};color:{{ s.sfg }}">{{ s.status }}</span></div>
+          </div>
+        </sc-for>
+      </div>
+    </aside>
+    <main style="flex:1;min-width:0;overflow:hidden;padding:28px 40px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:flex-start;gap:16px">
+        <div style="flex:1">
+          <div style="font-size:13px;color:var(--color-fg-subtle)">Session 12 · Thursday, October 22 · 7:04 – 10:16 pm</div>
+          <div style="font-family:Georgia,'Iowan Old Style',serif;font-size:32px;font-weight:700;margin-top:2px">The Drowned Abbey</div>
+        </div>
+        <button style="height:36px;padding:0 12px;border-radius:6px;border:1px solid var(--color-border-default);background:var(--color-bg-surface);color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;display:flex;gap:6px;align-items:center"><dc-import name="Icon" n="download" s="14" hint-size="14px,14px"></dc-import>Export</button>
+        <button style="height:36px;padding:0 12px;border-radius:6px;border:1px solid var(--color-border-default);background:var(--color-bg-surface);color:var(--color-fg-default);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;display:flex;gap:6px;align-items:center"><dc-import name="Icon" n="scroll-text" s="14" hint-size="14px,14px"></dc-import>Transcript</button>
+        <button style="height:36px;padding:0 14px;border-radius:6px;border:none;background:var(--color-warning-fg);color:#000;font:inherit;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">Review 9 suggestions</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px">
+        <sc-for list="{{ stats }}" as="k" hint-placeholder-count="5">
+          <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;padding:12px 14px"><div style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums">{{ k.v }}</div><div style="font-size:12px;color:var(--color-fg-subtle)">{{ k.l }}</div></div>
+        </sc-for>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:20px;flex:1;min-height:0">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle)">Recap</div>
+          <p style="margin:0;font-family:Georgia,'Iowan Old Style',serif;font-size:17px;line-height:1.6;color:var(--color-fg-muted);text-wrap:pretty">At low tide, Captain Orsa Vell brought the party to the doors of the Drowned Abbey and refused to go further. Pressed by Pip, she repeated her riddle: the diamond lies “beneath the tide’s tongue.” Velis decoded it as the bell’s clapper, Thessaly sensed necromancy beneath the bell’s shadow, and Brann led the way inside.</p>
+          <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle);margin-top:8px">Who talked</div>
+          <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px"><sc-for list="{{ talk }}" as="p" hint-placeholder-count="5"><span style="width:{{ p.w }};background:{{ p.c }}"></span></sc-for></div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px"><sc-for list="{{ talk }}" as="p" hint-placeholder-count="5"><span style="display:flex;gap:6px;align-items:center"><span style="width:8px;height:8px;border-radius:2px;background:{{ p.c }}"></span>{{ p.short }} <span style="color:var(--color-fg-subtle)">{{ p.pct }}%</span></span></sc-for></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle)">Scenes</div>
+          <div style="border:1px solid var(--color-border-default);border-radius:8px;overflow:hidden">
+            <sc-for list="{{ scenes }}" as="c" hint-placeholder-count="5">
+              <div style="display:flex;gap:12px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--color-border-default);background:var(--color-bg-surface)"><a href="#" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;text-decoration:none;width:52px">{{ c.t }}</a><span style="flex:1">{{ c.x }}</span><span style="font-size:12px;color:var(--color-fg-subtle)">{{ c.d }}</span></div>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--color-fg-subtle);margin-top:6px"><span style="width:8px;height:8px;border-radius:50%;background:var(--color-success-fg)"></span>Audio quality good · <a href="#" style="text-decoration:none">Improve transcript</a> · <a href="#" style="text-decoration:none">Merge with another session</a></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  componentDidMount() { if (!window.TB) { const i = setInterval(() => { if (window.TB) { clearInterval(i); this.forceUpdate(); } }, 50); } }
+  renderVals() {
+    const TB = window.TB;
+    const st = { r: ["Needs review", "var(--color-warning-bg)", "var(--color-warning-fg)"], d: ["Reviewed", "var(--color-success-bg)", "var(--color-success-fg)"], n: ["Not written up", "var(--color-bg-elevated)", "var(--color-fg-muted)"] };
+    const S = [[12, "The Drowned Abbey", "3:12", "Oct 22", "r", 1], [11, "Bells of Saltreach", "3:40", "Oct 15", "d"], [10, "Debts and Riddles", "2:58", "Oct 8", "d"], [9, "Smoke on the Docks", "3:21", "Oct 1", "d"], [8, "The Tidecaller Offer", "3:05", "Sep 24", "d"], [7, "Untitled · Sep 17", "1:12", "Sep 17", "n"], [6, "Oaths at Low Water", "3:30", "Sep 10", "d"], [5, "Sister Merrow", "2:44", "Sep 3", "d"]];
+    const sessions = S.map(([n, t, d, date, k, on]) => ({ n, t, d, date, status: st[k][0], sbg: st[k][1], sfg: st[k][2], bg: on ? "var(--color-bg-surface)" : "transparent", ring: on ? "inset 0 0 0 1px var(--color-accent-emphasis)" : "none" }));
+    const stats = [["3:12", "Recorded"], ["1,284", "Lines"], ["4", "New facts"], ["2", "New entries"], ["5", "Names fixed"]].map(([v, l]) => ({ v, l }));
+    const talk = TB ? TB.talk : [];
+    const scenes = [["0:00", "Table talk, recap", "14 m"], ["0:14", "Haggling with Orsa on the Gull’s Debt", "58 m"], ["1:12", "Saltreach docks at low tide", "24 m"], ["1:36", "Entering the abbey", "1 h 10 m"], ["2:46", "The bell chamber", "26 m"]].map(([t, x, d]) => ({ t, x, d }));
+    return { sessions, stats, talk, scenes };
+  }
+}
+</script>
+</body>
+</html>

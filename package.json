@@ -12,11 +12,12 @@
     "test:backend": "cd backend && uv run pytest",
     "test:web": "cd web && pnpm test",
     "lint": "yarn lint:backend && yarn lint:web",
-    "lint:backend": "cd backend && uv run ruff check src tests spike",
+    "lint:backend": "cd backend && uv run ruff check . && uv run lint-imports",
     "lint:web": "cd web && pnpm lint",
-    "typecheck": "cd web && pnpm typecheck",
-    "format": "cd backend && uv run ruff check --fix --select I src tests spike && uv run ruff format src tests spike && cd ../web && pnpm format",
-    "format:check": "cd backend && uv run ruff format --check src tests spike && cd ../web && pnpm format:check",
+    "typecheck:backend": "cd backend && uv run basedpyright",
+    "typecheck": "yarn typecheck:backend && cd web && pnpm typecheck",
+    "format": "cd backend && uv run ruff check --fix --select I . && uv run ruff format . && cd ../web && pnpm format",
+    "format:check": "cd backend && uv run ruff format --check . && cd ../web && pnpm format:check",
     "check": "yarn format:check && yarn lint && yarn typecheck && yarn test && yarn build",
     "check:live": "cd backend && uv run spike/harden_check.py"
   }

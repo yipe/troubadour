@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.css">
+  <script src="_ds/dprcalc-ui-90f43347-2537-47fd-a899-77c197701e7b/_ds_bundle.js"></script>
+  <style>body{margin:0;background:#14151e}a{color:var(--color-accent-fg)}a:hover{color:var(--color-fg-default)}</style>
+</helmet>
+<div data-screen-label="Troubadour Cloud settings" style="width:1440px;height:900px;overflow:hidden;display:flex;flex-direction:column;background:var(--color-bg-canvas);color:var(--color-fg-default);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.45">
+<x-import component-from-global-scope="YipeUi.DprcalcProvider" theme="dark" hint-size="1440px,900px">
+  <dc-import name="Troubadour Nav" active="" cloud="backed" hint-size="1440px,56px"></dc-import>
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:260px;flex:none;border-right:1px solid var(--color-border-default);padding:24px 14px;display:flex;flex-direction:column;gap:2px;box-sizing:border-box">
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-fg-subtle);padding:0 10px 10px">Settings</div>
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="6">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;background:{{ n.bg }};color:{{ n.fg }};font-weight:{{ n.w }}"><dc-import name="Icon" n="{{ n.ic }}" s="16" hint-size="16px,16px"></dc-import>{{ n.t }}</div>
+      </sc-for>
+    </aside>
+    <main style="flex:1;min-width:0;overflow:hidden;padding:28px 48px;display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:32px">
+      <section style="display:flex;flex-direction:column;gap:18px">
+        <div>
+          <x-import component-from-global-scope="YipeUi.PageHeading" hint-size="300px,40px">Troubadour Cloud</x-import>
+          <div style="color:var(--color-fg-subtle);font-size:13px;max-width:620px">A backup of each campaign, and the read-only view your players open in a browser. Audio and voiceprints never go up.</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;padding:18px 20px;border-radius:8px;background:var(--color-bg-surface);border:1px solid var(--color-border-default)">
+          <div style="width:44px;height:44px;border-radius:10px;background:var(--color-success-bg);color:var(--color-success-fg);display:flex;align-items:center;justify-content:center"><dc-import name="Icon" n="circle-check" s="22" hint-size="22px,22px"></dc-import></div>
+          <div style="flex:1">
+            <div style="font-size:18px;font-weight:700">Backed up 4 minutes ago</div>
+            <div style="font-size:13px;color:var(--color-fg-subtle)">The Sunken Crown · 1,212 files · checks again a few minutes after notes change</div>
+          </div>
+          <button style="height:36px;padding:0 14px;border-radius:6px;border:none;background:var(--color-accent-emphasis);color:var(--color-fg-on-accent);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;display:flex;gap:6px;align-items:center"><dc-import name="Icon" n="refresh-cw" s="14" hint-size="14px,14px"></dc-import>Back up now</button>
+          <a href="#" style="font-size:13px;text-decoration:none;display:flex;gap:6px;align-items:center;white-space:nowrap">Open player view<dc-import name="Icon" n="external-link" s="13" hint-size="13px,13px"></dc-import></a>
+        </div>
+        <div style="border:1px solid var(--color-border-default);border-radius:8px;overflow:hidden">
+          <div style="padding:10px 16px;background:var(--color-bg-subtle);border-bottom:1px solid var(--color-border-default);font-family:Georgia,'Iowan Old Style',serif;font-weight:700">What goes up</div>
+          <sc-for list="{{ what }}" as="w" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid var(--color-border-default);background:var(--color-bg-surface)">
+              <dc-import name="Icon" n="{{ w.ic }}" s="18" c="var(--color-fg-muted)" hint-size="18px,18px"></dc-import>
+              <div style="flex:1"><div style="font-weight:600">{{ w.t }}</div><div style="font-size:12px;color:var(--color-fg-subtle)">{{ w.d }}</div></div>
+              <sc-if value="{{ w.toggle }}" hint-placeholder-val="{{ false }}"><span style="width:36px;height:20px;border-radius:10px;background:{{ w.tbg }};position:relative;flex:none"><span style="position:absolute;top:2px;left:{{ w.tx }};width:16px;height:16px;border-radius:50%;background:#fff"></span></span></sc-if>
+              <sc-if value="{{ w.fixed }}" hint-placeholder-val="{{ true }}"><span style="font-size:12px;padding:2px 8px;border-radius:4px;font-weight:600;background:{{ w.bbg }};color:{{ w.bfg }};display:flex;gap:5px;align-items:center;white-space:nowrap">{{ w.badge }}</span></sc-if>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;border:1px solid var(--color-border-default);border-radius:8px;background:var(--color-bg-surface)">
+          <dc-import name="Icon" n="laptop" s="18" c="var(--color-fg-muted)" hint-size="18px,18px"></dc-import>
+          <div style="flex:1"><div style="font-weight:600">Main Mac: Alex’s MacBook Pro <span style="font-weight:500;color:var(--color-fg-subtle)">(this one)</span></div><div style="font-size:12px;color:var(--color-fg-subtle)">Only one Mac should run this campaign. If another Mac backs it up too, the newest backup wins.</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;border:1px solid var(--color-border-default);border-radius:8px;background:var(--color-bg-surface)">
+          <div style="flex:1"><div style="font-weight:600">Back up automatically</div><div style="font-size:12px;color:var(--color-fg-subtle)">A couple of minutes after notes change, at most every 10 minutes. Never during a live session.</div></div>
+          <span style="width:36px;height:20px;border-radius:10px;background:var(--color-accent-emphasis);position:relative;flex:none"><span style="position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:#fff"></span></span>
+        </div>
+      </section>
+      <aside style="display:flex;flex-direction:column;gap:16px;padding-top:4px;min-height:0">
+        <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;overflow:hidden">
+          <div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--color-border-default)"><span style="font-weight:700">Backup history</span><span style="margin-left:auto;font-size:12px;color:var(--color-fg-subtle)">Kept for 90 days</span></div>
+          <sc-for list="{{ snaps }}" as="h" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--color-border-subtle);background:{{ h.bg }}">
+              <span style="width:8px;height:8px;border-radius:50%;background:{{ h.dot }};flex:none"></span>
+              <div style="flex:1;min-width:0;line-height:1.3"><div style="font-size:13px;font-weight:600">{{ h.when }}</div><div style="font-size:12px;color:var(--color-fg-subtle)">{{ h.what }}</div></div>
+              <span style="font-size:12px;color:var(--color-accent-fg);font-weight:600;opacity:{{ h.op }}">Restore…</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="background:var(--color-bg-surface);border:1px solid var(--color-border-default);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+          <div style="font-weight:700">Other campaigns in your cloud</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:8px;height:8px;border-radius:2px;background:var(--color-class-ranger)"></span>
+            <div style="flex:1;line-height:1.3"><div style="font-weight:600">Lantern Road</div><div style="font-size:12px;color:var(--color-fg-subtle)">From Maya’s MacBook · last backup Sep 2</div></div>
+            <button style="height:30px;padding:0 10px;border-radius:6px;border:1px solid var(--color-border-default);background:transparent;color:var(--color-fg-default);font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">Bring to this Mac</button>
+          </div>
+          <div style="font-size:12px;color:var(--color-fg-subtle)">Bringing a campaign here makes this its main Mac. Notes that differ are replaced; the old versions move to the vault’s .trash folder.</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-fg-subtle);margin-top:auto"><span>Signed in as alex@example.com</span><a href="#" style="margin-left:auto;text-decoration:none;color:var(--color-danger-fg)">Disconnect</a></div>
+      </aside>
+    </main>
+  </div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  renderVals() {
+    const nav = [["Models & privacy", "shield-check"], ["Microphone", "mic"], ["Players & voices", "users"], ["Obsidian vault", "book-open"], ["Troubadour Cloud", "cloud", 1], ["Appearance", "palette"]].map(([t, ic, on]) => ({ t, ic, bg: on ? "var(--color-bg-surface)" : "transparent", fg: on ? "var(--color-fg-default)" : "var(--color-fg-muted)", w: on ? 600 : 500 }));
+    const fx = (ic, t, d, badge, ok) => ({ ic, t, d, fixed: true, toggle: false, badge, bbg: ok ? "var(--color-success-bg)" : "var(--color-bg-elevated)", bfg: ok ? "var(--color-success-fg)" : "var(--color-fg-muted)" });
+    const what = [
+      fx("notebook-text", "Notes, codex entries and facts", "Everything in the Obsidian vault folder", "Always", 1),
+      fx("scroll-text", "Session write-ups and recaps", "One page per reviewed session", "Always", 1),
+      { ic: "messages-square", t: "Transcripts", d: "Everything said at the table. Off: only notes and write-ups.", fixed: false, toggle: true, tbg: "var(--color-accent-emphasis)", tx: "18px" },
+      fx("audio-lines", "Audio recordings", "Stay on this Mac", "Never", 0),
+      fx("fingerprint", "Voiceprints", "Stay on this Mac", "Never", 0)
+    ];
+    const sn = (when, what, dot, on) => ({ when, what, dot, bg: on ? "var(--color-bg-subtle)" : "transparent", op: on ? 1 : 0 });
+    const snaps = [
+      sn("Today, 7:42 pm", "14 notes changed · Session 12 review", "var(--color-success-fg)", 1),
+      sn("Today, 6:10 pm", "3 notes changed", "var(--color-success-fg)"),
+      sn("Oct 22, 10:31 pm", "Session 12 transcript added", "var(--color-success-fg)"),
+      sn("Oct 22, 10:20 pm", "Failed: no connection · retried 10:31", "var(--color-danger-fg)"),
+      sn("Oct 15, 11:02 pm", "41 notes changed · Session 11 review", "var(--color-success-fg)"),
+      sn("Oct 8, 10:48 pm", "Session 10 transcript added", "var(--color-success-fg)")
+    ];
+    return { nav, what, snaps };
+  }
+}
+</script>
+</body>
+</html>

@@ -35,11 +35,10 @@ from mlx_audio.sts.models.deepfilternet.model import DeepFilterNetModel
 from mlx_audio.tts.utils import load_model
 from pyannote.audio import Pipeline
 from scipy.signal import fftconvolve
-
-from troubadour import config
-from troubadour.audio import read_wav
-from troubadour.tts import noise_floor_db
-from troubadour.voices import embed_span, normalize
+from troubadour.core import config
+from troubadour.sound.audio import read_wav
+from troubadour.sound.tts import noise_floor_db
+from troubadour.sound.voices import embed_span, normalize
 
 VOICE, OTHERS = "Daniel", ["Samantha", "Fred"]
 TEXTS = [

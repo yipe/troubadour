@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<span aria-hidden="true" style="display:inline-flex;flex:none;width:{{ px }};height:{{ px }};color:{{ color }}">{{ svg }}</span>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:48,&quot;height&quot;:48},&quot;n&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;feather&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;s&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:16,&quot;tsType&quot;:&quot;number&quot;},&quot;c&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;currentColor&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const __iconCache = (window.__lucideCache = window.__lucideCache || {});
+class Component extends DCLogic {
+  state = { t: 0 };
+  load() {
+    const n = this.props.n ?? "circle";
+    const v = __iconCache[n];
+    if (typeof v === "string") return;
+    if (!v) {
+      __iconCache[n] = fetch(`https://unpkg.com/lucide-static@0.469.0/icons/${n}.svg`)
+        .then(r => (r.ok ? r.text() : ""))
+        .catch(() => "")
+        .then(t => { __iconCache[n] = t ? t.replace(/width="24"/, 'width="100%"').replace(/height="24"/, 'height="100%"') : ""; });
+    }
+    Promise.resolve(__iconCache[n]).then(() => this.setState({ t: Date.now() }));
+  }
+  componentDidMount() { this.load(); }
+  componentDidUpdate(p) { if (p.n !== this.props.n) this.load(); }
+  renderVals() {
+    const n = this.props.n ?? "circle";
+    const c = __iconCache[n];
+    const svg = typeof c === "string" ? React.createElement("span", { style: { display: "flex", width: "100%", height: "100%" }, dangerouslySetInnerHTML: { __html: c } }) : null;
+    return { px: (this.props.s ?? 16) + "px", color: this.props.c ?? "currentColor", svg };
+  }
+}
+</script>
+</body>
+</html>

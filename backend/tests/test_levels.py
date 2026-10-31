@@ -1,15 +1,19 @@
 """Input level and recording quality, on synthetic audio with known answers."""
 
 import json
+import os
+import threading
 
 import numpy as np
 import pytest
 from conftest import write_wav
 from fastapi.testclient import TestClient
-
-from troubadour import config, levels, server
-from troubadour.config import SR
-from troubadour.transcript import build
+from troubadour.core import config
+from troubadour.core.config import SR
+from troubadour.core.transcript import build
+from troubadour.server import deps
+from troubadour.server.app import app
+from troubadour.sound import levels
 
 RNG = np.random.default_rng(7)
 
@@ -127,7 +131,7 @@ def test_mic_test_is_refused_during_a_session(engine):
 
 
 def test_quality_endpoint_measures_and_caches(engine, dirs, monkeypatch):
-    monkeypatch.setattr(server, "engine", engine)
+    monkeypatch.setattr(deps, "engine", engine)
     sid = "2026-10-08_193401-eebf"
     folder = config.DATA_DIR / "sessions" / sid
     folder.mkdir(parents=True)
@@ -140,10 +144,44 @@ def test_quality_endpoint_measures_and_caches(engine, dirs, monkeypatch):
         r["speaker"], r["player_id"] = m["speaker"], m["player_id"]
     (folder / "transcript.json").write_text(json.dumps(rec))
     (folder / "meta.json").write_text(json.dumps(rec["session"]))
-    client = TestClient(server.app, base_url="http://127.0.0.1:8765")
+    client = TestClient(app, base_url="http://127.0.0.1:8765")
     rep = client.get(f"/api/sessions/{sid}/quality").json()
     assert rep["mic"] == "Yeti GX"
     assert rep["verdict"]["kind"] == "microphone"
     assert (folder / "quality.json").exists()
     assert client.get("/api/sessions").json()[0]["quality"] == "microphone"
     assert client.get("/api/sessions/2026-01-01_000000-ffff/quality").status_code == 404
+
+
+def test_two_quality_measurements_at_once_both_succeed(engine, dirs, monkeypatch):
+    sid = "2026-10-08_193401-eebf"
+    folder = config.DATA_DIR / "sessions" / sid
+    folder.mkdir(parents=True)
+    audio, msgs = lines({"Nora": -18, "Omar": -33})
+    write_wav(folder / "audio.wav", audio)
+    rec = build({"id": sid, "started_at": 1, "source": {"kind": "mic", "device": None}}, [], [], [])
+    rec["messages"] = [{"t_start": m["t_start"], "t_end": m["t_end"], "speaker": m["speaker"]} for m in msgs]
+    (folder / "transcript.json").write_text(json.dumps(rec))
+    # Hold each writer between writing its temp file and renaming it, until both are there.
+    both_written, real_replace, errors = threading.Barrier(2, timeout=5), os.replace, []
+
+    def replace(src, dst):
+        if "quality.json" in str(dst):
+            both_written.wait()
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", replace)
+
+    def measure():
+        try:
+            engine.session_quality(sid)
+        except Exception as e:  # noqa: BLE001 - the test reports whatever one of them raised
+            errors.append(e)
+
+    threads = [threading.Thread(target=measure) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+    assert errors == []
+    assert (folder / "quality.json").exists()

@@ -4,8 +4,8 @@ import json
 import os
 
 import pytest
-
-from troubadour.campaign import Entity, Vault, mention_counts, parse, render, safe_name
+from troubadour.lore.campaign import Entity, Vault, mention_counts, parse, render, safe_name
+from troubadour.lore.facts import Fact, Source
 
 
 @pytest.fixture
@@ -38,11 +38,11 @@ def test_render_parse_round_trip():
         heard_as=["Magento"],
         heard_as_suggested=["Majenta"],
         description="Tiefling bard who runs the Rusty Flagon.",
-        facts=["Owes Kessia a favour. ([[2026-10-08 Session]])"],
-        suggested_facts=["Might be a spy."],
+        facts=[Fact("Owes Kessia a favour.", "Magenta", source=Source("2026-10-08 Session"))],
+        suggested_facts=[Fact("Might be a spy.", "Magenta")],
     )
     back = parse("Magenta", render(e))
-    assert back.to_json() == e.to_json()
+    assert back == e
 
 
 def test_human_edits_survive_a_rewrite(vault):
@@ -53,9 +53,9 @@ def test_human_edits_survive_a_rewrite(vault):
         "# Magenta\nRuns the tavern.\n\n## Facts\n- Hates goblins\n  because of the fire.\n\n"
         "## My theories\nShe is secretly the queen.\n"
     )
-    vault.add_fact("Magenta", "Has a pet raven.")
+    vault.add_fact("Magenta", Fact("Has a pet raven."))
     e = vault.get("Magenta")
-    assert e.facts == ["Hates goblins because of the fire.", "Has a pet raven."]
+    assert [f.text for f in e.facts] == ["Hates goblins because of the fire.", "Has a pet raven."]
     text = note.read_text()
     assert "mood: grumpy" in text
     assert "villain" in text
@@ -67,7 +67,7 @@ def test_old_bard_tag_is_replaced_by_the_troubadour_tag(vault):
     note.parent.mkdir(parents=True)
     note.write_text("---\ntype: npc\ntags: [villain, bard/npc]\n---\n# Magenta\nRuns the tavern.\n")
     assert vault.get("Magenta").tags == ["villain"]
-    vault.add_fact("Magenta", "Has a pet raven.")
+    vault.add_fact("Magenta", Fact("Has a pet raven."))
     assert "tags: [troubadour/npc, villain]" in note.read_text()
 
 
@@ -79,7 +79,7 @@ def test_unreadable_frontmatter_is_read_only_and_never_rewritten(vault):
     e = vault.get("Broken")
     assert e.read_only
     with pytest.raises(ValueError, match="can't read"):
-        vault.add_fact("Broken", "x")
+        vault.add_fact("Broken", Fact("x"))
     assert note.read_text() == original
 
 
@@ -131,24 +131,24 @@ def test_delete_moves_to_trash(vault):
 
 
 def test_merge_combines_and_trashes_the_duplicate(vault):
-    vault.create("Cassia", "npc", heard_as=["Kasia"], facts=["Carries a lute."])
-    vault.create("Kessia", "pc", facts=["carries a lute", "Is a she/her tiefling."])
+    vault.create("Cassia", "npc", heard_as=["Kasia"], facts=[Fact("Carries a lute.")])
+    vault.create("Kessia", "pc", facts=[Fact("carries a lute"), Fact("Is a she/her tiefling.")])
     e = vault.merge("Cassia", into="Kessia")
     assert "Cassia" in e.aliases
     assert e.heard_as == ["Kasia"]
-    assert e.facts == ["carries a lute", "Is a she/her tiefling."]  # near-duplicates folded
+    assert [f.text for f in e.facts] == ["carries a lute", "Is a she/her tiefling."]  # near-duplicates folded
     assert vault.find("Cassia").name == "Kessia"
     assert len(vault.entities()) == 1
 
 
 def test_add_fact_skips_near_duplicates(vault):
     vault.create("Elara", "pc")
-    vault.add_fact("Elara", "Elara has a pet owl.")
-    vault.add_fact("Elara", "elara has a pet owl")
-    vault.add_fact("Elara", "Might be cursed.", suggested=True)
+    vault.add_fact("Elara", Fact("Elara has a pet owl."))
+    vault.add_fact("Elara", Fact("elara has a pet owl"))
+    vault.add_fact("Elara", Fact("Might be cursed."), suggested=True)
     e = vault.get("Elara")
-    assert e.facts == ["Elara has a pet owl."]
-    assert e.suggested_facts == ["Might be cursed."]
+    assert [f.text for f in e.facts] == ["Elara has a pet owl."]
+    assert [f.text for f in e.suggested_facts] == ["Might be cursed."]
 
 
 def test_edits_made_in_obsidian_are_picked_up(vault):
@@ -160,9 +160,9 @@ def test_edits_made_in_obsidian_are_picked_up(vault):
 
 
 def test_campaign_facts(vault):
-    vault.add_campaign_fact("The party is in the city of Dallon.")
-    vault.add_campaign_fact("the party is in the city of dallon")
-    assert vault.campaign_facts() == ["The party is in the city of Dallon."]
+    vault.add_campaign_fact(Fact("The party is in the city of Dallon."))
+    vault.add_campaign_fact(Fact("the party is in the city of dallon"))
+    assert [f.text for f in vault.campaign_facts()] == ["The party is in the city of Dallon."]
 
 
 def test_write_note_never_overwrites_by_default(vault):
@@ -198,7 +198,7 @@ def test_index_lists_everything(vault):
 
 # ------------------------------------------------------------- corrector
 
-from troubadour.campaign import Corrector  # noqa: E402
+from troubadour.lore.campaign import Corrector  # noqa: E402
 
 
 def test_corrector_fixes_heard_as_and_case():
@@ -228,16 +228,20 @@ def test_readme_is_written_once_and_then_left_alone(vault):
 
 def test_review_decisions_are_changes_not_replacements(vault):
     vault.create(
-        "Elara", "pc", heard_as_suggested=["Dallara", "Dilara", "Delilah"], suggested_facts=["Has an owl.", "Is cursed."]
+        "Elara",
+        "pc",
+        heard_as_suggested=["Dallara", "Dilara", "Delilah"],
+        suggested_facts=[Fact("Has an owl."), Fact("Is cursed.")],
     )
     vault.review("Elara", accept_spellings=["Dallara"])
     vault.review("Elara", accept_spellings=["Dilara"])  # a second quick click keeps the first
-    vault.review("Elara", reject_spellings=["Delilah"], accept_facts=["Has an owl."], reject_facts=["Is cursed."])
+    owl, cursed = (f.id for f in vault.get("Elara").suggested_facts)
+    vault.review("Elara", reject_spellings=["Delilah"], accept_facts=[owl], reject_facts=[cursed])
     e = vault.get("Elara")
     assert e.heard_as == ["Dallara", "Dilara"]
     assert e.heard_as_rejected == ["Delilah"]
     assert e.heard_as_suggested == []
-    assert e.facts == ["Has an owl."]
+    assert [f.text for f in e.facts] == ["Has an owl."]
     assert e.suggested_facts == []
 
 

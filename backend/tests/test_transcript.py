@@ -5,11 +5,12 @@ import pytest
 from conftest import speak
 from fastapi.testclient import TestClient
 from test_engine import ALICE, BOB, named_voice, say
-
-from troubadour import config, server
-from troubadour.audio import wav_bytes
+from troubadour.core import config
+from troubadour.core.transcript import build, clock, filler_only, markdown, without_fillers
 from troubadour.engine import _audio_seconds
-from troubadour.transcript import build, clock, filler_only, markdown, without_fillers
+from troubadour.server import deps
+from troubadour.server.app import app
+from troubadour.sound.audio import wav_bytes
 
 
 def record_with(text: str, **message) -> dict:
@@ -95,8 +96,8 @@ def test_no_transcript_before_any_line(engine):
 
 
 def test_starting_a_new_session_saves_the_old_one_first(engine, monkeypatch):
-    monkeypatch.setattr("troubadour.engine.keep_awake", lambda: None)
-    monkeypatch.setattr("troubadour.engine.MicSource.start", lambda self, sink, on_end: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.keep_awake", lambda: None)
+    monkeypatch.setattr("troubadour.engine._pipeline.MicSource.start", lambda self, sink, on_end: None)
     monkeypatch.setattr(engine, "_segment_loop", lambda sess: None)
     monkeypatch.setattr(engine, "_worker_loop", lambda sess: None)
     say(engine, ALICE, 2.0)
@@ -133,8 +134,8 @@ def test_list_sessions_skips_corrupt_meta(engine, dirs):
 
 @pytest.fixture
 def api_engine(engine, monkeypatch):
-    monkeypatch.setattr(server, "engine", engine)
-    return TestClient(server.app, base_url="http://127.0.0.1:8765")
+    monkeypatch.setattr(deps, "engine", engine)
+    return TestClient(app, base_url="http://127.0.0.1:8765")
 
 
 def test_current_transcript_download(api_engine, engine):

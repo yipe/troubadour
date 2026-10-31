@@ -42,9 +42,9 @@ then run `spike/ui_probe.py` (muted headless Chrome watching the UI over the
 DevTools protocol) and `spike/soak.py` (starts the replay, samples memory/lag,
 names voices every 10 min). Both write CSVs to `samples/soak/`.
 
-Layout: `backend/src/troubadour/` engine (`engine.py` threads + state, `voices.py`
-matcher, `asr.py`, `audio.py` sources, `server.py`
-FastAPI). `web/src/` UI (contract in `lib/types.ts`). `backend/spike/`
+Layout: `backend/packages/<pkg>/src/troubadour/<pkg>/` (`core`, `sound`, `lore`, `cloud`, `engine`,
+`server`; see `backend/AGENTS.md`). `web/app` and `web/packages/{ui,api,tokens}` the UI (the API contract
+lives in `@troubadour/api`, types generated from the server's schema). `backend/spike/`
 benchmark scripts plus `harden_check.py`, a non-destructive regression check
 against a running server (only touches its own `zz-check-*` players).
 
@@ -67,8 +67,8 @@ information arrives.
 
 | # | Stage | Tech | Target latency |
 |---|---|---|---|
-| 1 | Capture + VAD | `sounddevice` at the mic's rate → 16 kHz mono, Silero VAD → utterances (`troubadour/segment.py`: 400 ms silence ends a line, 200 ms padding, 12 s cap) | — |
-| 2 | Speaker ID | `VoiceMatcher` (`troubadour/voices.py`): embed each utterance (padded to ≥ 1.5 s), nearest known voiceprint; best score < 0.30 → unknown, grouped into a pending "Voice N"; confident ≥ 3 s matches adapt the voiceprint | 0.5–1 s |
+| 1 | Capture + VAD | `sounddevice` at the mic's rate → 16 kHz mono, Silero VAD → utterances (`troubadour.sound.segment`: 400 ms silence ends a line, 200 ms padding, 12 s cap) | — |
+| 2 | Speaker ID | `VoiceMatcher` (`troubadour.sound.voices`): embed each utterance (padded to ≥ 1.5 s), nearest known voiceprint; best score < 0.30 → unknown, grouped into a pending "Voice N"; confident ≥ 3 s matches adapt the voiceprint | 0.5–1 s |
 | 3 | ASR | `mlx-whisper` large-v3-turbo; prompt: the table's names, glossary names said lately, the rest of the glossary (≤ 20 names) and the last lines, fitted to Whisper's 223-token prompt window; glossary fix-up of names afterwards | 1.5–4 s |
 | 4 | Refine | re-score past utterances against current (matured) voiceprints and relabel; later also re-run ASR over larger windows. pyannote is *not* used for identity (benchmark: it lowers accuracy) | background |
 
@@ -131,7 +131,8 @@ speaker's segments (pyannote did split off the jeweler voice) or text cues.
 
 ### Events
 
-Authoritative shapes: `web/src/lib/types.ts`. The WebSocket sends `snapshot`
+Authoritative shapes: the server's pydantic models (generated TypeScript in `@troubadour/api`, the
+`ServerEvent` union in `web/packages/api/src/events/`). The WebSocket sends `snapshot`
 first (and after every session start, campaign switch or player benching); the client
 applies events idempotently.
 A client that falls behind is disconnected and resyncs from a fresh snapshot.
@@ -146,53 +147,93 @@ A client that falls behind is disconnected and resyncs from a fresh snapshot.
   relabels, merges, spelling fixes)
 - `train.status`: recording / processing / done / error / cancelled
 - `error`: model, worker (once per session), recording and mic-stall failures, shown as a toast
+- `campaign.job` (note import, write-up, improve, spelling, recap), `campaign.answer`, `campaign.updated`
+- `audio.level` (~10/s), `audio.quality` (every 2 s), `mic.test`
+- `cloud.updated` (backup status), `llm.updated` (provider and models)
+- `notebook.updated`: the whole live notebook (candidate facts, entries, spellings, pins); replaces the cached one
 
-## UI (Vite + React + TS + Tailwind v4 + shadcn/ui)
+## UI (Vite + React + TS + Tailwind v4, base-ui)
 
-1. **Setup**: add players (name, character, avatar or initials), GM included.
-   Each player card has an optional **Train** button: record 15–30 s of any
-   speech from their seat, shows "Trained" when done. Never required.
-2. **Session**: player grid (box glows via `data-speaking`), chat feed below
-   (avatar, name, text; virtualized with react-virtuoso, so ~40 rows in the DOM
-   at any length), consecutive lines of one speaker grouped under one name,
-   messages update in place when relabeled. Untrained players' cards keep the
-   Train button. Header has **Transcript (.md)** / **Data (.json)** downloads. Mic
-   sessions show an **Audio quality** box on the right (meter + read-out); closing it
-   switches the server's monitor off (`PUT /api/audio/monitor`, `session.audio_monitor`)
-   so no level/quality work runs per frame, until it is shown again (resets on restart).
-3. **Voices panel**: pending "Voice N" cards with play-sample buttons; tap a
-   player (and optionally a character / NPC name) to name one. Suggest the
-   closest existing voice so a repeat is a one-tap confirm (merge). Expect
-   ~1–2 taps per person per session.
-4. **History**: every saved session, read-only (transcript, talk time, audio quality
-   report, audio with click-a-timestamp-to-seek). URLs: `/history/<id>`. Every
-   session autosaves to `data/sessions/<id>/transcript.{md,json}` + `meta.json`
-   (each refine tick, on stop/new session, on shutdown). API:
-   `GET /api/transcript.{md,json}`, `/api/sessions`, `/api/sessions/{id}/transcript.{md,json}`.
-   - **Improve transcript**: `POST /api/sessions/{id}/improve` re-transcribes every
-     line with the glossary as it is now (spellings accepted since, imported notes)
-     plus the previous lines; speakers and line boundaries stay; a line heard as
-     nothing keeps its text. Waits while a live session runs. The original stays as
-     `transcript.orig.json` (`POST …/restore` puts it back).
-   - **Recording**: mic sessions also write `audio.wav` at the mic's own rate
-     (48 kHz 16-bit, ~345 MB/h; `TROUBADOUR_RECORD=0` turns it off). The mic opens
-     at its native rate; a soxr stream feeds the pipeline 16 kHz. Written on a
-     background thread, header patched each second (crash-safe). A disk error
-     stops the recording, not the session, and is toasted as it happens.
-   - **Setup snapshot**: `setup/{start,end}.json` (players + voiceprints, state.json
-     shape) + `setup/voices/*.wav` (training clips).
-   - **Replay**: `{"kind": "session", "id", "speed"}` source; capped at what the
-     session heard (`duration_s`), so a stopped replay of a long sample stays short.
-     `GET /api/sessions/{id}/audio.wav` downloads the recording.
-   - **troubadour-sim**: `uv run troubadour-sim <id> [--setup start|end|current] [--speed 4]`
-     re-runs a session headless in a throwaway data dir and writes
-     `sims/<run>/transcript.*` + `compare.json` (speaker agreement with unnamed
-     voices aligned by overlap, per-minute text similarity).
-5. **Campaign**: the glossary and memory (see Campaign memory below): search and
-   filter, an editor per entry (aliases, heard-as spellings, facts, review of
-   suggestions, merge, delete to `.trash`), import pasted notes, spelling
-   suggestions mined from transcripts, campaign-wide facts, and a **Write up for
-   campaign** button on each History session.
+A pnpm workspace (`web/`): `app` (routes, shell, pages), `packages/ui` (components), `packages/api`
+(contract, query hooks, live store), `packages/tokens` (colours shared with DPRcalc). Layout and rules:
+`web/AGENTS.md`. The look is the redesign in `docs/design/troubadour-redesign/`. Nav tabs: Home,
+Sessions, Timeline, Codex, Facts, Ask; Sessions shows a red dot while a session runs. The campaign
+switcher, cloud chip and account menu sit in the top bar.
+
+| Route | Screen |
+|---|---|
+| `/` | **Home**: the table, newest facts, last session, a banner when a session awaits review. First run (no seated players, no sessions) goes to the wizard; a running session goes to Live. |
+| `/welcome/:step` | **Wizard**: campaign, table (players, classes, Train), microphone, notes (import), privacy. No top nav. |
+| `/sessions/new` | **Ready check**: pick the mic (or replay a file or a saved session), live level and quality, who is present, title, "Previously on…", Start. |
+| `/sessions/live` | **Live**: speaker rail (box glows via `data-speaking`), virtualized transcript (react-virtuoso), voices popover (name "Voice N", sample playback), audio-quality popover, the notebook (facts, pins, names), pins, inline Ask, End. |
+| `/sessions[/:id]` | **Sessions**: every saved session with its summary, talk time, audio and actions (write up, improve, restore, merge). |
+| `/sessions/:id/review` | **Review**: the session's suggestions beside their transcript lines; accept, edit or reject; progress from `review.json`. |
+| `/sessions/:id/transcript`, `/recap` | Full transcript viewer with click-a-timestamp audio; the shareable recap (voice, length, save as image, read aloud). |
+| `/timeline` | The story so far: places, talk time, new entries and accepted facts per session. |
+| `/codex[/:entry]` | The campaign wiki: search, entries, edit, heard-as review, merge, delete to `.trash`, look for facts in transcripts. |
+| `/facts` | Every fact with source, speaker and confidence; filters in the query string. |
+| `/ask` | Ask about the campaign (same `AskAnswer` as the live inline panel). |
+| `/settings/:section` | `models` (local and hosted LLMs, privacy), `microphone`, `players` (voices, clones, speech profile), `vault` (Obsidian, import, ignored words), `cloud` (backup, history, restore). |
+
+Old URLs redirect (`/setup`, `/session`, `/history`, `/campaign`). Timestamps are `h:mm:ss`; clicking one
+plays the session audio from there (never autoplay, `preload="none"`). Closing the audio-quality popover
+switches the server's monitor off (`PUT /api/audio/monitor`, `session.audio_monitor`) so no level work runs
+per frame.
+
+Every session autosaves to `data/sessions/<id>/transcript.{md,json}` + `meta.json` (each refine tick, on
+stop or new session, on shutdown). API: `GET /api/transcript.{md,json}`, `/api/sessions`,
+`/api/sessions/{id}/transcript.{md,json}`.
+
+Saved-session details:
+
+- **Improve transcript**: `POST /api/sessions/{id}/improve` re-transcribes every
+  line with the glossary as it is now (spellings accepted since, imported notes)
+  plus the previous lines; speakers and line boundaries stay; a line heard as
+  nothing keeps its text. Waits while a live session runs. The original stays as
+  `transcript.orig.json` (`POST …/restore` puts it back).
+- **Recording**: mic sessions also write `audio.wav` at the mic's own rate
+  (48 kHz 16-bit, ~345 MB/h; `TROUBADOUR_RECORD=0` turns it off). The mic opens
+  at its native rate; a soxr stream feeds the pipeline 16 kHz. Written on a
+  background thread, header patched each second (crash-safe). A disk error
+  stops the recording, not the session, and is toasted as it happens.
+- **Setup snapshot**: `setup/{start,end}.json` (players + voiceprints, state.json
+  shape) + `setup/voices/*.wav` (training clips).
+- **Replay**: `{"kind": "session", "id", "speed"}` source; capped at what the
+  session heard (`duration_s`), so a stopped replay of a long sample stays short.
+  `GET /api/sessions/{id}/audio.wav` downloads the recording.
+- **troubadour-sim**: `uv run troubadour-sim <id> [--setup start|end|current] [--speed 4]`
+  re-runs a session headless in a throwaway data dir and writes
+  `sims/<run>/transcript.*` + `compare.json` (speaker agreement with unnamed
+  voices aligned by overlap, per-minute text similarity).
+
+The Campaign screens work on the notes described under *Campaign memory*; the Codex replaced the old
+glossary tab and the Review page replaced the per-entry suggestion cards.
+
+### API added by the rebuild
+
+Each row has a pydantic `response_model`; types are generated into `@troubadour/api` (ADR 0009). The full
+route list is pinned by `backend/tests/test_routes.py`.
+
+| Area | Endpoints, events and fields |
+|---|---|
+| Classes | `GET/POST /api/classes`, `PATCH/DELETE /api/classes/{id}` (custom only; SRD classes built in, custom ones in `classes.json`). `Player.dnd_class`, `Player.color` (null = use the class colour). |
+| Session start | `POST /api/session/start` also takes `title`, `present_player_ids`, `record_audio`, `cleanup`. Live `Session` has `title`, `present_player_ids`. |
+| Saved sessions | `SavedSession` adds `title`, `summary`, `present_player_ids`, `reviewed_at`, `talk`, `scenes`. `POST /api/sessions/{id}/reviewed {reviewed}`. |
+| Notebook | `GET /api/session/notebook`, `POST /api/session/pins {t, text}`, `POST /api/session/notebook/{item_id} {status}`, `GET /api/sessions/{id}/notebook`; WS `notebook.updated`. Saved as `sessions/<id>/notebook.json`. |
+| Facts | `Fact {id, text, about, said_by, source, confidence, history}`; entities carry `facts`, `suggested_facts`; `POST/PATCH /api/campaign/entities/{name}/facts`, `DELETE …/facts/{fact_id}`, `POST …/facts/search`, `POST …/merge`; `POST/PATCH /api/campaign/facts`, `DELETE /api/campaign/facts/{fact_id}`. Vault format: `docs/architecture.md` → *Fact format in the vault*. |
+| Suggestions | `FactSuggestion.kind` (`new`/`update`) and `replaces`. Write-ups store `scenes.json`. |
+| Review | `GET /api/sessions/{id}/review`, `POST /api/sessions/{id}/review/{item_id} {action, text?, about?}`. |
+| Timeline | `GET /api/campaign/timeline`; `GET /api/campaign/entities/{name}` adds `appearances`. |
+| Recap | `POST /api/sessions/{id}/recap {voice, length_s, include}` (job kind `recap`), `GET /api/sessions/{id}/recap`. |
+| Storage | `GET /api/storage` (bytes by kind). |
+| Cloud | `CloudStatus` adds `device`, `main_device`, `is_main`, `paused_live`; `GET /api/cloud/history`; `POST /api/cloud/restore` takes an optional `snapshot`; `_Overview/*.md` is written into the vault before each backup. |
+| Ask | `CampaignAnswer.stats`; `POST /api/campaign/ask` takes optional `t`, echoed on the answer. |
+
+### Rebuild
+
+In October 2026 the web UI was rebuilt to the redesign, the backend split into packages and the API
+extended as above, in 70 small tasks. The plan, task specs and per-task notes are in `docs/rebuild/`; the
+layout and decisions that came out of it are in `docs/architecture.md` and `docs/adr/`.
 
 ## Campaigns and the player library
 
@@ -226,8 +267,8 @@ a campaign-specific character and GM flag, and has its own vault and saved sessi
   `POST /api/players/{id}/bench`, `DELETE /api/players/{id}` (delete from the library:
   every campaign, voiceprints and clips). Events: `campaigns.updated`, `library.updated`;
   `snapshot` carries `campaign`, `campaigns` and `library`.
-- UI: campaign picker in the header (New campaign…, rename); Setup lists the library under
-  "From your other campaigns" (Add, or delete for good); a card's remove button benches.
+- UI: campaign switcher in the top bar (new, rename, open); Settings → Players lists the library
+  (add to this campaign, or delete for good); a card's remove button benches.
 
 ## Campaign memory (Obsidian vault)
 
@@ -481,8 +522,8 @@ use, like Whisper, then run locally. Code: `tts.py` (audio, text, `Clones`: the 
   Candidates are judged on its first sentences (≤ 140 characters, 3 tries each); the winner reads
   the whole line once. Scratch smoke (gemma-4-26b, made-up transcripts): 65 words, 20.2 s, in their
   phrases; the whole build including the profile took 25 s. `voice.json`: `preview_text`, `preview_kind`.
-- UI: Setup → player card → Voice clone (consent, build, preview, Say box, clips); History →
-  Write-up tab → Read aloud (once the session is written up). Nothing autoplays.
+- UI: Settings → Players & voices → player → Voice clone (consent, build, preview, Say box, clips); Recap page →
+  Read aloud (once the session is written up). Nothing autoplays.
 - Smoke test with real models and synthetic voices: `uv run spike/clone_smoke.py [out_dir]`.
 
 ### Speech profile and "in their words"
@@ -529,7 +570,7 @@ after the user connects: a copy of the open campaign's vault, kept as snapshots 
 (Troubadour Cloud: Next.js on Vercel, Clerk, Neon, private Vercel Blob) that shows it read-only in a browser.
 Troubadour works the same without it.
 
-- `cloud.py`. Sign-in: OAuth 2 authorization code + PKCE (S256) with a loopback redirect to
+- `troubadour.cloud.backup`. Sign-in: OAuth 2 authorization code + PKCE (S256) with a loopback redirect to
   `http://127.0.0.1:8765/api/cloud/callback` (fixed: another `TROUBADOUR_PORT` can't sign in); the
   service says where to sign in (`GET /api/v1/client`), so Troubadour only knows `TROUBADOUR_CLOUD_URL`. The
   `state` is single-use and expires in 10 min. Tokens (refresh included) in `data/cloud.json`,
@@ -559,7 +600,7 @@ Troubadour works the same without it.
   file that can't be written (a folder with its name, a file where its folder should be) is
   skipped and listed, and the note stays as it was. On the web, a vault also downloads as a .zip.
 - The service's contract: `backend/tests/cloud_contract.schema.json` (copied from the service's
-  `contract.schema.json`); a test fails if its limits or error codes drift from `cloud.py`.
+  `contract.schema.json`); a test fails if its limits or error codes drift from `troubadour.cloud.backup`.
 - API: `GET /api/cloud` (never calls the service), `POST /api/cloud/connect` → `{authorize_url}`,
   `GET /api/cloud/callback`, `POST /api/cloud/disconnect`, `PUT /api/cloud/options
   {include_transcripts?, auto_backup?}`, `POST /api/cloud/backup` → job, `GET /api/cloud/vaults`,
@@ -576,7 +617,7 @@ default) or a hosted provider. The choice covers every LLM call (live spelling, 
 write-ups, note import, Ask); Whisper and voices always stay on the Mac. Nothing is sent to a provider until
 the user signs in or adds a key **and** picks it. Signing out of the provider in use switches back to this Mac.
 
-- `providers.py`. Secrets in `data/llm_accounts.json` (mode 600), never in API responses (`key …abcd` only).
+- `troubadour.core.providers`. Secrets in `data/llm_accounts.json` (mode 600), never in API responses (`key …abcd` only).
   `settings.json` keeps `provider` and each hosted provider's own `{llm, memory}` pair (`hosted`), so
   switching back and forth loses nothing. `MemoryLLM.wire` picks the API: `chat`, `anthropic`, `responses`.
 - **ChatGPT plan** (`openai`): Sign in with ChatGPT with plan usage, the only way a subscription can pay
@@ -624,7 +665,7 @@ and last word: 0.1 ms a line. They also drop out of "unknown names" suggestions.
 
 `cleanup.py`. Code finds candidates in every line: words and 2–3 word phrases that look or
 sound like a known spelling (confirmed glossary names and aliases, accepted heard-as, the
-names Setup and the voices panel know, and a built-in D&D vocabulary, `dnd_terms.py`).
+names Setup and the voices panel know, and a built-in D&D vocabulary, `troubadour.lore.dnd_terms`).
 - **Sure fixes** happen before the line is shown: an accepted heard-as spelling, the same
   letters with other spacing or case ("thunder wave", "auggie"), or a near-identical spelling
   with one candidate (ratio ≥ 0.88: "Augie" → "Auggie").
@@ -647,7 +688,7 @@ names Setup and the voices panel know, and a built-in D&D vocabulary, `dnd_terms
 - **Live meter** (`levels.LevelMeter`, fed every 16 kHz frame): `audio.level` ~10/s with a zone
   (silent < −50, quiet < −30 grey-blue, good < −12 green, hot < −3 amber, clip red) and
   `audio.quality` every 2 s over the last 15 s: speech level (p90 of 50 ms RMS), background
-  (p10), SNR, rumble (% energy < 100 Hz), clipping, graded with hints. **Test mic** on Setup
+  (p10), SNR, rumble (% energy < 100 Hz), clipping, graded with hints. **Test mic** on the ready check
   (`POST /api/mic/test`) runs the same meter for 20 s without a session; nothing is recorded.
 - **Recording report** (`GET /api/sessions/{id}/quality`, cached in `quality.json`, ~4 s for
   2.6 h, made automatically after a mic session): overall numbers, a per-minute timeline,
@@ -660,7 +701,7 @@ names Setup and the voices panel know, and a built-in D&D vocabulary, `dnd_terms
   corrections (`data/mics.json`, `PATCH /api/mics/{name}`), plus measured verdicts. Shown as a
   ✓/✗/? checklist: hears the whole table (omni/stereo/boundary), picks up distant voices (not
   dynamic), wired, ≥ 44.1 kHz, measured well.
-- **Mic choice** (Setup) is remembered in the browser (`localStorage` `troubadour.mic`) and an
+- **Mic choice** (ready check) is remembered in the browser (`localStorage` `troubadour.mic`) and an
   amber note says when that mic isn't connected. Before, starting any session (which leaves
   Setup) reset it to the macOS default: the 2026-10-15 game was tested on a Yeti, then ran
   2.6 h on the MacBook's built-in mic (beamforming toward the screen: the near player 4 dB
@@ -750,7 +791,7 @@ community" on noise (17 lines this session; turbo never did).
 
 ## Utterance cutting
 
-`troubadour/segment.py` is Silero's VADIterator (proven equal by a test) with the padding as a setting
+`troubadour.sound.segment` is Silero's VADIterator (proven equal by a test) with the padding as a setting
 and padding that never reaches into the previous line. `spike/segment_sweep.py` caches Silero's
 probabilities once and replays them through it. Speaker purity on the benchmark clips (AMI + CR,
 107 min, true turns); WER on the 2026-10-08 gold by words whose middle falls inside each gold

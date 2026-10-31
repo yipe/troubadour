@@ -3,9 +3,8 @@
 import numpy as np
 import pytest
 from conftest import ScriptedLLM
-
-from troubadour import talk
-from troubadour.audio import tempo
+from troubadour.lore import talk
+from troubadour.sound.audio import tempo
 
 AL, BO = "p-al", "p-bo"
 

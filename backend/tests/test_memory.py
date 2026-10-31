@@ -6,11 +6,16 @@ import time
 import httpx
 import pytest
 from conftest import RecordingBus
+from troubadour.core.transcript import build
+from troubadour.lore import memory as mem
+from troubadour.lore import writeup
+from troubadour.lore.campaign import Vault
+from troubadour.lore.facts import Fact, render_bullets
 
-from troubadour import memory as mem
-from troubadour import writeup
-from troubadour.campaign import Vault
-from troubadour.transcript import build
+
+def lines(facts):
+    """Facts as the vault writes them, minus the bullet: "text ([[page]])"."""
+    return [b[2:] for b in render_bullets(facts)]
 
 
 class FakeLLM:
@@ -39,6 +44,8 @@ class FakeLLM:
             return self.page
         if system is writeup.FACTS_SYSTEM:
             return self.found
+        if system is writeup.SCENES_SYSTEM:
+            return {"scenes": []}  # test_writeup_sources.py covers scenes
         raise AssertionError(f"unexpected prompt: {system[:60]}")
 
 
@@ -95,10 +102,10 @@ def test_import_creates_entities_keeps_notes_and_seeds_pcs(setup):
     assert set(names) == {"Elara", "Magenta", "Dallon", "Zorbo"}
     assert names["Elara"].type == "pc"  # from Setup, not the model
     assert names["Magenta"].aliases == ["Maggie"]
-    assert names["Magenta"].facts == ["Owes Kessia a favour. ([[Session 12]])"]
+    assert lines(names["Magenta"].facts) == ["Owes Kessia a favour. ([[Session 12]])"]
     assert names["Zorbo"].type == "term"
     assert len(names["Zorbo"].description) == mem.TEXT_MAX
-    assert vault.campaign_facts() == ["The party is heading to Dallon. ([[Session 12]])"]
+    assert lines(vault.campaign_facts()) == ["The party is heading to Dallon. ([[Session 12]])"]
     note = (vault.root / "Notes" / "Session 12.md").read_text()
     assert "Elara met Magenta in Dallon.\n\nThey talked about Zorbo." in note
     assert (vault.root / "Glossary.md").exists()
@@ -108,7 +115,7 @@ def test_import_creates_entities_keeps_notes_and_seeds_pcs(setup):
 
 def test_import_merges_into_existing_entries(setup):
     vault, _, make = setup
-    vault.create("Kessia", "pc", facts=["Is a tiefling."])
+    vault.create("Kessia", "pc", facts=[Fact("Is a tiefling.")])
     vault.create("Auggie", "pc")
     llm = FakeLLM(
         notes=[
@@ -132,7 +139,7 @@ def test_import_merges_into_existing_entries(setup):
     k = vault.get("Kessia")
     assert "Cassia" in k.aliases
     assert "Auggie" not in k.aliases  # already another entry's name
-    assert k.facts == ["Is a tiefling.", "Plays the lute. ([[Old notes]])"]
+    assert lines(k.facts) == ["Is a tiefling.", "Plays the lute. ([[Old notes]])"]
     assert job.updated == ["Kessia"]
     assert len(vault.entities()) == 3  # + Elara from Setup
 
@@ -241,7 +248,7 @@ def test_write_up_reads_the_session_then_writes_the_page_from_the_notes(setup):
     assert vault.get("Dallon").type == "place"
     assert vault.find("the party") is None
     assert job.created == ["Dallon"]
-    read, write, _ = llm.calls
+    read, write, *_ = llm.calls
     assert "Transcript:\n00:00 Elara (played by Theo): Dilara, three." in read
     assert "Transcript" not in write  # the page comes from the notes, never the transcript
     assert "Mudge" in write  # the style example
@@ -249,9 +256,9 @@ def test_write_up_reads_the_session_then_writes_the_page_from_the_notes(setup):
     assert llm.thought[writeup.READ_SYSTEM[:40]] is True
     assert llm.thought[writeup.WRITE_SYSTEM[:40]] is False
     assert all(llm.progress)  # every call streams its progress to the job
-    assert [s["state"] for s in job.steps] == ["done"] * 4
+    assert [s["state"] for s in job.steps] == ["done"] * 5
     assert job.snippets[0] == {"kind": "stat", "at": "", "text": "10:00 of play, 3 lines, 1 at the table"}
-    assert job.done == job.total == 4
+    assert job.done == job.total == 5
     assert job.live is None
 
 
@@ -319,12 +326,12 @@ def test_write_up_suggests_lasting_facts_only(setup, monkeypatch):
     ]
     llm = FakeLLM(found={"facts": facts})
     wait(make(llm).write_up(sid))
-    assert vault.get("Elara").suggested_facts == [
+    assert lines(vault.get("Elara").suggested_facts) == [
         "Elara owns a grey owl. ([[2026-10-08 The Desert Road]])",
         "Elara fears deep water. ([[2026-10-08 The Desert Road]])",
         "Elara reads Elvish. ([[2026-10-08 The Desert Road]])",
     ]
-    assert "Beats:\n- [00:05] The party found a cave near Dallon." in llm.calls[2]  # facts come from the notes
+    assert "Beats:\n- [00:05] The party found a cave near Dallon." in llm.calls[-1]  # facts come from the notes
 
 
 def test_a_rewrite_keeps_the_page_name(setup):
@@ -553,7 +560,7 @@ def test_look_for_facts_reads_transcripts_and_notes_and_skips_a_moment(setup, tm
     )
     job = make(llm).seek_facts("Elara")
     wait(job)
-    suggested = vault.get("Elara").suggested_facts
+    suggested = lines(vault.get("Elara").suggested_facts)
     assert "Elara serves Akadi. ([[2026-10-08_120000-aaaa]])" in suggested
     assert "Elara grew up in Dallon. ([[Old notes]])" in suggested
     assert not any("spell slot" in f for f in suggested)

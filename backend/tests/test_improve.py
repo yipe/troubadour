@@ -7,10 +7,12 @@ import numpy as np
 import pytest
 from conftest import tone, write_wav
 from fastapi.testclient import TestClient
-
-from troubadour import config, improve, server
-from troubadour.campaign import Corrector, Entity
-from troubadour.transcript import build
+from troubadour.core import config
+from troubadour.core.transcript import build
+from troubadour.engine import improve
+from troubadour.lore.campaign import Corrector, Entity
+from troubadour.server import deps
+from troubadour.server.app import app
 
 SID = "2026-10-08_193401-eebf"
 
@@ -63,14 +65,14 @@ def test_improve_never_turns_a_line_into_filler():
 
 @pytest.fixture
 def api(engine, dirs, monkeypatch):
-    monkeypatch.setattr(server, "engine", engine)
+    monkeypatch.setattr(deps, "engine", engine)
     engine.status, engine.live = "idle", None
     folder = config.DATA_DIR / "sessions" / SID
     folder.mkdir(parents=True)
     (folder / "transcript.json").write_text(json.dumps(record(["Dallara, three.", "Hello."])))
     write_wav(folder / "audio.wav", tone(220, 6.0))
-    monkeypatch.setattr("troubadour.asr.transcribe", lambda clip, prompt=None, model=None: "Elara, three!")
-    return TestClient(server.app, base_url="http://127.0.0.1:8765"), folder
+    monkeypatch.setattr("troubadour.sound.asr.transcribe", lambda clip, prompt=None, model=None: "Elara, three!")
+    return TestClient(app, base_url="http://127.0.0.1:8765"), folder
 
 
 def wait_job(client, job_id):
@@ -128,3 +130,81 @@ def test_fix_spellings_job(api, engine, monkeypatch):
     assert saved["messages"][1]["fixes"] == [{"start": 0, "end": 5, "heard": "Dallara"}]
     assert (folder / "transcript.orig.json").exists()
     assert client.post("/api/sessions/2026-01-01_000000-ffff/spelling").status_code == 404
+
+
+# ------------------------------------------------------------------ hardening: meta.json, backups, atomic writes
+
+META = {
+    "campaign": "main",
+    "title": "The Cave",
+    "present_player_ids": ["alice"],
+    "reviewed_at": 123.0,
+    "pipeline": {"talk": 1},
+}
+
+
+def test_improve_and_restore_keep_what_only_meta_json_knows(api):
+    client, folder = api
+    (folder / "meta.json").write_text(json.dumps({"id": SID, **META}))
+    wait_job(client, client.post(f"/api/sessions/{SID}/improve").json()["id"])
+    meta = json.loads((folder / "meta.json").read_text())
+    assert {k: meta[k] for k in META if k != "pipeline"} == {k: v for k, v in META.items() if k != "pipeline"}
+    assert meta["pipeline"]["talk"] == 1  # the stamps from before survive the rewrite
+    assert meta["improved"]["changed"] == 2
+    assert client.post(f"/api/sessions/{SID}/restore").status_code == 200
+    meta = json.loads((folder / "meta.json").read_text())
+    assert (meta["campaign"], meta["title"], meta["present_player_ids"], meta["reviewed_at"]) == (
+        "main",
+        "The Cave",
+        ["alice"],
+        123.0,
+    )
+    assert "improved" not in meta  # the restored words are the unimproved ones
+
+
+def test_marking_reviewed_writes_both_files_so_an_improve_cannot_undo_it(api, engine):
+    client, folder = api
+    (folder / "meta.json").write_text(json.dumps({"id": SID, "campaign": "main"}))
+    stamp = engine.set_reviewed(SID, True)
+    assert json.loads((folder / "transcript.json").read_text())["session"]["reviewed_at"] == stamp
+    assert json.loads((folder / "meta.json").read_text())["reviewed_at"] == stamp
+
+
+def test_save_and_restore_write_every_file_with_fsync(api, monkeypatch):
+    _, folder = api
+    (folder / "meta.json").write_text(json.dumps({"id": SID}))
+    synced = []
+    monkeypatch.setattr("troubadour.core.fsutil.os.fsync", lambda fd: synced.append(fd))
+    rec = json.loads((folder / "transcript.json").read_text())
+    improve.save(folder, rec)
+    # backup + transcript.json + transcript.md + meta.json, each file and its folder
+    assert len(synced) == 8
+    synced.clear()
+    assert improve.restore(folder)
+    assert len(synced) == 6
+    assert not (folder / "transcript.orig.json").exists()
+    assert [p.name for p in folder.glob(".*.tmp")] == []
+
+
+def test_retranscribe_keeps_every_runs_backup(api, engine):
+    client, folder = api
+    engine.matcher.names.clear()  # nobody to match: each run stops after its backup
+    for n in range(2):
+        rec = json.loads((folder / "transcript.json").read_text())
+        rec["messages"][0]["text"] = f"version {n}"
+        (folder / "transcript.json").write_text(json.dumps(rec))
+        job = wait_job(client, client.post(f"/api/sessions/{SID}/retranscribe").json()["id"])
+        assert job["state"] == "error"
+    backups = sorted(folder.glob("transcript.before-retranscribe*.json"))
+    assert len(backups) == 2
+    assert {json.loads(b.read_text())["messages"][0]["text"] for b in backups} == {"version 0", "version 1"}
+
+
+def test_restore_forgets_only_the_steps_that_rewrote_the_words(api):
+    client, folder = api
+    wait_job(client, client.post(f"/api/sessions/{SID}/improve").json()["id"])  # stamps "transcribe"
+    meta = json.loads((folder / "meta.json").read_text())
+    meta["pipeline"] = {**meta["pipeline"], "writeup": 1, "recap": 1, "talk": 1, "spelling": 1}
+    (folder / "meta.json").write_text(json.dumps(meta))
+    assert client.post(f"/api/sessions/{SID}/restore").status_code == 200
+    assert json.loads((folder / "meta.json").read_text())["pipeline"] == {"writeup": 1, "recap": 1, "talk": 1}

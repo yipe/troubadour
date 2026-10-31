@@ -8,8 +8,7 @@ import time
 import numpy as np
 import pytest
 from conftest import RecordingBus, tone, write_wav
-
-from troubadour import config
+from troubadour.core import config
 from troubadour.engine import MAIN_CAMPAIGN, Engine, Message, Voice, migrate_state, seated_players, short_id
 
 ALICE, BOB = 200.0, 800.0
@@ -249,7 +248,7 @@ def test_switching_lets_the_last_spelling_fixes_land_before_saving(engine, monke
 
 
 def test_switching_waits_for_the_cleanup_only_so_long(engine, monkeypatch):
-    monkeypatch.setattr("troubadour.engine.SETTLE_S", 0.2)
+    monkeypatch.setattr("troubadour.engine._library.SETTLE_S", 0.2)
     engine.cleanup_q.put("m-stuck")  # nobody will ever take it (the cleanup loop is wedged)
     t0 = time.monotonic()
     idle(engine).open_campaign(engine.create_campaign("Morvath")["id"])
@@ -274,8 +273,8 @@ def test_each_campaign_has_its_own_vault(engine):
 
 
 def test_rename_campaign(engine):
-    assert engine.rename_campaign(MAIN_CAMPAIGN, "Phandelver") == {"id": MAIN_CAMPAIGN, "name": "Phandelver"}
-    assert engine.bus.of("campaigns.updated")[-1]["campaigns"] == [{"id": MAIN_CAMPAIGN, "name": "Phandelver"}]
+    assert engine.rename_campaign(MAIN_CAMPAIGN, "Phandelver") == {"id": MAIN_CAMPAIGN, "name": "Phandelver", "table_name": ""}
+    assert engine.bus.of("campaigns.updated")[-1]["campaigns"] == [{"id": MAIN_CAMPAIGN, "name": "Phandelver", "table_name": ""}]
     with pytest.raises(KeyError):
         engine.rename_campaign("c-nope", "X")
 
@@ -288,7 +287,7 @@ def test_removing_from_a_campaign_keeps_the_training(engine):
     vid = named_voice(engine, p["id"], ALICE)
     idle(engine).bench_player(p["id"])
     assert p["id"] not in engine.players
-    assert engine.library_json() == [{k: p[k] for k in ("id", "name", "avatar", "color", "trained", "clone_ok")}]
+    assert engine.library_json() == [{k: p[k] for k in ("id", "name", "avatar", "color", "dnd_class", "trained", "clone_ok")}]
     assert vid in engine.parked
     assert vid not in engine.matcher.names
     engine.seat_player(p["id"])
@@ -313,10 +312,8 @@ def test_first_player_seated_at_an_empty_table_is_the_gm(engine):
     assert engine.seat_player(b["id"])["is_gm"] is False
 
 
-def test_new_players_get_a_color_nobody_in_the_library_has(engine):
-    a = engine.add_player("Nora")
-    idle(engine).open_campaign(engine.create_campaign("Morvath")["id"])
-    assert engine.add_player("Ana")["color"] != a["color"]
+def test_new_players_have_no_color_override(engine):
+    assert engine.add_player("Nora")["color"] is None
 
 
 def test_state_without_campaigns_still_loads_everyone(dirs):
