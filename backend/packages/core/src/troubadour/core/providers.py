@@ -323,7 +323,7 @@ class Accounts:
 
     def _load(self) -> dict:
         try:
-            data = json.loads(self.path().read_text())
+            data = json.loads(self.path().read_text(encoding="utf-8"))
             return data if isinstance(data, dict) else {}
         except (OSError, ValueError):
             return {}

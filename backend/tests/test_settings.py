@@ -1,7 +1,7 @@
 import json
-import stat
 
 import pytest
+from conftest import assert_mode
 from troubadour.core import config, settings
 
 
@@ -79,7 +79,7 @@ def test_the_active_whisper_id_is_accepted_even_when_off_the_menu(tmp_path, monk
 def test_settings_file_is_private_and_leaves_no_temp_files(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     settings.update({"api_key": "sk-secret"})
-    assert stat.S_IMODE((tmp_path / "settings.json").stat().st_mode) == 0o600
+    assert_mode(tmp_path / "settings.json", 0o600)
     assert [p.name for p in tmp_path.iterdir()] == ["settings.json"]
 
 

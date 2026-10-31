@@ -72,7 +72,7 @@ def improve_record(
 def run(job, engine: Engine, sid: str, emit: Callable[[], None], model: str | None = None) -> None:
     """The job: improve saved session `sid` in place (backup first)."""
     folder = engine.sessions_dir() / sid
-    record = json.loads((folder / "transcript.json").read_text())
+    record = json.loads((folder / "transcript.json").read_text(encoding="utf-8"))
     path, end = session_audio(sid)
     audio = load_audio(path, 0.0, end)
     corrector, names = engine._glossary_state()
@@ -169,7 +169,7 @@ def reassign_speakers(job, engine: Engine, sid: str, emit: Callable[[], None]) -
     windows that stop at the next line. The words stay. Hand-corrected speakers are not marked
     in the file, so they move too. The transcript as it is now is copied aside first."""
     folder = engine.sessions_dir() / sid
-    current = (folder / "transcript.json").read_text()
+    current = (folder / "transcript.json").read_text(encoding="utf-8")
     # A timestamp per run: a second run must not overwrite the copy of the first run's input.
     backup_name = RETRANSCRIBE_BACKUP.replace(".json", f"-{time.time_ns()}.json")
     write_atomic(folder / backup_name, current)
@@ -256,7 +256,7 @@ def reassign_speakers(job, engine: Engine, sid: str, emit: Callable[[], None]) -
 def fix_spellings(job, engine: Engine, sid: str, emit: Callable[[], None]) -> None:
     """The job: the spelling cleanup over a saved session (no re-listening; minutes, not hours)."""
     folder = engine.sessions_dir() / sid
-    record = json.loads((folder / "transcript.json").read_text())
+    record = json.loads((folder / "transcript.json").read_text(encoding="utf-8"))
     speller = engine.speller()
     if speller is None:
         raise ValueError("Spelling cleanup is turned off (TROUBADOUR_CLEANUP=0).")
@@ -295,7 +295,7 @@ def label_in_character(job, engine: Engine, sid: str, llm) -> None:
     """The job: which of each player's lines were in character (talk.label_in_character), saved on the
     lines for the talk-time boxes, the speech profile and character voices. The original is kept."""
     folder = engine.sessions_dir() / sid
-    record = json.loads((folder / "transcript.json").read_text())
+    record = json.loads((folder / "transcript.json").read_text(encoding="utf-8"))
 
     def progress(done: int, total: int) -> None:
         job.update(done=done, total=total, message=f"Reading {done} of {total} lines")

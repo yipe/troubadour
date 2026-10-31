@@ -16,6 +16,15 @@ os.environ["TROUBADOUR_SAMPLES"] = str(_TMP / "samples")
 os.environ["TROUBADOUR_OBSIDIAN_REGISTRY"] = str(_TMP / "obsidian.json")  # never this computer's Obsidian vaults
 (_TMP / "samples").mkdir()
 
+# Test fixtures are written the way the app writes files: UTF-8, "\n" line ends. Python's defaults on Windows
+# (the ANSI code page, "\r\n") would change bytes the backup hashes and characters like "·". The app itself
+# always names its encoding (test_text_io.py checks), so this only touches what the tests write and read.
+_write_text, _read_text = Path.write_text, Path.read_text
+Path.write_text = lambda self, data, encoding="utf-8", errors=None, newline="\n": _write_text(  # type: ignore[method-assign]
+    self, data, encoding, errors, newline
+)
+Path.read_text = lambda self, encoding="utf-8", errors=None: _read_text(self, encoding, errors)  # type: ignore[method-assign]
+
 import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from troubadour.core import config  # noqa: E402
@@ -24,6 +33,17 @@ from troubadour.sound.audio import wav_bytes  # noqa: E402
 from troubadour.sound.voices import VoiceMatcher  # noqa: E402
 
 SR = config.SR
+WINDOWS = os.name == "nt"
+# A file's fsync, plus its folder's where the OS lets a folder be opened (not Windows).
+FSYNCS_PER_FILE = 1 if WINDOWS else 2
+
+
+def assert_mode(path: Path, expected: int) -> None:
+    """POSIX permissions. Windows has ACLs instead: the data folder sits in the user's own profile."""
+    if not WINDOWS:
+        import stat
+
+        assert stat.S_IMODE(path.stat().st_mode) == expected, oct(stat.S_IMODE(path.stat().st_mode))
 
 
 class FakeEmbedder:

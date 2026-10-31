@@ -90,7 +90,7 @@ def session_audio(sid: str) -> tuple[Path, float | None]:
         if (folder / "audio.wav").is_file():
             return folder / "audio.wav", end
         try:
-            meta = json.loads((folder / "meta.json").read_text())
+            meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
             src = meta["source"]
         except (OSError, ValueError, KeyError, TypeError):
             raise KeyError(sid) from None

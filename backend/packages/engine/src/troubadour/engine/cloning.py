@@ -297,7 +297,7 @@ class Cloning:
         """(session folder, saved record) of every saved session, all campaigns: people are library-wide."""
         for path in sorted(self.engine.sessions_dir().glob("*/transcript.json")):
             try:
-                yield path.parent, json.loads(path.read_text())
+                yield path.parent, json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 log.warning("skipping unreadable transcript %s", path)
 

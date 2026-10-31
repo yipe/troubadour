@@ -3,7 +3,24 @@
 import contextlib
 import os
 import tempfile
+import time
 from pathlib import Path
+
+WINDOWS = os.name == "nt"
+REPLACE_TRIES = 10
+
+
+def _replace(src: Path, dst: Path) -> None:
+    """os.replace. Windows refuses a rename onto a file another writer is replacing or has open at that
+    moment ("Access is denied"); the other writer is done within milliseconds, so try again briefly."""
+    for attempt in range(REPLACE_TRIES):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if not WINDOWS or attempt == REPLACE_TRIES - 1:
+                raise
+            time.sleep(0.01 * (attempt + 1))
 
 
 def write_atomic(path: Path, data: str | bytes, mode: int = 0o644) -> None:
@@ -20,7 +37,7 @@ def write_atomic(path: Path, data: str | bytes, mode: int = 0o644) -> None:
             f.flush()
             os.fsync(f.fileno())
         tmp.chmod(mode)  # mkstemp makes it 0600; the default 0644 matches the old write_bytes + replace
-        os.replace(tmp, path)
+        _replace(tmp, path)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise

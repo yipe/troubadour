@@ -735,7 +735,7 @@ class Memory:
                 "campaign": campaign,
                 "started_at": started,
                 "title": row.get("title") or None,
-                "note": str(path.relative_to(self.vault.root)),
+                "note": path.relative_to(self.vault.root).as_posix(),
                 "duration": 0,
                 "duration_s": 0,
                 "lines": 0,
@@ -769,7 +769,7 @@ class Memory:
             "Notes", title, f"---\ntype: notes\nimported: {stamp}\ntags: [troubadour/notes]\n---\n# {title}\n\n{text}\n"
         )
         note = path.stem
-        job.note = str(path.relative_to(self.vault.root))
+        job.note = path.relative_to(self.vault.root).as_posix()
         parts = chunks(text, CHUNK_CHARS)
         job.total = len(parts)
         self.emit(job)
@@ -887,7 +887,7 @@ class Memory:
         path = self.sessions_dir() / sid / "transcript.json"
         if not path.is_file():
             raise KeyError(sid)
-        record = json.loads(path.read_text())
+        record = json.loads(path.read_text(encoding="utf-8"))
         return self.submit("writeup", sid, lambda job: self._write_up(job, record))
 
     def _write_up(self, job: Job, record: dict) -> None:
@@ -933,7 +933,7 @@ class Memory:
         if path.exists():
             trash_copy(self.vault.root, path)
         write_atomic(path, body)
-        job.note = str(path.relative_to(self.vault.root))
+        job.note = path.relative_to(self.vault.root).as_posix()
         job.step(len(job.steps), f"Wrote {path.stem}; {job.suggested} suggestions to review")
 
     def _suggest_names(self, job: Job, notes: writeup.Notes, heard_text: str) -> None:
@@ -1117,14 +1117,14 @@ class Memory:
             except OSError:
                 continue
             if m:
-                out[m.group(1)] = str(path.relative_to(self.vault.root))
+                out[m.group(1)] = path.relative_to(self.vault.root).as_posix()
         for path in (self.vault.root / "Notes").glob("*.md"):  # imported notes that stand in for a session
             try:
                 m = re.search(r"^session: (\S+)$", path.read_text(encoding="utf-8")[:400], re.M)
             except OSError:
                 continue
             if m:
-                out.setdefault(m.group(1), str(path.relative_to(self.vault.root)))
+                out.setdefault(m.group(1), path.relative_to(self.vault.root).as_posix())
         for survivor, ids in self.absorbed().items():
             if survivor not in out and (page := next((out[i] for i in ids if i in out), None)):
                 out[survivor] = page
@@ -1270,7 +1270,10 @@ def spelling_suggestions(vault: Vault, sessions: Iterable[Path], min_count: int 
     texts = []
     for folder in sessions:
         try:
-            texts += [m.get("text", "") for m in json.loads((folder / "transcript.json").read_text()).get("messages", [])]
+            texts += [
+                m.get("text", "")
+                for m in json.loads((folder / "transcript.json").read_text(encoding="utf-8")).get("messages", [])
+            ]
         except (OSError, json.JSONDecodeError, AttributeError):
             continue
     words = [w for w in scan_words(texts).values() if w.count >= min_count and name_like(w)]

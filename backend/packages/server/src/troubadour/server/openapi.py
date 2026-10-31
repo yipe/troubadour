@@ -45,7 +45,7 @@ def main(argv: list[str]) -> None:
 
         schema = app.openapi()
         out.parent.mkdir(parents=True, exist_ok=True)
-        with out.open("w") as f:
+        with out.open("w", encoding="utf-8") as f:
             json.dump(schema, f, sort_keys=True, indent=1)
             f.write("\n")
     finally:

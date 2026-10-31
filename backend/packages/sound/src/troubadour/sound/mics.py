@@ -145,7 +145,7 @@ def overrides_path() -> Path:
 
 def overrides() -> dict[str, dict]:
     try:
-        data = json.loads(overrides_path().read_text())
+        data = json.loads(overrides_path().read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
@@ -157,7 +157,7 @@ def set_override(name: str, fields: dict) -> dict:
     path = overrides_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=1))
+    tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
     tmp.replace(path)
     return data[name]
 
@@ -249,11 +249,11 @@ def measured(sessions_dir: Path, name: str) -> list[dict]:
     out = []
     for meta in sessions_dir.glob("*/meta.json"):
         try:
-            m = json.loads(meta.read_text())
+            m = json.loads(meta.read_text(encoding="utf-8"))
             src = m.get("source") or {}
             if src.get("kind") != "mic" or name not in (src.get("device"), src.get("device_name")):
                 continue
-            q = json.loads((meta.parent / "quality.json").read_text())["report"]
+            q = json.loads((meta.parent / "quality.json").read_text(encoding="utf-8"))["report"]
         except (OSError, ValueError, KeyError, TypeError):
             continue
         out.append(

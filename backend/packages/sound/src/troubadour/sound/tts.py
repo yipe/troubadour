@@ -374,7 +374,7 @@ class Clones:
 
     def _read_json(self, pid: str, name: str) -> dict | None:
         try:
-            return json.loads((self._dir(pid) / name).read_text())
+            return json.loads((self._dir(pid) / name).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
 
@@ -414,7 +414,7 @@ class Clones:
         out = []
         for meta in self.root().glob("*/clips/*.json"):
             try:
-                clip = json.loads(meta.read_text())
+                clip = json.loads(meta.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
             out.append(clip | {"url": _url(clip["player_id"], clip["id"])})

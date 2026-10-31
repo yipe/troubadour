@@ -373,7 +373,7 @@ def entry_passage(e: Entity, root: Path) -> Passage:
     if e.suggested_facts:
         parts.append("Unconfirmed facts:\n" + "\n".join(f"- {fact_line(f)}" for f in e.suggested_facts))
     parts += [f"{heading}:\n{body.strip()}" for heading, body in e.extra_sections if body.strip()]
-    path = str(e.path.relative_to(root)) if e.path else None
+    path = e.path.relative_to(root).as_posix() if e.path else None
     return Passage("entry", "\n".join(parts), e.name, path=path, entry=e.name, order=(0, e.name))
 
 
@@ -402,7 +402,7 @@ def note_passages(vault: Vault) -> list[Passage]:
             continue
         # Each bullet its own paragraph, so a long list (a session page's events) splits between items.
         for i, piece in enumerate(chunks(re.sub(r"\n(?=[-*] )", "\n\n", body), NOTE_CHARS)):
-            out.append(Passage("note", piece, str(rel.with_suffix("")), path=str(rel), order=(1, str(rel), i)))
+            out.append(Passage("note", piece, rel.with_suffix("").as_posix(), path=rel.as_posix(), order=(1, rel.as_posix(), i)))
     return out
 
 

@@ -5,7 +5,7 @@ import time
 
 import numpy as np
 import pytest
-from conftest import tone, write_wav
+from conftest import FSYNCS_PER_FILE, tone, write_wav
 from fastapi.testclient import TestClient
 from troubadour.core import config
 from troubadour.core.transcript import build
@@ -178,10 +178,10 @@ def test_save_and_restore_write_every_file_with_fsync(api, monkeypatch):
     rec = json.loads((folder / "transcript.json").read_text())
     improve.save(folder, rec)
     # backup + transcript.json + transcript.md + meta.json, each file and its folder
-    assert len(synced) == 8
+    assert len(synced) == 4 * FSYNCS_PER_FILE
     synced.clear()
     assert improve.restore(folder)
-    assert len(synced) == 6
+    assert len(synced) == 3 * FSYNCS_PER_FILE
     assert not (folder / "transcript.orig.json").exists()
     assert [p.name for p in folder.glob(".*.tmp")] == []
 

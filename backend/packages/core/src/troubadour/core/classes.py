@@ -44,7 +44,7 @@ def _builtins() -> list[dict]:
 def _load_custom() -> list[dict]:
     path = custom_path()
     try:
-        raw = json.loads(path.read_text())["classes"]
+        raw = json.loads(path.read_text(encoding="utf-8"))["classes"]
     except FileNotFoundError:
         return []
     except (OSError, ValueError, KeyError, TypeError):
