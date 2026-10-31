@@ -439,7 +439,7 @@ def _add_accepted(vault: Vault, fact: Fact, target: str | None) -> None:
     if target is None:
         vault.add_campaign_fact(replace(fact, about=None, replaces=None))
     else:
-        vault.add_fact(target, replace(fact, about=target, replaces=None))
+        vault.accept_fact(target, replace(fact, replaces=None))
 
 
 def _fact_action(vault: Vault, it: Item, action: str, text: str | None, about: str | None, about_given: bool) -> None:
@@ -477,8 +477,7 @@ def _fact_action(vault: Vault, it: Item, action: str, text: str | None, about: s
     else:
         # Through the suggestions so an update replaces the old fact and keeps it as history.
         f = replace(f, about=target)
-        vault.add_fact(target, f, suggested=True)
-        vault.review(target, accept_facts=[f.id])
+        vault.accept_fact(target, f)
     it.fact = replace(f, about=target)
 
 

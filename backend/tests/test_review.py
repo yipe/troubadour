@@ -327,3 +327,57 @@ def test_rejecting_an_entry_confirmed_since_the_list_froze_never_trashes_it(api,
     assert act(api, entry, action="reject").status_code in (400, 409)
     assert deps.vault.get("Mudge").status == "confirmed"
     assert not (deps.vault.root / ".trash" / "Mudge.md").exists()
+
+
+# Accepting a fact into an entry that already holds a pending suggestion saying the same thing (under another
+# id, since ids hash the entry name) must promote that suggestion: exactly one confirmed copy, nothing else lost.
+DARK = "Elara fears the dark."
+
+
+def _dark_fact_with_a_pending_twin_on_elara(about):
+    from troubadour.lore import review as lore
+
+    deps.vault.add_fact("Elara", Fact(DARK, "Elara"), suggested=True)
+    twin = deps.vault.get("Elara").suggested_facts[-1]
+    mine = Fact(DARK, about, source=Source(PAGE, SID, 3.0))
+    assert mine.id != twin.id
+    return lore, lore.Item(f"fact:{mine.id}", "fact", mine.id, fact=mine)
+
+
+def _assert_one_confirmed_dark_fact():
+    e = deps.vault.get("Elara")
+    assert [f.text for f in e.facts].count(DARK) == 1
+    assert DARK not in [s.text for s in e.suggested_facts]
+    assert "Elara fears water." in [f.text for f in e.facts]  # nothing else confirmed was removed
+
+
+def test_moving_a_suggestion_onto_an_entry_with_a_pending_twin_keeps_one_confirmed_copy(api, world):
+    lore, it = _dark_fact_with_a_pending_twin_on_elara("Mudge")
+    deps.vault.add_fact("Mudge", it.fact, suggested=True)
+    lore._fact_action(deps.vault, it, "accept", None, "Elara", True)
+    _assert_one_confirmed_dark_fact()
+    assert DARK not in [s.text for s in deps.vault.get("Mudge").suggested_facts]
+
+
+def test_moving_a_campaign_fact_onto_an_entry_with_a_pending_twin_keeps_one_confirmed_copy(api, world):
+    lore, it = _dark_fact_with_a_pending_twin_on_elara(None)
+    deps.vault.add_campaign_fact(it.fact)
+    lore._fact_action(deps.vault, it, "accept", None, "Elara", True)
+    _assert_one_confirmed_dark_fact()
+    assert DARK not in [f.text for f in deps.vault.campaign_facts()]
+    assert [f.text for f in deps.vault.campaign_facts()] == ["The toll is two gold."]
+
+
+def test_accepting_a_kept_notebook_fact_onto_an_entry_with_a_pending_twin_keeps_one_confirmed_copy(api, world):
+    from troubadour.lore import review as lore
+
+    deps.vault.add_fact("Elara", Fact(DARK, "Elara"), suggested=True)
+    # Worded a little differently, so it has its own id but is "the same fact" to the duplicate check.
+    mine = Fact("Elara fears the darkness.", "Elara", source=Source(PAGE, SID, 3.0))
+    assert mine.id != deps.vault.get("Elara").suggested_facts[-1].id
+    assert lore._where(deps.vault, mine) is None  # held in neither list: a kept notebook fact
+    lore._fact_action(deps.vault, lore.Item(f"fact:{mine.id}", "fact", mine.id, fact=mine), "accept", None, "Elara", True)
+    e = deps.vault.get("Elara")
+    assert [f.text for f in e.facts if "dark" in f.text] == ["Elara fears the darkness."]
+    assert not [s for s in e.suggested_facts if "dark" in s.text]
+    assert "Elara fears water." in [f.text for f in e.facts]
