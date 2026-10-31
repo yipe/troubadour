@@ -53,6 +53,19 @@ def _write_files(folder: Path, files: dict[str, str]) -> None:
         write_atomic(folder / name, body)
 
 
+def _words_changed(folder: Path, record: dict) -> bool:
+    """Whether `record`'s lines differ from the saved transcript's (a first save has nothing to differ from)."""
+
+    def words(rec: dict) -> list[tuple]:
+        return [(m.get("id"), m.get("text"), m.get("voice_id")) for m in rec.get("messages", [])]
+
+    try:
+        saved = json.loads((folder / "transcript.json").read_text(encoding="utf-8"))
+        return words(saved) != words(record)
+    except (OSError, ValueError, AttributeError, TypeError):
+        return False
+
+
 class SessionsMixin:
     live: LiveSession | None  # set in Engine.__init__
     _transcript_lock: threading.Lock
@@ -116,7 +129,10 @@ class SessionsMixin:
                 return None
             folder.mkdir(parents=True, exist_ok=True)
             # "Reviewed" is set from outside the live session; a later autosave must not undo it.
-            record["session"]["reviewed_at"] = self._read_meta(folder).get("reviewed_at")
+            on_disk = self._read_meta(folder)
+            record["session"]["reviewed_at"] = on_disk.get("reviewed_at")
+            # Keep the steps a refresh or a one-step button recorded since the last save (pipeline.carried).
+            record["session"]["pipeline"] = pipeline.carried(pipeline.recorded(on_disk), _words_changed(folder, record))
             _write_files(
                 folder,
                 {
@@ -481,9 +497,7 @@ class SessionsMixin:
                 wav = self._voice_audio_path(v["id"])
                 if wav.is_file():
                     shutil.copyfile(wav, folder / "voices" / wav.name)
-            tmp = folder / f".{phase}.json.tmp"
-            tmp.write_text(json.dumps(data))
-            tmp.replace(folder / f"{phase}.json")
+            write_atomic(folder / f"{phase}.json", json.dumps(data))
         except OSError:
             log.exception("couldn't snapshot the %s setup", phase)
 

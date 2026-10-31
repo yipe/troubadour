@@ -271,3 +271,9 @@ def test_web_serves_index_for_ui_routes(tmp_path):
         assert (r.status_code, r.text, r.headers["cache-control"]) == (200, "<html>ui</html>", "no-cache")
     assert c.get("/api/nope").status_code == 404
     assert c.get("/assets/gone.js").status_code == 404
+
+
+def test_the_engine_reads_the_servers_vault():
+    # Glossary corrections, Whisper name hints, heard-as suggestions, the notebook's known names and Improve
+    # all go through engine.vault; unset, they silently run with no campaign data.
+    assert deps.engine.vault is deps.vault

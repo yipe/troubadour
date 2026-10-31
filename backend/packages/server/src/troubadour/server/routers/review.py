@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import AfterValidator, BaseModel, StringConstraints
-from troubadour.engine import SESSION_ID
+from troubadour.engine import SESSION_ID, pipeline
 from troubadour.lore import review as lore
 from troubadour.server import deps
 from troubadour.server.routers.campaign import EntityName, FactSuggestionOut, Kind, _Out, one_line
@@ -91,7 +91,11 @@ def _item(it: lore.Item, out: _Out) -> ReviewItem:
 @router.get("/api/sessions/{sid}/review", response_model=Review)
 def get_review(sid: str):
     ctx = _context(sid)
+    derived_now = not (ctx.session_dir / "review.json").is_file()
     items = lore.review(ctx)
+    if derived_now and (ctx.session_dir / "review.json").is_file():
+        # The list was just derived by the current rules; an older one is left for "Upgrade old sessions".
+        pipeline.stamp(ctx.session_dir, pipeline.BY_NAME["review"], deps.engine._transcript_lock)
     out = _Out()
     return Review(
         session_id=sid,

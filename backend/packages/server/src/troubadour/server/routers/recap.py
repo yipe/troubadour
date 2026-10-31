@@ -1,12 +1,13 @@
 """A session's recap to share: build it as a background job, read the stored one."""
 
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from troubadour.engine import SESSION_ID
 from troubadour.lore import recap
 from troubadour.server import deps
+from troubadour.server.models import CampaignJob
 
 router = APIRouter()
 
@@ -46,33 +47,13 @@ class Recap(BaseModel):
     built_at: float  # epoch seconds
 
 
-class RecapJob(BaseModel):
-    """The job as `campaign.job` sends it (the web's `CampaignJob`)."""
-
-    id: str
-    kind: str
-    title: str  # the session id
-    state: Literal["queued", "running", "done", "error"]
-    done: int
-    total: int
-    message: str
-    created: list[str]
-    updated: list[str]
-    suggested: int
-    note: str | None
-    player_id: str | None
-    steps: list[dict[str, Any]]
-    live: dict[str, Any] | None
-    snippets: list[dict[str, Any]]
-
-
 def _saved(sid: str) -> None:
     if not SESSION_ID.fullmatch(sid):
         raise HTTPException(404, f"not found: {sid}")
     deps._require_open_campaign(sid)
 
 
-@router.post("/api/sessions/{sid}/recap", response_model=RecapJob)
+@router.post("/api/sessions/{sid}/recap", response_model=CampaignJob)
 def build_recap(sid: str, body: RecapIn):
     """Write the recap from the session page and its reviewed facts (a background job; progress arrives as
     campaign.job events). 409 while one is already running for this session."""
@@ -86,7 +67,7 @@ def build_recap(sid: str, body: RecapIn):
         if not (deps.memory.sessions_dir() / sid / "transcript.json").is_file():
             raise HTTPException(404, f"not found: {sid}")
         try:
-            return deps._call(recap.start, deps.memory, deps.memory.sessions_dir(), sid, options).to_json()
+            return deps._call(recap.start, deps.StampingMemory("recap"), deps.memory.sessions_dir(), sid, options).to_json()
         except RuntimeError as e:
             raise HTTPException(409, str(e)) from None
 

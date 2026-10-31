@@ -24,6 +24,7 @@ from troubadour.sound import asr
 from troubadour.sound.audio import load_audio
 from troubadour.sound.voices import MIN_EMBED_S, embed_span
 
+from . import pipeline
 from .core import Engine
 from .model import PROVISIONAL_BELOW
 from .paths import session_audio
@@ -297,7 +298,12 @@ def restore(folder: Path, lock: AbstractContextManager = NO_LOCK) -> bool:
     body = backup.read_text(encoding="utf-8")
     record = json.loads(body)
     with lock:
-        kept = {k: v for k, v in _existing_meta(folder).items() if k in KEEP_META and k != "pipeline"}
+        existing = _existing_meta(folder)
+        kept = {k: v for k, v in existing.items() if k in KEEP_META and k != "pipeline"}
+        # Only the steps that rewrote the words are undone; the others (talk time, the write-up, the recap)
+        # are still as done as they were.
+        stamps = {k: v for k, v in pipeline.recorded(existing).items() if k not in pipeline.REWRITES}
+        kept["pipeline"] = stamps
         write_atomic(folder / "transcript.json", body)
         write_atomic(folder / "transcript.md", transcript.markdown(record))
         write_atomic(folder / "meta.json", json.dumps(record["session"] | kept))

@@ -11,7 +11,7 @@ from fastapi.responses import Response
 from troubadour.cloud.backup import Cloud
 from troubadour.core import config, settings
 from troubadour.core.providers import Accounts
-from troubadour.engine import Bus, Engine
+from troubadour.engine import Bus, Engine, pipeline
 from troubadour.engine.cloning import Cloning
 from troubadour.lore.ask import Asker
 from troubadour.lore.campaign import Vault
@@ -24,9 +24,31 @@ engine = Engine(bus)
 
 
 vault = Vault(engine.vault_dir)  # the open campaign's notes, looked up on every use
+engine.vault = vault  # glossary corrections, Whisper name hints, heard-as suggestions and the notebook read it
 
 
 memory = Memory(vault, bus, sessions_dir=engine.sessions_dir, seed=engine.known_names)
+
+
+def stamped(sid: str, step: str, work) -> None:
+    """Run one pipeline step's job, then record its version on the session (only when it finished), so the
+    session doesn't look out of date to "Upgrade old sessions"."""
+    work()
+    pipeline.stamp(engine.sessions_dir() / sid, pipeline.BY_NAME[step], engine._transcript_lock)
+
+
+class StampingMemory:
+    """`memory`, except that the job it queues records `step` on its session when it finishes. For lore
+    functions that queue their own job (recap.start), which the server can't wrap otherwise."""
+
+    def __init__(self, step: str):
+        self.step = step
+
+    def __getattr__(self, name: str):
+        return getattr(memory, name)
+
+    def submit(self, kind: str, title: str, work, **kw):
+        return memory.submit(kind, title, lambda job: stamped(title, self.step, lambda: work(job)), **kw)
 
 
 cloning = Cloning(engine, llm=lambda: memory.llm, vault=vault, written_up=memory.written_up)

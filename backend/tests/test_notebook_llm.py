@@ -1,6 +1,7 @@
 """The notebook's LLM pass: validation of what the model says, the cadence of the loop, and spelling items."""
 
 import json
+import threading
 
 import pytest
 from conftest import NullSource, ScriptedLLM
@@ -365,3 +366,50 @@ def test_the_loop_can_be_turned_off(engine, monkeypatch):
     lp = NotebookLoop(engine, engine.live)
     lp.start()
     assert engine.live.notebook.before_save is None
+
+
+def test_a_pass_still_running_at_stop_is_saved_with_the_final_notebook(engine, loop):
+    entered, release = threading.Event(), threading.Event()
+
+    def blocked(system, user, schema, max_tokens=4000):
+        entered.set()
+        assert release.wait(5)
+        return FACT
+
+    engine.cleanup_llm.json = blocked
+    engine.status = "stopping"
+    say(engine, 1, MIN_SPEECH_S + 1)
+    running = engine.live.notebook_loop
+    pass_thread = threading.Thread(target=running.tick, daemon=True)
+    pass_thread.start()
+    assert entered.wait(5)  # the model call is in flight
+    finish = threading.Thread(target=engine._finish, args=(engine.live,), daemon=True)
+    finish.start()  # saves, then waits for the pass before the notebook's save
+    release.set()
+    finish.join(5)
+    pass_thread.join(5)
+    assert not finish.is_alive()
+    saved = json.loads((engine.sessions_dir() / engine.live.id / "notebook.json").read_text())["items"]
+    assert [i["kind"] for i in saved] == ["fact"]
+    assert engine.status == "idle"
+
+
+def test_a_pass_that_outlasts_the_drain_saves_the_notebook_when_it_finishes(engine, loop):
+    entered, release = threading.Event(), threading.Event()
+
+    def blocked(system, user, schema, max_tokens=4000):
+        entered.set()
+        assert release.wait(5)
+        return FACT
+
+    engine.cleanup_llm.json = blocked
+    say(engine, 1, MIN_SPEECH_S + 1)
+    running = engine.live.notebook_loop
+    pass_thread = threading.Thread(target=running.tick, daemon=True)
+    pass_thread.start()
+    assert entered.wait(5)
+    assert running.drain(0.01) is False  # gave up waiting
+    release.set()
+    pass_thread.join(5)
+    saved = json.loads((engine.sessions_dir() / engine.live.id / "notebook.json").read_text())["items"]
+    assert [i["kind"] for i in saved] == ["fact"]

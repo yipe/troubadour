@@ -15,6 +15,7 @@ from troubadour.lore.facts import Fact as FactModel
 from troubadour.lore.memory import spelling_suggestions
 from troubadour.lore.pages import session_numbers
 from troubadour.server import deps
+from troubadour.server.models import CampaignJob
 from troubadour.server.routers import timeline as timeline_router
 
 router = APIRouter()
@@ -375,7 +376,7 @@ def merge_entity(name: str, body: MergeIn):
     return _entity(e)
 
 
-@router.post("/api/campaign/entities/{name}/facts/search")
+@router.post("/api/campaign/entities/{name}/facts/search", response_model=CampaignJob)
 def seek_facts(name: str):
     """Scrub transcripts and imported notes for lasting facts about this entry."""
     with deps.campaign_gate:
@@ -434,14 +435,22 @@ def delete_campaign_fact(fact_id: str):
     return _facts_out(facts)
 
 
-@router.post("/api/campaign/import")
+@router.post("/api/campaign/import", response_model=CampaignJob)
 def import_notes(body: ImportIn):
     """Pasted notes → a background job (progress arrives as campaign.job events)."""
     with deps.campaign_gate:
         return deps._call(deps.memory.import_notes, body.title, body.text).to_json()
 
 
-@router.post("/api/campaign/writeup/{sid}")
+def _queue_write_up(sid: str):
+    """Memory.write_up, with the job recording the pipeline step so the session isn't offered an upgrade."""
+    record = json.loads((deps.memory.sessions_dir() / sid / "transcript.json").read_text())
+    return deps.memory.submit(
+        "writeup", sid, lambda job: deps.stamped(sid, "writeup", lambda: deps.memory._write_up(job, record))
+    )  # noqa: SLF001
+
+
+@router.post("/api/campaign/writeup/{sid}", response_model=CampaignJob)
 def write_up(sid: str):
     if not SESSION_ID.fullmatch(sid):
         raise HTTPException(404, "not found")
@@ -454,10 +463,10 @@ def write_up(sid: str):
         raise HTTPException(503, problem)
     with deps.campaign_gate:
         deps._require_open_campaign(sid)
-        return deps._call(deps.memory.write_up, sid).to_json()
+        return deps._call(_queue_write_up, sid).to_json()
 
 
-@router.post("/api/campaign/ignore")
+@router.post("/api/campaign/ignore", response_model=list[str])
 def ignore_words(body: IgnoreIn):
     """Never suggest these words as names again (kept in the vault's "Ignored words" note)."""
     words = deps.vault.ignore(body.words)
@@ -465,14 +474,32 @@ def ignore_words(body: IgnoreIn):
     return words
 
 
-@router.delete("/api/campaign/ignore/{word}")
+@router.delete("/api/campaign/ignore/{word}", response_model=list[str])
 def unignore_word(word: str):
     words = deps.vault.unignore(word)
     deps.memory.changed()
     return words
 
 
-@router.get("/api/campaign/suggestions")
+class MisheardWord(BaseModel):
+    entity: str
+    heard: str
+    count: int
+    example: str
+
+
+class UnknownWord(BaseModel):
+    heard: str
+    count: int
+    example: str
+
+
+class Suggestions(BaseModel):
+    misheard: list[MisheardWord]
+    unknown: list[UnknownWord]
+
+
+@router.get("/api/campaign/suggestions", response_model=Suggestions)
 def suggestions():
     """Transcript words that look like misspelled glossary names, and unknown names heard."""
     return spelling_suggestions(deps.vault, deps.engine.campaign_sessions())

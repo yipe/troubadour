@@ -42,6 +42,7 @@ SEGMENT = SegmentConfig()  # utterance cutting; values measured in PLAN.md ("Utt
 ACTIVE_EVERY_S = 0.5  # fast speaker.active cadence while someone talks
 ACTIVE_WINDOW_S = 1.5
 MIC_STALL_S = 5.0  # mic silent this long (no frames at all, not just quiet) → warn the UI
+NOTEBOOK_DRAIN_S = 30.0  # how long Stop waits for a notebook pass already asking the model
 GLOSSARY_CHECK_S = 5.0  # how often new lines re-check the vault for glossary edits
 PROMPT_NAMES = 20  # more names make Whisper worse at everything else (PLAN.md, "Whisper prompt")
 PROMPT_MENTION_LINES = 100  # glossary names said this recently go first in the Whisper prompt
@@ -220,15 +221,28 @@ class PipelineMixin:
                 return
         # Save everything before announcing "idle": a Replay clicked the moment the UI says the
         # session ended must see the final meta.json (its duration caps the replay) and recording.
+        try:
+            self._save_final(sess)
+        except Exception as e:  # a full disk must not leave the engine "stopping": Stop, Refresh and backup all wait on idle
+            log.exception("saving the finished session failed")
+            self.bus.emit("error", {"message": f"Saving the session failed: {type(e).__name__}: {e}"})
+        finally:
+            self._go_idle(sess)
+
+    def _save_final(self, sess: LiveSession) -> None:
         sess.release()
         with self.lock:
             sess.restore_absent(self.matcher)  # before the state save: their voiceprints are written from the matcher
         self.save_transcript(force=True)
         self._save_state()  # keep voiceprints adapted during the session
         self._snapshot_setup(sess, "end")
+        if sess.notebook_loop is not None:  # a pass in flight would add its items after the save below
+            sess.notebook_loop.drain(NOTEBOOK_DRAIN_S)
         sess.notebook.save(self.sessions_dir() / sess.id / "notebook.json")
         if sess.desc["kind"] == "mic":
             threading.Thread(target=self._quality_quietly, args=(sess.id,), name="quality", daemon=True).start()
+
+    def _go_idle(self, sess: LiveSession) -> None:
         with self.lock:
             if sess is not self.live:  # a new session started meanwhile; it saved this one first
                 return
@@ -245,7 +259,8 @@ class PipelineMixin:
 
         sess.notebook.is_live = is_live
         sess.notebook.emit = lambda data: self.bus.emit("notebook.updated", data)
-        NotebookLoop(cast("Engine", self), sess).start()
+        sess.notebook_loop = NotebookLoop(cast("Engine", self), sess)
+        sess.notebook_loop.start()
 
     def notebook_json(self) -> dict:
         """The live notebook, or an empty one when no session is running."""

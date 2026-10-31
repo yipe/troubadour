@@ -9,10 +9,11 @@ import pytest
 from conftest import RecordingBus, tone, write_wav
 from conftest import job as new_job
 from fastapi.testclient import TestClient
-from test_memory import KNOWN, FakeLLM
+from test_memory import KNOWN, FakeLLM, wait
 from troubadour.core import config
 from troubadour.core.transcript import build
 from troubadour.engine import MAIN_CAMPAIGN, improve, pipeline
+from troubadour.engine.model import Message
 from troubadour.engine.pipeline import Run, Step
 from troubadour.lore import memory as mem
 from troubadour.lore.campaign import Vault
@@ -105,9 +106,58 @@ def test_a_recorded_version_is_not_stale_and_a_bumped_one_is(idle, memory, monke
     assert pipeline.stale(Run(idle, memory, OLD)) == []
     bumped = Step("talk", 2, "Count talk time", (), (), lambda r, j: None)
     assert [s.name for s in pipeline.stale(Run(idle, memory, OLD), [bumped])] == ["talk"]
-    pipeline.stamp(folder, bumped)
+    pipeline.stamp(folder, bumped, idle._transcript_lock)
     assert pipeline.stale(Run(idle, memory, OLD), [bumped]) == []
     assert pipeline_of(folder) == pipeline_of(folder, "transcript.json") == {"talk": 2}
+
+
+class WatchedLock:
+    """The engine's transcript lock, telling a test when someone is waiting for it."""
+
+    def __init__(self):
+        self.inner = threading.Lock()
+        self.wanted = threading.Event()
+
+    def __enter__(self):
+        self.wanted.set()
+        self.inner.acquire()
+
+    def __exit__(self, *exc):
+        self.inner.release()
+
+
+def test_a_stamp_waits_for_the_lock_set_reviewed_holds_and_keeps_its_reviewed_mark(idle):
+    folder = make_session(idle)
+    lock = WatchedLock()
+    idle._transcript_lock = lock
+    talk = Step("talk", 1, "Count talk time", (), (), lambda r, j: None)
+    with lock.inner:  # set_reviewed is mid read-modify-write
+        stamper = threading.Thread(target=pipeline.stamp, args=(folder, talk, lock), daemon=True)
+        stamper.start()
+        assert lock.wanted.wait(5)  # the stamp is queued behind it
+        for name in ("meta.json", "transcript.json"):
+            data = json.loads((folder / name).read_text())
+            (data["session"] if name == "transcript.json" else data)["reviewed_at"] = 123.0
+            (folder / name).write_text(json.dumps(data))
+    stamper.join(5)
+    assert not stamper.is_alive()
+    assert json.loads((folder / "meta.json").read_text())["reviewed_at"] == 123.0
+    assert json.loads((folder / "transcript.json").read_text())["session"]["reviewed_at"] == 123.0
+    assert pipeline_of(folder) == {"talk": 1}
+
+
+def test_two_trash_copies_of_a_page_in_the_same_second_both_survive(tmp_path, monkeypatch):
+    monkeypatch.setattr("troubadour.lore.campaign.time.strftime", lambda fmt: "20250401-190000")
+    page = tmp_path / "Sessions" / "Session 1.md"
+    page.parent.mkdir()
+    page.write_text("first draft")
+    first = pipeline.trash_copy(tmp_path, page)
+    page.write_text("second draft")
+    second = pipeline.trash_copy(tmp_path, page)
+    assert first is not None
+    assert second is not None
+    assert first != second
+    assert (first.read_text(), second.read_text()) == ("first draft", "second draft")
 
 
 def test_a_live_session_is_saved_with_what_listening_already_did(engine):
@@ -215,10 +265,7 @@ def test_a_refreshed_write_up_keeps_confirmed_facts_trashes_the_old_page_and_onl
     vault = memory.vault
     memory.llm.found = {"facts": [{"about": "Elara", "text": "Elara owns a grey owl."}]}
     first = memory.write_up(OLD)
-    deadline = time.monotonic() + 5
-    while first.state in ("queued", "running") and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert first.state == "done", first.message
+    wait(first)
     owl = vault.get("Elara").suggested_facts[0]
     vault.update("Elara", facts=[Fact("Elara is a ranger.")], suggested_facts=[])
     vault.add_fact("Elara", Fact(owl.text))  # the owner accepted the owl
@@ -255,8 +302,7 @@ def test_a_refreshed_write_up_keeps_confirmed_facts_trashes_the_old_page_and_onl
 def test_a_write_up_that_fails_leaves_the_old_page_in_place(idle, memory, job):
     make_session(idle)
     first = memory.write_up(OLD)
-    while first.state in ("queued", "running"):
-        time.sleep(0.01)
+    wait(first)
     (page,) = (memory.vault.root / "Sessions").glob("*.md")
     before = page.read_text()
     memory.llm.read = {}  # the notes come back empty
@@ -417,3 +463,66 @@ def test_the_model_check_runs_without_the_campaign_gate(client, idle, memory, mo
     assert client.post("/api/sessions/upgrade").status_code == 503
     assert len(held) == 2
     assert not any(held)
+
+
+# ------------------------------------------------------------------ the one-step endpoints record their step
+
+
+@pytest.fixture
+def api(idle, memory, monkeypatch):
+    monkeypatch.setattr(deps, "engine", idle)
+    monkeypatch.setattr(deps, "memory", memory)
+    monkeypatch.setattr(deps, "vault", memory.vault)
+    return TestClient(app, base_url="http://127.0.0.1:8765")
+
+
+def test_the_write_up_endpoint_records_its_step_so_the_session_is_not_offered_an_upgrade(api, idle, memory):
+    folder = make_session(idle)
+    job = api.post(f"/api/campaign/writeup/{OLD}").json()
+    wait(next(j for j in memory.jobs.values() if j.id == job["id"]))
+    assert pipeline_of(folder)["writeup"] == pipeline.BY_NAME["writeup"].version
+    assert pipeline_of(folder, "transcript.json")["writeup"] == pipeline.BY_NAME["writeup"].version
+
+
+def test_a_failed_write_up_is_not_recorded(api, idle, memory):
+    folder = make_session(idle)
+    memory.llm.read = {}  # the notes come back empty: the job fails
+    job = memory.jobs[api.post(f"/api/campaign/writeup/{OLD}").json()["id"]]
+    deadline = time.monotonic() + 5
+    while job.state in ("queued", "running") and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert job.state == "error"
+    assert "writeup" not in (pipeline_of(folder) or {})
+
+
+def test_the_first_review_records_its_step_and_an_older_list_is_left_for_the_upgrade(api, idle, memory):
+    folder = make_session(idle)
+    assert api.get(f"/api/sessions/{OLD}/review").status_code == 200
+    assert pipeline_of(folder)["review"] == pipeline.BY_NAME["review"].version
+    pipeline.patch_session(folder, {"pipeline": {}}, idle._transcript_lock)  # a list derived by older rules
+    assert api.get(f"/api/sessions/{OLD}/review").status_code == 200
+    assert not pipeline_of(folder)
+
+
+# ------------------------------------------------------------------ a live session's save keeps the recorded steps
+
+
+def test_saving_a_finished_live_session_again_keeps_the_stamps_a_refresh_wrote(engine):
+    engine.messages["m1"] = Message("m1", None, "We found a cave.", 0.0, 3.0, 0.9, False, [])
+    folder = engine.save_transcript(force=True)
+    assert pipeline_of(folder) == pipeline.live_stamp()
+    pipeline.stamp(folder, pipeline.BY_NAME["writeup"], engine._transcript_lock)
+    pipeline.stamp(folder, pipeline.BY_NAME["talk"], engine._transcript_lock)
+    engine.save_transcript(force=True)  # e.g. a new session starts: the old one is saved a last time
+    assert pipeline_of(folder) == {**pipeline.live_stamp(), "writeup": 1}
+    assert pipeline_of(folder, "transcript.json") == pipeline_of(folder)
+
+
+def test_a_save_that_changes_the_lines_drops_the_steps_that_read_them(engine):
+    engine.messages["m1"] = Message("m1", None, "We found a cave.", 0.0, 3.0, 0.9, False, [])
+    folder = engine.save_transcript(force=True)
+    for name in ("writeup", "review", "recap", "in_character"):
+        pipeline.stamp(folder, pipeline.BY_NAME[name], engine._transcript_lock)
+    engine.messages["m1"].text = "We found a cave near Dallon."  # a late spelling fix
+    engine.save_transcript(force=True)
+    assert pipeline_of(folder) == {**pipeline.live_stamp(), "review": 1}
