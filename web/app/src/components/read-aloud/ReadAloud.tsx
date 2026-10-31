@@ -50,7 +50,16 @@ export function ReadAloud({ sessionId, text, defaultPlayerId }: ReadAloudProps) 
     ? jobs.filter((j) => j.kind === "read" && j.player_id === pick.playerId && j.title === sessionId).at(-1)
     : undefined
   const running = !!job && jobActive(job)
-  const clip = clones?.clips.find((c) => c.kind === "read" && c.source.session === sessionId)
+  // The server lists clips newest first.
+  const clip = pick
+    ? clones?.clips.find(
+        (c) =>
+          c.kind === "read" &&
+          c.source.session === sessionId &&
+          c.player_id === pick.playerId &&
+          (c.persona ?? "table") === pick.persona,
+      )
+    : undefined
   const nothing = text !== undefined && text.trim() === ""
 
   if (!pick) {

@@ -157,11 +157,13 @@ export function ReviewCard({ item, entryNames, facts, act }: ReviewCardProps) {
           </div>
           <div className="flex gap-2">
             {primary("Accept with edits", () =>
-              decide({
-                action: "accept",
-                text: text.trim(),
-                ...(about === undefined ? {} : { about }),
-              }),
+              !text.trim()
+                ? undefined
+                : decide({
+                    action: "accept",
+                    text: text.trim(),
+                    ...(about === undefined ? {} : { about }),
+                  }),
             )}
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => setMode("view")}>
               Cancel

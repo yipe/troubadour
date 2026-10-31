@@ -23,6 +23,17 @@ export const withJob =
   (job: CampaignJob): Edit =>
   (c) => ({ ...c, jobs: upsertById(c.jobs, job) })
 
+/** A POST response is older than any socket event for the same job: add it only if it is new here. */
+export const withNewJob =
+  (job: CampaignJob): Edit =>
+  (c) =>
+    c.jobs.some((j) => j.id === job.id) ? c : { ...c, jobs: [...c.jobs, job] }
+
+export const withNewAnswer =
+  (answer: CampaignAnswer): Edit =>
+  (c) =>
+    c.answers.some((a) => a.id === answer.id) ? c : { ...c, answers: [...c.answers, answer] }
+
 export const withAnswer =
   (answer: CampaignAnswer): Edit =>
   (c) => ({ ...c, answers: upsertById(c.answers, answer) })
@@ -55,7 +66,7 @@ export function editCampaign(client: QueryClient, edit: Edit) {
   client.setQueryData<Campaign>(keys.campaign(), (c) => c && edit(c))
 }
 
-export const putJob = (client: QueryClient, job: CampaignJob) => editCampaign(client, withJob(job))
+export const putJob = (client: QueryClient, job: CampaignJob) => editCampaign(client, withNewJob(job))
 
 /**
  * A fetched campaign merged over the cached one: a job or answer that already ended here stays as it
@@ -67,13 +78,15 @@ export function mergeFetched(fetched: Campaign, cached: Campaign | undefined): C
   const answers = new Map(cached.answers.map((a) => [a.id, a]))
   return {
     ...fetched,
-    // Fetched jobs win (the old store did the same); jobs only seen via events are kept.
+    // Fetched jobs win (the old store did the same); active jobs only seen via events are kept.
     jobs: [
       ...fetched.jobs.map((j) => {
         const mine = jobs.get(j.id)
         return mine && !jobActive(mine) && jobActive(j) ? mine : j
       }),
-      ...cached.jobs.filter((j) => !fetched.jobs.some((f) => f.id === j.id)),
+      // An ended job that is missing from the fetch is gone (or from another campaign); only a
+      // running one may be newer than the fetch.
+      ...cached.jobs.filter((j) => jobActive(j) && !fetched.jobs.some((f) => f.id === j.id)),
     ],
     answers: fetched.answers.map((a) => {
       const mine = answers.get(a.id)

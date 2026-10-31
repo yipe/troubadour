@@ -77,4 +77,46 @@ describe("ReadAloud", () => {
     fireEvent.click(button)
     expect(play).toHaveBeenCalledTimes(1)
   })
+
+  it("plays the newest clip of the chosen reader, not another player's", () => {
+    mockFetch(() => ({}))
+    const BO = player({ id: "p2", name: "Bo", clone_ok: true })
+    renderWithProviders(<ReadAloud sessionId="s1" defaultPlayerId="p1" />, {
+      live: { ...snapshotBase(), players: [ALEX, BO] },
+      queryData: [
+        [
+          keys.clones(),
+          {
+            voices: { p1: cloneVoice({ player_id: "p1" }), p2: cloneVoice({ player_id: "p2" }) },
+            profiles: {},
+            clips: [
+              cloneClip({
+                id: "bo",
+                player_id: "p2",
+                kind: "read",
+                source: { session: "s1" },
+                url: "/bo.wav",
+              }),
+              cloneClip({
+                id: "new",
+                player_id: "p1",
+                kind: "read",
+                source: { session: "s1" },
+                url: "/new.wav",
+              }),
+              cloneClip({
+                id: "old",
+                player_id: "p1",
+                kind: "read",
+                source: { session: "s1" },
+                url: "/old.wav",
+              }),
+            ],
+          },
+        ],
+        [keys.campaign(), campaign({ jobs: [] })],
+      ],
+    })
+    expect(document.querySelector("audio")?.getAttribute("src")).toContain("/new.wav")
+  })
 })

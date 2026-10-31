@@ -91,7 +91,10 @@ const unknown: ReviewItem = {
   spelling: { heard: "Zorbo", entity: null, count: 1 },
 }
 
-function open(items: ReviewItem[], options: { writtenUp?: boolean; fail?: string; facts?: Fact[] } = {}) {
+function open(
+  items: ReviewItem[],
+  options: { writtenUp?: boolean; fail?: string; facts?: Fact[]; failReviewed?: boolean } = {},
+) {
   const state = new Map(items.map((i) => [i.id, i]))
   const review = (): Review => {
     const all = [...state.values()]
@@ -114,7 +117,8 @@ function open(items: ReviewItem[], options: { writtenUp?: boolean; fail?: string
     if (c.url === "/api/sessions/s1/review") return review()
     if (c.url === "/api/campaign")
       return campaign({ facts: options.facts, entities: [entity({ name: "Diamond of Ysolde" })] })
-    if (c.url === "/api/sessions/s1/reviewed") return { id: "s1", reviewed_at: 1 }
+    if (c.url === "/api/sessions/s1/reviewed")
+      return options.failReviewed ? httpError(500, "Disk full.") : { id: "s1", reviewed_at: 1 }
     if (c.method === "POST" && c.url.startsWith("/api/sessions/s1/review/")) {
       const id = decodeURIComponent(c.url.split("/review/")[1]!)
       if (id === options.fail) return httpError(500, "The vault refused.")
@@ -217,6 +221,25 @@ it("sends the edited text when a fact is edited and then accepted", async () => 
   fireEvent.click(screen.getByRole("button", { name: "Accept with edits" }))
   await screen.findByText("✓ Accepted")
   expect(t.decisions()).toEqual([["fact:1", { action: "accept", text: "The tide turns at the bell." }]])
+})
+
+it("does not accept an edited fact whose text was emptied", async () => {
+  const t = open([fact("1")])
+  await screen.findByText("Fact 1")
+  click("Edit")
+  fireEvent.change(screen.getByLabelText("Fact text"), { target: { value: "   " } })
+  fireEvent.click(screen.getByRole("button", { name: "Accept with edits" }))
+  await new Promise((r) => setTimeout(r, 50))
+  expect(t.decisions()).toEqual([])
+})
+
+it("reports a failed finish and stays on the review", async () => {
+  open([fact("1", { status: "accepted" })], { failReviewed: true })
+  await screen.findByText("✓ Accepted")
+  fireEvent.click(screen.getByRole("button", { name: "Finish review" }))
+  await waitFor(() => expect(notify).toHaveBeenCalledWith("Disk full.", { tone: "danger" }))
+  expect(notify).not.toHaveBeenCalledWith("Session 12 reviewed")
+  expect(screen.queryByText("Session page")).toBeNull()
 })
 
 it("moves an edited fact to another entry", async () => {

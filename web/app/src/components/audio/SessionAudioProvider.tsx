@@ -26,19 +26,31 @@ export function SessionAudioProvider({ children }: { children: ReactNode }) {
   const [playing, setPlaying] = useState<SessionAudio["playing"]>(null)
   const current = useRef<{ sessionId: string; t: number } | null>(null)
 
+  const pending = useRef<(() => void) | null>(null)
+
   const play = useCallback((sessionId: string, t: number) => {
     const audio = ref.current
     if (!audio) return
     const url = sessionAudioUrl(sessionId)
+    // An earlier request still waiting for metadata must not start later over this one.
+    if (pending.current) audio.removeEventListener("loadedmetadata", pending.current)
+    pending.current = null
     const start = () => {
+      pending.current = null
       audio.currentTime = t
       // A blocked or failed start leaves nothing playing; the pause/error handlers clear the state.
       audio.play()?.catch(() => setPlaying(null))
     }
     current.current = { sessionId, t }
     setPlaying(current.current)
-    if (audio.getAttribute("src") === url) return start()
-    // preload="none": the new file has no duration until its metadata loads, and seeking earlier is lost.
+    // preload="none": the file has no duration until its metadata loads, and seeking earlier is lost.
+    if (audio.getAttribute("src") === url) {
+      if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) return start()
+      pending.current = start
+      audio.addEventListener("loadedmetadata", start, { once: true })
+      return audio.load()
+    }
+    pending.current = start
     audio.addEventListener("loadedmetadata", start, { once: true })
     audio.src = url
     audio.load()
@@ -62,6 +74,7 @@ export function SessionAudioProvider({ children }: { children: ReactNode }) {
       <audio
         ref={ref}
         preload="none"
+        onPlay={() => setPlaying(current.current)}
         onEnded={() => setPlaying(null)}
         onPause={() => setPlaying(null)}
         onError={() => setPlaying(null)}

@@ -7,7 +7,7 @@ import {
   withEntity,
   withFacts,
   withIgnored,
-  withJob,
+  withNewJob,
   withoutEntity,
 } from "../query/cache.ts"
 import { useCampaignWrite, type WriteContext } from "../query/campaignWrite.ts"
@@ -248,17 +248,17 @@ export function useUnrejectMisheard() {
 
 export function useImportNotes() {
   return useCampaignWrite((vars: { title: string; text: string }) => importNotes(vars.title, vars.text), {
-    apply: (job) => withJob(job),
+    apply: (job) => withNewJob(job),
   })
 }
 
 export function useWriteUp() {
-  return useCampaignWrite((sessionId: string) => writeUp(sessionId), { apply: (job) => withJob(job) })
+  return useCampaignWrite((sessionId: string) => writeUp(sessionId), { apply: (job) => withNewJob(job) })
 }
 
 /** Look for more facts about one entry (job "facts"). */
 export function useSeekFacts() {
   return useCampaignWrite((name: string, ctx) => seekFacts(ctx.entity(name)?.name ?? name), {
-    apply: (job) => withJob(job),
+    apply: (job) => withNewJob(job),
   })
 }

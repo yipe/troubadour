@@ -128,6 +128,23 @@ it("adds a fact to an entry with a campaign write", async () => {
   expect(bodyOf(call)).toMatchObject({ text: "Fears fire.", confidence: "theory" })
 })
 
+it("disables Add fact while the fact is being saved", async () => {
+  let release!: () => void
+  const gate = new Promise<void>((r) => (release = r))
+  const { writes } = mockFetch(async ({ method }) => {
+    if (method === "POST") await gate
+    return []
+  })
+  page()
+  await userEvent.click(screen.getByRole("button", { name: "Add fact" }))
+  const dialog = within(screen.getByRole("dialog"))
+  await userEvent.type(dialog.getByLabelText("Fact"), "The moon is red.")
+  await userEvent.click(dialog.getByRole("button", { name: "Add fact" }))
+  await vi.waitFor(() => expect(dialog.getByRole("button", { name: "Add fact" })).toBeDisabled())
+  expect(writes()).toHaveLength(1)
+  release()
+})
+
 it("adds a campaign fact", async () => {
   const { writes } = mockFetch(() => [])
   page()

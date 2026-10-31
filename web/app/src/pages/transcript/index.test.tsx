@@ -116,4 +116,7 @@ it("shows an error when the record can't load", async () => {
     { route: "/sessions/s1/transcript" },
   )
   expect(await screen.findByText("Couldn't load this transcript", {}, { timeout: 4000 })).toBeInTheDocument()
+  const back = screen.getByRole("link", { name: "Back to sessions" })
+  expect(back).toHaveAttribute("href", "/sessions")
+  expect(back.querySelector("button, a")).toBeNull()
 })

@@ -59,6 +59,19 @@ describe("ImportNotes", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Model unavailable"))
   })
 
+  it("dismissing a failed import keeps the pasted notes", async () => {
+    const api = mockFetch(() => campaignJob({ id: "j3", state: "queued" }))
+    const { client } = renderWithProviders(<ImportNotes />, { queryData: seeded() as never })
+    await userEvent.type(screen.getByLabelText("Notes"), "Mira met a dragon")
+    await userEvent.click(screen.getByRole("button", { name: /^Import$/ }))
+    await waitFor(() => expect(api.writes()).toHaveLength(1))
+    await screen.findByText("Waiting for another job…")
+    finishJob(client, campaignJob({ id: "j3", state: "error", message: "Model unavailable" }))
+    await userEvent.click(await screen.findByRole("button", { name: "Dismiss" }))
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(screen.getByLabelText("Notes")).toHaveValue("Mira met a dragon")
+  })
+
   it("fills the textarea from chosen files with file-name headings", async () => {
     renderWithProviders(<ImportNotes />, { queryData: seeded() as never })
     const files = [

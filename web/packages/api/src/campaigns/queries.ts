@@ -8,9 +8,15 @@ import type { Campaigns } from "./types.ts"
  * the fetch only matters before the socket connects. No GET exists: it is cache-only until then.
  */
 export function useCampaigns() {
+  const client = useQueryClient()
   return useQuery<Campaigns>({
     queryKey: keys.campaigns(),
-    queryFn: () => Promise.reject(new Error("The campaign list arrives over the socket")),
+    queryFn: () => {
+      const cached = client.getQueryData<Campaigns>(keys.campaigns())
+      return cached
+        ? Promise.resolve(cached)
+        : Promise.reject(new Error("The campaign list arrives over the socket"))
+    },
     retry: false,
     staleTime: Infinity,
   })
@@ -26,10 +32,8 @@ export function useOpenCampaign() {
 }
 
 export function useCreateCampaign() {
-  const client = useQueryClient()
   return useMutation({
     mutationFn: (name: string) => createCampaign(name),
-    onSuccess: () => client.invalidateQueries({ queryKey: keys.campaigns() }),
   })
 }
 

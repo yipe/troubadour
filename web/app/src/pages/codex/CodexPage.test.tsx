@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, expect, it, vi } from "vitest"
 import { keys } from "@troubadour/api/query"
-import { campaign, entity, fact, factSuggestion, mockFetch } from "@troubadour/api/testing"
+import { campaign, entity, fact, factSuggestion, httpError, mockFetch } from "@troubadour/api/testing"
 import { Route, Routes, useLocation } from "react-router"
 import { renderWithProviders } from "../../test/render.tsx"
 import { AppearancesChart } from "./AppearancesChart.tsx"
@@ -114,6 +114,18 @@ it("adds a fact to the entry", async () => {
   await waitFor(() => expect(writes()).toHaveLength(1))
   expect(writes()[0]?.body).toMatchObject({ text: "Hates rain." })
   await waitFor(() => expect(screen.getByText("Hates rain.")).toBeInTheDocument())
+})
+
+it("keeps the typed fact when saving it fails", async () => {
+  const { writes } = mockFetch(({ method }) =>
+    method === "POST" ? httpError(500, "Vault locked") : undefined,
+  )
+  page("/codex/Orsa%20Vell")
+  const box = screen.getByRole("textbox", { name: "Add a fact" })
+  await userEvent.type(box, "Hates rain.{Enter}")
+  await waitFor(() => expect(writes()).toHaveLength(1))
+  await new Promise((r) => setTimeout(r, 50))
+  expect(box).toHaveValue("Hates rain.")
 })
 
 it("renders a column for every session and a baseline tick for zero", () => {
