@@ -1,14 +1,16 @@
 import { Fragment, type ReactNode } from "react"
+import type { ThemeChoice } from "../lib/theme-choice"
+import { useThemeChoice } from "../lib/use-theme-choice"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@troubadour/ui/dropdown-menu"
-import { Tooltip } from "@troubadour/ui/tooltip"
-import { CircleDotIcon, CircleHalfStrokeIcon, MoonIcon, SunIcon } from "./ThemeIcons.tsx"
-import { useThemeChoice, type ThemeChoice } from "../lib/theme.ts"
+} from "./dropdown-menu"
+import { CircleDotIcon, CircleHalfStrokeIcon, MoonIcon, SunIcon } from "./theme-icons"
+import { Tooltip } from "./tooltip"
+import { topBarButton } from "./top-bar"
 
 /** DPRcalc's theme menu: the three themes, then a separated Auto (our `system`) that follows the OS. */
 const OPTIONS: { id: ThemeChoice; label: string; icon: ReactNode }[] = [
@@ -23,10 +25,7 @@ export function ThemeMenu() {
   return (
     <DropdownMenu>
       <Tooltip content="Theme">
-        <DropdownMenuTrigger
-          aria-label="Theme"
-          className="flex size-[30px] items-center justify-center rounded-full text-ink-muted outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
-        >
+        <DropdownMenuTrigger aria-label="Theme" className={topBarButton}>
           <CircleHalfStrokeIcon width={20} height={20} />
         </DropdownMenuTrigger>
       </Tooltip>

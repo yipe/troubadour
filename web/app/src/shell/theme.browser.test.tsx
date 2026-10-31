@@ -9,7 +9,7 @@ import { campaign, mockFetch, player, savedSession, session, snapshotBase } from
 import { TooltipProvider } from "@troubadour/ui/tooltip"
 import "../index.css"
 import { SessionAudioProvider } from "../components/audio/SessionAudioProvider.tsx"
-import { applyTheme, type Theme } from "../lib/theme.ts"
+import { applyTheme, type Theme } from "@troubadour/ui/theme-choice"
 import { createRoutes } from "../routes.tsx"
 
 let unmount = () => {}

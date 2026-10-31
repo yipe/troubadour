@@ -1,10 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { applyTheme, readTheme, resolveTheme, saveTheme, THEME_KEY, watchSystemTheme } from "./theme.ts"
+import {
+  applyTheme,
+  readTheme,
+  resolveTheme,
+  saveTheme,
+  THEME_BOOT_SCRIPT,
+  THEME_KEY,
+  watchSystemTheme,
+} from "./theme-choice"
 
 afterEach(() => {
   localStorage.clear()
   delete document.documentElement.dataset.theme
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 function stubMedia(light: boolean) {
@@ -69,5 +78,33 @@ describe("applyTheme and watchSystemTheme", () => {
     watchSystemTheme(() => "midnight")
     media.flip(true)
     expect(document.documentElement.dataset.theme).toBe("midnight")
+  })
+})
+
+describe("THEME_BOOT_SCRIPT", () => {
+  const boot = () => {
+    delete document.documentElement.dataset.theme
+    new Function(THEME_BOOT_SCRIPT)()
+    return document.documentElement.dataset.theme
+  }
+  const expected = () => resolveTheme(readTheme(), matchMedia("").matches)
+
+  it("themes the page the way applyTheme(readTheme()) does", () => {
+    for (const light of [true, false]) {
+      stubMedia(light)
+      for (const stored of [null, "dark", "light", "midnight", "system", "sepia"]) {
+        localStorage.clear()
+        if (stored) localStorage.setItem(THEME_KEY, stored)
+        expect(boot(), `${stored} with a ${light ? "light" : "dark"} OS`).toBe(expected())
+      }
+    }
+  })
+
+  it("follows the OS when storage throws", () => {
+    stubMedia(true)
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked")
+    })
+    expect(boot()).toBe("light")
   })
 })

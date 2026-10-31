@@ -84,7 +84,7 @@ const rows: { route: string; ok: boolean; problems: string[] }[] = []
 try {
   for (const route of routes) {
     const page = await browser.newPage({ viewport })
-    // Same key as src/lib/theme.ts; set before the page's own script runs.
+    // Same key as @troubadour/ui/theme-choice; set before the page's own script runs.
     await page.addInitScript((t) => localStorage.setItem("troubadour.theme", t), theme)
     const problems = collectProblems(page, ALLOW[route])
     try {

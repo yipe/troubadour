@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
-import { ThemeMenu } from "./ThemeMenu.tsx"
+import { ThemeMenu } from "./theme-menu"
 
 afterEach(() => {
+  cleanup()
   localStorage.clear()
   delete document.documentElement.dataset.theme
 })

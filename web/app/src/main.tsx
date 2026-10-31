@@ -9,7 +9,7 @@ import "./index.css"
 import { App } from "./App.tsx"
 import { createRoutes } from "./routes.tsx"
 import { ErrorBoundary } from "./shell/ErrorBoundary.tsx"
-import { applyTheme, readTheme, watchSystemTheme } from "./lib/theme.ts"
+import { applyTheme, readTheme, watchSystemTheme } from "@troubadour/ui/theme-choice"
 import { campaignSwitchTarget } from "./shell/campaignSwitch.ts"
 
 applyTheme(readTheme())

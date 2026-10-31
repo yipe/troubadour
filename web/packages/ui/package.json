@@ -7,6 +7,8 @@
     "./theme.css": "./src/theme.css",
     "./gallery": "./src/gallery/index.tsx",
     "./cn": "./src/lib/cn.ts",
+    "./theme-choice": "./src/lib/theme-choice.ts",
+    "./use-theme-choice": "./src/lib/use-theme-choice.ts",
     "./*": "./src/components/*.tsx"
   },
   "scripts": {
