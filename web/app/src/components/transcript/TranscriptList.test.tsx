@@ -111,7 +111,7 @@ describe("TranscriptList", () => {
     const r = row(container, "m1")!
     expect(within(r).getByText("line 1")).toBeInTheDocument()
     expect(within(r).getByText("aside for m1")).toBeInTheDocument()
-    expect(r.style.gridTemplateColumns).toBe("minmax(0,1fr) 460px")
+    expect(r.style.getPropertyValue("--aside-w")).toBe("460px")
   })
 
   it("renders the footer after the rows", () => {

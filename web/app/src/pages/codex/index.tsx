@@ -24,6 +24,7 @@ export function Component() {
     <RailLayout
       rail={<EntryRail entities={entities} selected={selected?.name} />}
       railWidth={320}
+      railToggleLabel="entries"
       asideWidth={300}
       aside={selected ? <ConnectedRail entity={selected} campaign={campaign} /> : undefined}
     >

@@ -40,7 +40,7 @@ export function SpeakerRail({ onEnd }: SpeakerRailProps) {
   const hold = paused ? resume : pause
 
   return (
-    <aside className="flex w-[250px] flex-none flex-col gap-1.5 border-r border-line px-3.5 py-4">
+    <aside className="flex w-full flex-none flex-col gap-1.5 border-b border-line px-3.5 py-4 lg:min-h-0 lg:w-[250px] lg:overflow-y-auto lg:border-r lg:border-b-0">
       <h1 className="font-bold">Session {number}</h1>
       {session?.title ? <div className="text-13 text-ink-muted">{session.title}</div> : null}
       <div className={cn("mb-2.5 text-12", paused ? "text-warning" : "text-danger")}>

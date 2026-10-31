@@ -40,7 +40,7 @@ export function Component() {
 
   if (!status) {
     return (
-      <div className="p-8">
+      <div className="p-5 md:p-8">
         <PageHeading tone="accent" title="Troubadour Cloud" subtitle={SUBTITLE} />
         <Spinner />
       </div>
@@ -53,9 +53,9 @@ export function Component() {
 function NotConnected({ campaignName }: { campaignName: string }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="flex max-w-[760px] flex-col gap-5 p-8">
+    <div className="flex max-w-[760px] flex-col gap-5 p-5 md:p-8">
       <PageHeading tone="accent" title="Troubadour Cloud" subtitle={SUBTITLE} />
-      <Card className="flex items-center gap-4 px-5 py-4">
+      <Card className="flex flex-wrap items-center gap-4 px-5 py-4">
         <IconTile size={36}>
           <CloudOff size={20} aria-hidden />
         </IconTile>
@@ -79,7 +79,7 @@ function Connected({ campaignName }: { campaignName: string }) {
   const status = useCloud().data!
   const options = useCloudOptions()
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_420px] items-start gap-8 p-8">
+    <div className="grid grid-cols-1 items-start gap-8 p-5 md:p-8 xl:grid-cols-[minmax(0,1fr)_420px]">
       <section className="flex flex-col gap-4.5">
         <PageHeading tone="accent" title="Troubadour Cloud" subtitle={SUBTITLE} />
         <StatusCard campaignName={campaignName} />

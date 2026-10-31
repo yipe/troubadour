@@ -25,6 +25,7 @@ export function Component() {
   return (
     <RailLayout
       railWidth={380}
+      railToggleLabel="sessions"
       rail={
         <SessionList
           sessions={list}
@@ -36,13 +37,13 @@ export function Component() {
       }
     >
       <div className="flex flex-col gap-5">
-        <div className="px-10 pt-7 empty:hidden">
+        <div className="px-5 pt-7 empty:hidden md:px-10">
           <UpgradeBanner />
         </div>
         {selected ? (
           <SessionDetail key={selected.id} session={selected} numbers={numbers} />
         ) : (
-          <p className="p-10 text-ink-subtle">No sessions yet. Prepare one to get started.</p>
+          <p className="p-5 text-ink-subtle md:p-10">No sessions yet. Prepare one to get started.</p>
         )}
       </div>
     </RailLayout>

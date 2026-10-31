@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import { ArrowDown } from "lucide-react"
 import { Button } from "@troubadour/ui/button"
@@ -90,12 +90,11 @@ export function TranscriptList({
             <div
               data-line-id={line.id}
               aria-current={line.id === highlightId ? "true" : undefined}
-              className="px-5"
-              style={
-                renderAside
-                  ? { display: "grid", gridTemplateColumns: `minmax(0,1fr) ${asideWidth}px` }
-                  : undefined
+              // The aside sits under its line until there is room for it beside the line.
+              className={
+                renderAside ? "grid grid-cols-1 px-5 lg:grid-cols-[minmax(0,1fr)_var(--aside-w)]" : "px-5"
               }
+              style={renderAside ? ({ "--aside-w": `${asideWidth}px` } as CSSProperties) : undefined}
             >
               {row}
               {renderAside ? <div className="min-w-0">{renderAside(line)}</div> : null}

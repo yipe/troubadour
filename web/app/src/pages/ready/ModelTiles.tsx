@@ -34,7 +34,7 @@ export function ModelTiles({ tiles }: { tiles: Tile[] }) {
           </Link>
         </span>
       </div>
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
         {tiles.map((t) => (
           <div key={t.title} className="bg-subtle min-w-0 rounded-control border border-line px-3 py-2.5">
             <div className="flex items-center gap-1.5 text-13 font-semibold">

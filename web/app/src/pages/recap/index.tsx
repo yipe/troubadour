@@ -97,8 +97,8 @@ export function Component() {
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[440px_minmax(0,1fr)]">
-      <aside className="flex flex-col gap-[18px] overflow-y-auto border-r border-line p-6">
+    <div className="grid min-h-0 grid-cols-1 lg:h-full lg:grid-cols-[440px_minmax(0,1fr)]">
+      <aside className="flex flex-col gap-[18px] border-b border-line p-5 md:p-6 lg:overflow-y-auto lg:border-r lg:border-b-0">
         <PageHeading title="Share the recap" subtitle={`${sessionLabel} · built from reviewed facts only`} />
         {!reviewed && (
           <p role="status" className="rounded-card border border-warning/30 bg-warning-faint p-3 text-13">
@@ -171,7 +171,7 @@ export function Component() {
           </Button>
         </div>
       </aside>
-      <main className="flex min-w-0 flex-col items-center justify-center gap-4 overflow-auto bg-sunken p-8">
+      <main className="flex min-w-0 flex-col items-start justify-center gap-4 overflow-x-auto bg-sunken p-5 md:p-8 lg:overflow-auto xl:items-center">
         {job && <JobStatus job={job} variant="inline" />}
         {build.isError && (
           <p role="alert" className="text-13 text-danger">

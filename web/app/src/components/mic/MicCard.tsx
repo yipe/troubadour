@@ -172,7 +172,7 @@ export function MicCard({ mode, device, onDeviceChange, sources }: MicCardProps)
       aria-label="Microphone"
       className="flex flex-col gap-3.5 rounded-card border border-line bg-surface px-[18px] py-4"
     >
-      <div className="flex items-center gap-2.5">
+      <div className="flex flex-wrap items-center gap-2.5">
         <span
           data-testid="mic-status"
           data-status={status}
@@ -181,7 +181,7 @@ export function MicCard({ mode, device, onDeviceChange, sources }: MicCardProps)
           {status === "success" ? <Check className="size-3" aria-hidden /> : status === "warning" ? "!" : ""}
         </span>
         <h3 className="font-bold">Microphone</h3>
-        <div className="ml-auto flex min-w-[280px] items-center gap-1.5">
+        <div className="ml-auto flex min-w-[280px] flex-1 items-center gap-1.5 sm:flex-none">
           <NativeSelect
             aria-label="Microphone"
             value={valueOf(device, defaultMic)}
@@ -216,7 +216,7 @@ export function MicCard({ mode, device, onDeviceChange, sources }: MicCardProps)
         </div>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_300px] items-center gap-5">
+      <div className="grid grid-cols-1 items-center gap-5 md:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex flex-col gap-2">
           <LevelMeter48 key={source} source={source} />
           {!sessionRunning && (

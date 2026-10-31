@@ -32,8 +32,9 @@ export function Component() {
   const name = campaigns?.campaigns.find((c) => c.id === campaigns.campaign)?.name
 
   return (
-    <div className="flex flex-col gap-5 px-10 py-7">
+    <div className="flex flex-col gap-5 px-5 py-7 md:px-10">
       <PageHeading
+        className="flex-wrap [&>div:first-child]:min-w-[14rem]"
         title={name ?? "Home"}
         subtitle={
           <span className="flex flex-wrap items-center gap-x-3.5 text-13 text-ink-subtle">
@@ -78,8 +79,11 @@ export function Component() {
         }
       />
       <UpgradeBanner />
-      <div className="grid min-h-0 grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)] gap-[18px]">
-        <section className="flex flex-col gap-[18px]">
+      <div
+        data-testid="home-cards"
+        className="grid min-h-0 grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)]"
+      >
+        <section className="flex flex-col gap-[18px] md:col-span-2 xl:col-span-1">
           <LastSession
             session={last}
             n={last ? numbers.get(last.id)! : 1}

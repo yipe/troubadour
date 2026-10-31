@@ -131,7 +131,7 @@ export function Component() {
         </div>
       }
     >
-      <div className="mx-auto flex max-w-3xl flex-col gap-6 p-10">
+      <div className="mx-auto flex max-w-3xl flex-col gap-6 p-5 md:p-10">
         {current ? (
           <>
             <PageHeading title={current.question} />

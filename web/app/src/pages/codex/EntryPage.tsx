@@ -38,7 +38,7 @@ function Entry({ entity }: { entity: Entity }) {
           </Button>
         </div>
       ) : null}
-      <header className="flex items-start gap-3">
+      <header className="flex flex-wrap items-start gap-3">
         <h1 className="font-serif text-32 leading-tight font-bold text-ink">{entity.name}</h1>
         <span className="mt-2">
           <TypeBadge type={entity.type} />

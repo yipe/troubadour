@@ -30,7 +30,8 @@ import { AddClassDialog } from "./AddClassDialog.tsx"
 import { fileToAvatar } from "./fileToAvatar.ts"
 import { TrainDialog } from "./TrainDialog.tsx"
 
-export const ROW_GRID = "grid grid-cols-[52px_1.1fr_1.3fr_1fr_100px_220px_32px] items-center gap-3 px-4"
+export const ROW_GRID =
+  "grid min-w-[880px] grid-cols-[52px_1.1fr_1.3fr_1fr_100px_220px_32px] items-center gap-3 px-4"
 
 const ADD_CLASS = "__add__"
 const UNKNOWN_CLASS = "__unknown__"
