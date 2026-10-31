@@ -14,7 +14,9 @@ function Have($name) { [bool](Get-Command $name -ErrorAction SilentlyContinue) }
 function Step($text) { Write-Host "`n==> $text" }
 function Run {
     # Native commands don't throw on failure; stop at the first one that fails.
-    $command, $rest = $args
+    # @(...): one argument must stay one argument (a lone string splats as its characters).
+    $command = $args[0]
+    $rest = @($args | Select-Object -Skip 1)
     & $command @rest
     if ($LASTEXITCODE -ne 0) { throw "install.ps1: '$($args -join ' ')' failed (exit $LASTEXITCODE)." }
 }
