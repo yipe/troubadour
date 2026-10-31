@@ -49,7 +49,8 @@ AVATAR_MAX_BYTES = 200_000
 AVATAR_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif")  # DPRcalc avatars can be GIFs
 MESSAGE_MAX = 200  # the contract's maxMessageChars
 MAIN_CHECK_TTL_S = 60  # how long the vault list is reused when working out which Mac is main
-MAIN_CHECK_TIMEOUT_S = 3  # status() never waits on the network longer than this
+MAIN_CHECK_TIMEOUT_S = 3  # status() never waits on the network longer than this (token refresh included)
+MAIN_CHECK_FAIL_TTL_S = 30  # after a failed check, status() doesn't try again for this long
 HISTORY_DAYS = 90
 SEP = " \u00b7 "  # "<device> · <summary>": the device is what comes before the first one
 UNKNOWN_DEVICE = "another Mac"
@@ -204,6 +205,7 @@ class Cloud:
         self._vault_list: tuple[float, list[dict]] | None = None  # (when fetched, GET /vaults) for the main check
         self._head_device: dict[str, str] = {}  # snapshot id -> the device its message names (snapshots never change)
         self._main: dict[str, str] = {}  # campaign -> the main device as last known
+        self._main_failed_at: float | None = None  # when the last main check failed (see _check_main)
         # Runs right before each backup reads the vault (the server sets it to rebuild `_Overview/`).
         # Whatever it raises is logged: a failure there never stops a backup.
         self.before_scan: Callable[[Path], None] | None = None
@@ -271,8 +273,10 @@ class Cloud:
     def _check_main(self, campaign_id: str, last_snapshot: str) -> str:
         """The device that made the campaign's newest backup (newest wins), or the last answer when the
         service can't be reached in time. This Mac when its last backup is the newest or none is."""
+        now = self.clock()
+        if self._main_failed_at is not None and now - self._main_failed_at < MAIN_CHECK_FAIL_TTL_S:
+            return self._main.get(campaign_id, self.device)  # the service was unreachable a moment ago
         try:
-            now = self.clock()
             if self._vault_list is None or now - self._vault_list[0] >= MAIN_CHECK_TTL_S:
                 found = self._api("GET", "/vaults", timeout=MAIN_CHECK_TIMEOUT_S)
                 self._vault_list = (now, found if isinstance(found, list) else [])
@@ -282,8 +286,9 @@ class Cloud:
                 self._main[campaign_id] = self.device
             else:
                 self._main[campaign_id] = self._device_of(vault["id"], head)
+            self._main_failed_at = None
         except CloudError:
-            pass
+            self._main_failed_at = now
         return self._main.get(campaign_id, self.device)
 
     def _device_of(self, vault_id: str, snapshot: str) -> str:
@@ -405,7 +410,7 @@ class Cloud:
 
         self._update(change)
 
-    def _token(self, rejected: str | None = None) -> str:
+    def _token(self, rejected: str | None = None, timeout: float | None = None) -> str:
         """A usable access token, refreshing when it's about to expire or the service just `rejected` it.
         Refreshes are serialized and re-check the stored state: a job and a request refreshing at once
         must not both spend the same refresh token (the second would be refused and sign the user out)."""
@@ -424,6 +429,7 @@ class Cloud:
                 "POST",
                 data["token_url"],
                 data={"grant_type": "refresh_token", "refresh_token": data["refresh_token"], "client_id": data["client_id"]},
+                **({} if timeout is None else {"timeout": timeout}),
             )
             if r.status_code in (400, 401):  # revoked or expired for good: sign in again
                 self.logout()
@@ -438,10 +444,10 @@ class Cloud:
     def _api(self, method: str, path: str, body: dict | None = None, timeout: float | None = None) -> dict | list:
         url = f"{self.url}/api/v1{path}"
         extra = {} if timeout is None else {"timeout": timeout}
-        token = self._token()
+        token = self._token(timeout=timeout)
         r = self._request(method, url, json=body, headers={"Authorization": f"Bearer {token}"}, **extra)
         if r.status_code == 401:  # the access token may have just expired or been revoked: refresh once
-            r = self._request(method, url, json=body, headers={"Authorization": f"Bearer {self._token(rejected=token)}"}, **extra)
+            r = self._request(method, url, json=body, headers={"Authorization": f"Bearer {self._token(rejected=token, timeout=timeout)}"}, **extra)
             if r.status_code == 401:
                 # Even a fresh token is refused: this sign-in is no good here any more (say, the service moved
                 # to another sign-in provider). Offer Connect again instead of failing every backup.
@@ -490,7 +496,7 @@ class Cloud:
             },
         )
         # This Mac made the newest backup, so it is main now; the cached vault list still names the old head.
-        self._main[campaign_id], self._vault_list = self.device, None
+        self._main[campaign_id], self._vault_list, self._main_failed_at = self.device, None, None
         return last
 
     def _push(self, campaign_id: str, name: str, root: Path, progress: Callable[[int, int, str], None]) -> dict:
