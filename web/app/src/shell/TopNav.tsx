@@ -1,6 +1,8 @@
 import { Link, useLocation } from "react-router"
 import { useLive } from "@troubadour/api/live"
 import { StatusDot } from "@troubadour/ui/status-dot"
+import { ThemeMenu } from "@troubadour/ui/theme-menu"
+import { TopBar } from "@troubadour/ui/top-bar"
 import { UnderlineTabs, type TabItem } from "@troubadour/ui/underline-tabs"
 import { LuteIcon } from "@troubadour/ui/lute-icon"
 import { Wordmark } from "@troubadour/ui/wordmark"
@@ -10,7 +12,6 @@ import { AiStatus } from "./AiStatus.tsx"
 import { CampaignSwitcher } from "./CampaignSwitcher.tsx"
 import { CloudChip } from "./CloudChip.tsx"
 import { RecordingPill } from "./RecordingPill.tsx"
-import { ThemeMenu } from "./ThemeMenu.tsx"
 import { activeTab, TABS } from "./tabs.ts"
 
 export function TopNav() {
@@ -20,7 +21,7 @@ export function TopNav() {
   return (
     // Below `xl` the tabs drop to a second row that scrolls sideways, and below `lg` the cloud and
     // model chips give way, so the recording pill and the account menu stay on the first row.
-    <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-5 border-b border-line bg-surface px-4 py-2 whitespace-nowrap xl:flex-nowrap">
+    <TopBar className="xl:flex-nowrap">
       <Link to={paths.home()} className="flex items-center gap-2 px-2 text-ink hover:text-ink">
         <LuteIcon size={28} />
         <Wordmark className="max-sm:sr-only" />
@@ -48,6 +49,6 @@ export function TopNav() {
       </div>
       <ThemeMenu />
       <AccountMenu />
-    </header>
+    </TopBar>
   )
 }

@@ -1,6 +1,7 @@
 import { PageHeading } from "@troubadour/ui/page-heading"
 import { cn } from "@troubadour/ui/cn"
-import { useThemeChoice, type ThemeChoice } from "../../../../lib/theme.ts"
+import type { ThemeChoice } from "@troubadour/ui/theme-choice"
+import { useThemeChoice } from "@troubadour/ui/use-theme-choice"
 
 const OPTIONS: { id: ThemeChoice; label: string; hint: string }[] = [
   { id: "system", label: "System", hint: "Follows your system, light by day and dark by night." },

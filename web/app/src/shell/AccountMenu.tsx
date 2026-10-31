@@ -9,6 +9,7 @@ import {
   useCloudDisconnect,
 } from "@troubadour/api/cloud"
 import { useLive } from "@troubadour/api/live"
+import { AccountSummary } from "@troubadour/ui/account-summary"
 import { Avatar } from "@troubadour/ui/avatar"
 import { DprcalcMark } from "@troubadour/ui/dprcalc-mark"
 import { ConfirmDialog } from "@troubadour/ui/confirm-dialog"
@@ -19,6 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@troubadour/ui/dropdown-menu"
+import { topBarButton } from "@troubadour/ui/top-bar"
 import { initials } from "../lib/players.ts"
 import { paths } from "../paths.ts"
 
@@ -44,22 +46,7 @@ function AccountAvatar({ size }: { size: 24 | 30 }) {
 
 function AccountHeader() {
   const { data: account } = useCloudAccount()
-  const { name, email } = account ?? {}
-  return (
-    <>
-      <div className="flex items-center gap-2.5 px-2.5 py-2">
-        <AccountAvatar size={30} />
-        <div className="min-w-0">
-          <p className="truncate text-13 font-semibold text-ink">{name ?? email ?? "Signed in"}</p>
-          {name && email ? <p className="truncate text-12 text-ink-muted">{email}</p> : null}
-        </div>
-      </div>
-      <p className="flex items-center gap-1.5 px-2.5 pb-1.5 text-12 text-ink-muted">
-        <DprcalcMark className="size-3.5" /> Signed in with DPRcalc
-      </p>
-      <DropdownMenuSeparator />
-    </>
-  )
+  return <AccountSummary name={account?.name} email={account?.email} avatar={<AccountAvatar size={30} />} />
 }
 
 /**
@@ -78,10 +65,7 @@ export function AccountMenu() {
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger
-          aria-label="Account"
-          className="flex size-[30px] items-center justify-center rounded-full text-ink-muted outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
-        >
+        <DropdownMenuTrigger aria-label="Account" className={topBarButton}>
           {connected ? (
             <AccountAvatar size={30} />
           ) : gm ? (
