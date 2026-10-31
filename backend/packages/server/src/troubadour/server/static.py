@@ -11,13 +11,15 @@ class WebFiles(StaticFiles):
     index.html so deep links and reloads work."""
 
     async def get_response(self, path: str, scope) -> Response:
+        # Starlette hands over an OS path: backslashes on Windows. The checks below speak URL.
+        route = path.replace("\\", "/")
         try:
             response = await super().get_response(path, scope)
         except StarletteHTTPException as e:
-            if e.status_code != 404 or path.split("/", 1)[0] in ("api", "assets"):
+            if e.status_code != 404 or route.split("/", 1)[0] in ("api", "assets"):
                 raise
             response = await super().get_response("index.html", scope)
-        if path.startswith("assets/"):
+        if route.startswith("assets/"):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         else:
             response.headers["Cache-Control"] = "no-cache"

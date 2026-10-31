@@ -38,7 +38,7 @@ def test_root_uses_tilde():
     from pathlib import Path
 
     assert storage._shown(Path.home() / "troubador") == "~/troubador"
-    assert storage._shown(Path("/tmp/x")) == "/tmp/x"
+    assert storage._shown(Path("/tmp/x")) == str(Path("/tmp/x"))  # shown as the system writes it
 
 
 def test_vault_outside_data_dir_counts_as_notes(api, tmp_path, monkeypatch):

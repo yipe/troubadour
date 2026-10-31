@@ -175,7 +175,7 @@ def mark_reviewed(sid: str, body: ReviewedIn):
 @router.get("/api/sessions/{sid}/transcript.{fmt}")
 def saved_transcript(sid: str, fmt: Literal["md", "json"]):
     """Rendered from transcript.json, so records saved by older versions read like new ones."""
-    record = transcript.without_fillers(json.loads(deps._call(deps.engine.session_file, sid, "json").read_text()))
+    record = transcript.without_fillers(json.loads(deps._call(deps.engine.session_file, sid, "json").read_text(encoding="utf-8")))
     body = transcript.markdown(record) if fmt == "md" else json.dumps(record, ensure_ascii=False, indent=1)
     return deps._download(body, sid, fmt)
 

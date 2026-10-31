@@ -24,7 +24,7 @@ def vault_for(folder: Path, path: Path | None = None) -> dict | None:
     """{"id": vault id, "folder": `folder` inside that vault ("" when it is the vault)} for the
     innermost registered vault holding `folder`; None when Obsidian doesn't know it."""
     try:
-        vaults = json.loads((path or registry()).read_text()).get("vaults")
+        vaults = json.loads((path or registry()).read_text(encoding="utf-8")).get("vaults")
     except (OSError, ValueError, AttributeError):
         return None
     if not isinstance(vaults, dict):

@@ -214,12 +214,12 @@ class Engine(SessionsMixin, LibraryMixin, VoicesMixin, PipelineMixin, TrainingMi
         key = [str(path), st.st_mtime_ns, st.st_size, end]
         cache = folder / "quality.json"
         try:
-            cached = json.loads(cache.read_text())
+            cached = json.loads(cache.read_text(encoding="utf-8"))
             if cached.get("key") == key:
                 return cached["report"]
         except (OSError, ValueError):
             pass
-        record = json.loads((folder / "transcript.json").read_text())
+        record = json.loads((folder / "transcript.json").read_text(encoding="utf-8"))
         out = levels.report(load_audio(path, 0.0, end), record["messages"])
         src = record["session"].get("source") or {}
         out["mic"] = src.get("device") or src.get("name") or src.get("kind")

@@ -6,7 +6,6 @@ the copy and this module disagree on limits or error codes."""
 import base64
 import hashlib
 import json
-import stat
 import threading
 import time
 import types
@@ -17,6 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
+from conftest import WINDOWS, assert_mode
 from fastapi.testclient import TestClient
 from troubadour.cloud import backup as cloud
 from troubadour.cloud.backup import (
@@ -336,14 +336,15 @@ def test_scan_skips_hidden_files_and_transcripts_unless_asked(vault):
 def test_scan_normalizes_names_and_reports_what_it_leaves_out(vault, monkeypatch):
     (vault / unicodedata.normalize("NFD", "Café.md")).write_text("menu")
     (vault / "Places").mkdir()
-    (vault / "Places" / "Keep.md ").write_text("trailing space")
+    (vault / "Places" / "Keep.md ").write_text("trailing space")  # Windows drops the space when it creates it
     (vault / "map.png").write_bytes(b"x" * 11)
     (vault / "link.md").symlink_to(vault / "Facts.md")
     monkeypatch.setattr(cloud, "MAX_FILE_BYTES", 10)
     files, _, skipped = scan(vault, include_transcripts=False)
     assert "Café.md" in [f["path"] for f in files]  # NFC, whatever the disk returned
     assert "link.md" not in [f["path"] for f in files]
-    assert any(s.startswith("Places/Keep.md : ") and "whitespace" in s for s in skipped)
+    if not WINDOWS:
+        assert any(s.startswith("Places/Keep.md : ") and "whitespace" in s for s in skipped)
     assert any(s.startswith("map.png: larger than") for s in skipped)
 
 
@@ -365,7 +366,7 @@ def test_sign_in_with_pkce_stores_tokens_privately(client, service, tmp_path):
     connect(client, service)
     assert client.status("main")["connected"] is True
     saved = tmp_path / "data" / "cloud.json"
-    assert stat.S_IMODE(saved.stat().st_mode) == 0o600
+    assert_mode(saved, 0o600)
     assert json.loads(saved.read_text())["refresh_token"].startswith("rt-")
 
 
@@ -1021,5 +1022,5 @@ def test_the_history_is_written_atomically_without_a_fixed_temp_name_and_read_on
     assert stray.read_text() == "half written"
     assert len(reads) == 1  # _record reads the file once
     assert len(client.history("main")) == 1
-    assert stat.S_IMODE(client.path().stat().st_mode) == 0o600  # the token file stays private
+    assert_mode(client.path(), 0o600)  # the token file stays private
     assert sorted(p.name for p in client.path().parent.iterdir() if p.name.endswith(".tmp")) == [".cloud_history.json.tmp"]

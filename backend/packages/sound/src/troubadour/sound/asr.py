@@ -50,7 +50,7 @@ def _encoding():
     are counted the same on every backend without loading a model. From openai/whisper (MIT)."""
     import tiktoken
 
-    lines = Path(__file__).with_name("whisper-multilingual.tiktoken").read_text().splitlines()
+    lines = Path(__file__).with_name("whisper-multilingual.tiktoken").read_text(encoding="utf-8").splitlines()
     ranks = {base64.b64decode(token): int(rank) for token, rank in (line.split() for line in lines if line)}
     pattern = r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     return tiktoken.Encoding(name="whisper-multilingual", pat_str=pattern, mergeable_ranks=ranks, special_tokens={})

@@ -4,7 +4,6 @@ the wire formats MemoryLLM speaks to them, and the endpoints that switch every L
 import base64
 import hashlib
 import json
-import stat
 import time
 import uuid
 from urllib.parse import parse_qs, urlparse
@@ -12,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import jwt
 import pytest
+from conftest import assert_mode
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from troubadour.core import config, providers, settings
@@ -134,7 +134,7 @@ def test_sign_in_with_chatgpt_registers_once_and_keeps_secrets_private(openai):
     assert accounts.status()["openai"] == {"connected": True, "account": "gm@example.com", "known_account": "gm@example.com"}
     saved = json.loads(accounts.path().read_text())
     assert saved["openai"]["client_id"] == "oaiapp_1"
-    assert stat.S_IMODE(accounts.path().stat().st_mode) == 0o600
+    assert_mode(accounts.path(), 0o600)
     host = saved["host_id"]
     # Signing in again reuses the registration and this computer's host id, and says hello only once.
     url = accounts.start_login("openai")

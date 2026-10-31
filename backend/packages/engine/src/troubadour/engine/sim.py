@@ -136,7 +136,7 @@ def main(argv: list[str] | None = None) -> None:
     except KeyError:
         raise SystemExit(f"no audio for session {args.session!r} under {data_dir / 'sessions'}") from None
     original_path = session_dir / "transcript.json"
-    original = json.loads(original_path.read_text()) if original_path.is_file() else None
+    original = json.loads(original_path.read_text(encoding="utf-8")) if original_path.is_file() else None
 
     work = Path(tempfile.mkdtemp(prefix="troubadour-sim-"))
     _seed(work, args.setup, session_dir, data_dir)
@@ -181,7 +181,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"wrote {out} in {(time.monotonic() - t0) / 60:.1f} min")
     if original is not None:
         result = compare(original, record)
-        (out / "compare.json").write_text(json.dumps(result, indent=1))
+        (out / "compare.json").write_text(json.dumps(result, indent=1), encoding="utf-8")
         print(f"  lines              {result['lines']['original']} → {result['lines']['rerun']}")
         print(f"  speaker agreement  {_pct(result['speaker_agreement'])} over {result['overlap_s']} s")
         print(f"  text similarity    {_pct(result['text_similarity'])}")

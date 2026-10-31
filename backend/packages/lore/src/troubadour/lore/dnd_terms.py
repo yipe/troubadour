@@ -22,7 +22,7 @@ SRD_PATH = Path(__file__).with_name("srd_terms.json")
 def builtin() -> list[tuple[str, str]]:
     """The SRD's names (CC-BY-4.0, shipped with Troubadour; see srd_terms.json for attribution)."""
     try:
-        return [(n, k) for n, k in json.loads(SRD_PATH.read_text())["terms"]]
+        return [(n, k) for n, k in json.loads(SRD_PATH.read_text(encoding="utf-8"))["terms"]]
     except (OSError, ValueError, KeyError):
         return []
 
@@ -62,7 +62,7 @@ def _entries(data) -> tuple[list[tuple[str, str]], int]:
 def _read(path: Path) -> list[tuple[str, str]]:
     """Lenient, for lookups: a missing or broken file is an empty list. Never use this before a write."""
     try:
-        return _entries(json.loads(path.read_text()))[0]
+        return _entries(json.loads(path.read_text(encoding="utf-8")))[0]
     except (OSError, ValueError):
         return []
 
@@ -76,7 +76,7 @@ def _read_for_write(path: Path) -> list[tuple[str, str]]:
     the next write cannot wipe it) and the error raised; entries that are not (name, type) pairs are skipped,
     with the original kept beside the file since the rewrite drops them."""
     try:
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return []
     except OSError as e:

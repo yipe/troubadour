@@ -242,7 +242,7 @@ def _session_index() -> SessionIndex:
     metas = []
     for folder in deps.engine.campaign_sessions():
         try:
-            meta = json.loads((folder / "meta.json").read_text())
+            meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
             metas.append(
                 {
                     "id": str(meta["id"]),
@@ -322,7 +322,7 @@ class _Out:
             description=e.description,
             facts=[self.fact(f) for f in e.facts],
             suggested_facts=[self.suggestion(f) for f in e.suggested_facts],
-            path=str(e.path.relative_to(deps.vault.root)) if e.path else None,
+            path=e.path.relative_to(deps.vault.root).as_posix() if e.path else None,
             read_only=e.read_only,
             sessions=counts.get(e.name, 0),
         )
@@ -516,7 +516,7 @@ def import_notes(body: ImportIn):
 
 def _queue_write_up(sid: str):
     """Memory.write_up, with the job recording the pipeline step so the session isn't offered an upgrade."""
-    record = json.loads((deps.memory.sessions_dir() / sid / "transcript.json").read_text())
+    record = json.loads((deps.memory.sessions_dir() / sid / "transcript.json").read_text(encoding="utf-8"))
     return deps.memory.submit(
         "writeup", sid, lambda job: deps.stamped(sid, "writeup", lambda: deps.memory._write_up(job, record))
     )  # noqa: SLF001

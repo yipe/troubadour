@@ -147,7 +147,7 @@ class SessionsMixin:
     @staticmethod
     def _read_meta(folder: Path) -> dict:
         try:
-            meta = json.loads((folder / "meta.json").read_text())
+            meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {}
         return meta if isinstance(meta, dict) else {}
@@ -179,7 +179,9 @@ class SessionsMixin:
         if not SESSION_ID.fullmatch(sid):
             return None
         try:
-            return json.loads((self.sessions_dir() / sid / "meta.json").read_text()).get("campaign", MAIN_CAMPAIGN)
+            return json.loads((self.sessions_dir() / sid / "meta.json").read_text(encoding="utf-8")).get(
+                "campaign", MAIN_CAMPAIGN
+            )
         except (OSError, ValueError, AttributeError):
             return None
 
@@ -194,7 +196,7 @@ class SessionsMixin:
         for folder in self.campaign_sessions():
             meta = folder / "meta.json"
             try:
-                s = json.loads(meta.read_text())
+                s = json.loads(meta.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
             # Sessions saved before these fields existed list with nulls (and talk, worked out below).
@@ -213,7 +215,7 @@ class SessionsMixin:
             s["audio"] = (meta.parent / "audio.wav").is_file()
             s["restorable"] = (meta.parent / "transcript.orig.json").is_file()  # improved; original kept
             try:  # the verdict, if the recording has been measured
-                s["quality"] = json.loads((meta.parent / "quality.json").read_text())["report"]["verdict"]["kind"]
+                s["quality"] = json.loads((meta.parent / "quality.json").read_text(encoding="utf-8"))["report"]["verdict"]["kind"]
             except (OSError, ValueError, KeyError, TypeError):
                 s["quality"] = None
             try:
@@ -228,7 +230,7 @@ class SessionsMixin:
     def _scenes_of(folder: Path) -> list[dict] | None:
         """scenes.json (the write-up's [{t, title, place}]) or None: not written up, or an unreadable file."""
         try:
-            raw = json.loads((folder / "scenes.json").read_text())
+            raw = json.loads((folder / "scenes.json").read_text(encoding="utf-8"))
             return [
                 {"t": float(x["t"]), "title": str(x["title"]), "place": x["place"] if isinstance(x["place"], str) else None}
                 for x in raw
@@ -244,7 +246,7 @@ class SessionsMixin:
             cached = _talk_cache.get(folder.name)
             if cached is not None and cached[0] == mtime:
                 return cached[1]
-            talk = talk_seconds(json.loads(path.read_text())["messages"])
+            talk = talk_seconds(json.loads(path.read_text(encoding="utf-8"))["messages"])
         except (OSError, ValueError, KeyError, TypeError):
             return {}
         _talk_cache[folder.name] = (mtime, talk)
@@ -346,7 +348,7 @@ class SessionsMixin:
         for sid in ids:
             folder = self._check_removable(sid)
             try:
-                record = json.loads((folder / "transcript.json").read_text())
+                record = json.loads((folder / "transcript.json").read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as e:
                 raise KeyError(sid) from e
             records.append((folder, record))
@@ -436,7 +438,7 @@ class SessionsMixin:
     def _restore_premerge(keep_dir: Path) -> None:
         """Put the files in `.premerge/` back over the merged ones, audio first. Does not touch the trash."""
         pre = keep_dir / PREMERGE
-        info = json.loads((pre / "merge.json").read_text())
+        info = json.loads((pre / "merge.json").read_text(encoding="utf-8"))
         audio = keep_dir / "audio.wav"
         if (pre / "audio.wav").is_file():
             if audio.exists() and os.path.samefile(audio, pre / "audio.wav"):
@@ -474,7 +476,7 @@ class SessionsMixin:
             if not keep_dir.is_dir():
                 raise KeyError(sid)
             try:
-                info = json.loads((keep_dir / PREMERGE / "merge.json").read_text())
+                info = json.loads((keep_dir / PREMERGE / "merge.json").read_text(encoding="utf-8"))
                 dropped, held = info["dropped"], self.sessions_dir() / TRASH / info["trash"]
             except (OSError, ValueError, KeyError, TypeError):
                 raise FileNotFoundError(sid) from None
@@ -534,7 +536,7 @@ class SessionsMixin:
         path = self._state_path()
         if not path.exists():
             return
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         if data.get("version") != STATE_VERSION:
             backup = path.with_name("state.v1.json")  # the pre-campaign file, kept as it was
             if not backup.exists():
@@ -647,7 +649,7 @@ class SessionsMixin:
         with self._save_lock:
             data = self._state_data()
             config.DATA_DIR.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile("w", dir=config.DATA_DIR, suffix=".tmp", delete=False) as f:
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=config.DATA_DIR, suffix=".tmp", delete=False) as f:
                 json.dump(data, f)
             Path(f.name).replace(self._state_path())
 
