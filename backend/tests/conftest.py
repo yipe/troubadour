@@ -122,6 +122,19 @@ def hermetic_dnd_terms(tmp_path, monkeypatch):
     monkeypatch.setattr("troubadour.lore.dnd_terms.custom_path", lambda: tmp_path / "no-custom-terms.json")
 
 
+@pytest.fixture(autouse=True)
+def no_real_user_data(monkeypatch):
+    """A vault or data dir set in the developer's shell must never reach a test: TROUBADOUR_VAULT would
+    make tests write notes into (and trash files from) the real Obsidian vault. Tests that want a vault
+    set one themselves."""
+    for name in ("VAULT", "DATA", "SAMPLES", "OBSIDIAN_REGISTRY"):
+        monkeypatch.delenv(f"BARD_{name}", raising=False)
+    monkeypatch.delenv("TROUBADOUR_VAULT", raising=False)
+    # DATA, SAMPLES and the registry were pinned to a tmp dir above, at import; keep them pinned.
+    for name, value in (("DATA", _TMP / "data"), ("SAMPLES", _TMP / "samples"), ("OBSIDIAN_REGISTRY", _TMP / "obsidian.json")):
+        monkeypatch.setenv(f"TROUBADOUR_{name}", str(value))
+
+
 # ------------------------------------------------------------- voice clones (tts.py, talk.py, cloning.py)
 
 

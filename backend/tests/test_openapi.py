@@ -26,6 +26,11 @@ def test_dump_is_valid_json_and_touches_nothing_outside_its_temp_dirs(tmp_path):
 def test_isolate_points_every_path_at_the_scratch_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("TROUBADOUR_VAULT", "/real/vault")
     monkeypatch.setenv("BARD_VAULT", "/real/vault")
+    # isolate() writes os.environ directly: register every key with monkeypatch so it is restored.
+    for name in (*openapi._SAFE_ENV, *openapi._UNSET, "TROUBADOUR_DATA", "TROUBADOUR_OBSIDIAN_REGISTRY"):
+        monkeypatch.setenv(name, os.environ.get(name, ""))
+        if name not in os.environ or os.environ[name] == "":
+            monkeypatch.delenv(name, raising=False)
     env = openapi.isolate(tmp_path)
 
     assert Path(env["TROUBADOUR_DATA"]).is_relative_to(tmp_path)
@@ -34,3 +39,9 @@ def test_isolate_points_every_path_at_the_scratch_dir(tmp_path, monkeypatch):
     assert os.environ["TROUBADOUR_LLM_URL"] == "http://127.0.0.1:9/v1"
     assert "TROUBADOUR_VAULT" not in os.environ
     assert "BARD_VAULT" not in os.environ
+
+
+def test_isolate_does_not_leak_into_later_tests():
+    """Runs after the test above, which calls isolate(); its env must have been restored."""
+    assert os.environ.get("TROUBADOUR_MODELS") != "0"
+    assert "127.0.0.1:9/" not in os.environ.get("TROUBADOUR_LLM_URL", "")
