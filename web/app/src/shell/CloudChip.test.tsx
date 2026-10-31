@@ -88,7 +88,8 @@ it("shows 'Paused during session' while a session is live", () => {
 
 it("restores the newest backup of this campaign after confirming", async () => {
   const m = setup(connected(), (call) => {
-    if (call.url === "/api/cloud/vaults") return [cloudVault({ id: "v9", campaign_id: "main" })]
+    if (call.url === "/api/cloud/vaults")
+      return [cloudVault({ id: "v9", campaign_id: "main", head_snapshot: "snap-9" })]
     if (call.url === "/api/cloud/restore") return campaignJob({ id: "r1", kind: "restore", state: "running" })
     return {}
   })
@@ -97,5 +98,5 @@ it("restores the newest backup of this campaign after confirming", async () => {
   expect(await screen.findByText(/go to \.trash/)).toBeInTheDocument()
   await waitFor(() => expect(m.calls.some((c) => c.url === "/api/cloud/vaults")).toBe(true))
   fireEvent.click(screen.getByRole("button", { name: "Restore" }))
-  await waitFor(() => expect(bodyOf(m.writes().at(-1)!)).toEqual({ vault_id: "v9" }))
+  await waitFor(() => expect(bodyOf(m.writes().at(-1)!)).toEqual({ vault_id: "v9", snapshot: "snap-9" }))
 })

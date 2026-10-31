@@ -761,6 +761,21 @@ def test_restore_never_writes_outside_the_campaign_folder(client, service, vault
     assert sorted(s.split(":")[0] for s in result["skipped"]) == ["../escape.md", "People/Elara.md"]
 
 
+def test_restore_skips_entries_without_a_text_path(client, service, vault, tmp_path):
+    vault_id = backed_up(client, service, vault)
+    head = service.vaults[vault_id]["head_snapshot"]
+    service.snapshots[head] += [
+        {"path": 5, "sha256": "0" * 64, "size": 1},
+        {"path": None, "sha256": "1" * 64, "size": 1},
+        {"sha256": "2" * 64, "size": 1},
+    ]
+    fresh = tmp_path / "fresh"
+    result = client.restore(vault_id, fresh, noop)
+    assert result["restored"] >= 1
+    assert len(result["skipped"]) == 3
+    assert (fresh / "Facts.md").read_text() == "The gate opens at dawn.\n"
+
+
 def test_restore_of_unknown_or_empty_vaults(client, service, vault):
     connect(client, service)
     with pytest.raises(CloudError, match="isn't in Troubadour Cloud"):
@@ -791,7 +806,8 @@ def test_api_restore_runs_as_a_job(api, service):
     (notes / "Facts.md").unlink()
     (vault_id,) = [v["id"] for v in api.get("/api/cloud/vaults").json()]
     assert api.post("/api/cloud/restore", json={"vault_id": "not-an-id"}).status_code == 422
-    job = wait_job(api.post("/api/cloud/restore", json={"vault_id": vault_id}).json()["id"])
+    (head,) = [v["head_snapshot"] for v in api.get("/api/cloud/vaults").json()]
+    job = wait_job(api.post("/api/cloud/restore", json={"vault_id": vault_id, "snapshot": head}).json()["id"])
     assert job["state"] == "done", job["message"]
     assert job["message"].startswith("Restored 1 files")
     assert (notes / "Facts.md").read_text() == "The gate opens at dawn.\n"
@@ -831,6 +847,23 @@ def test_api_bring_to_this_mac_refuses_a_campaign_this_mac_already_has(api, serv
     assert job["state"] == "error"
     assert "already on this Mac" in job["message"]
     assert (local / "Facts.md").read_text() == "Newer notes on this Mac.\n"
+
+
+def test_api_bring_to_this_mac_refuses_the_open_campaign_too(api, service):
+    """Both Macs' first campaign is `main`: bringing the other Mac's `main` here must not replace the open one."""
+    vault = _backed_up_vault(api, service)
+    assert vault["campaign_id"] == "main"
+    (config.vault_dir() / "Facts.md").write_text("Newer notes on this Mac.\n")
+    job = wait_job(api.post("/api/cloud/restore", json={"vault_id": vault["id"]}).json()["id"])
+    assert job["state"] == "error"
+    assert "already on this Mac" in job["message"]
+    assert (config.vault_dir() / "Facts.md").read_text() == "Newer notes on this Mac.\n"
+    # Naming the restore point is the deliberate way to put a backup over the open campaign.
+    job = wait_job(
+        api.post("/api/cloud/restore", json={"vault_id": vault["id"], "snapshot": vault["head_snapshot"]}).json()["id"]
+    )
+    assert job["state"] == "done", job["message"]
+    assert (config.vault_dir() / "Facts.md").read_text() == "The gate opens at dawn.\n"
 
 
 def test_api_restore_refuses_a_campaign_id_that_could_name_another_folder(api, service):

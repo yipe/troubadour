@@ -5,6 +5,10 @@ hosted provider from providers.py. `llm` and `memory` are the local models; `hos
 provider's own pair, so switching back and forth keeps both choices."""
 
 import json
+import os
+import tempfile
+import time
+from pathlib import Path
 from urllib.parse import urlparse
 
 from . import config, providers
@@ -89,6 +93,15 @@ def known_llms() -> list[str]:
     return out
 
 
+def check_whisper(what: str, value) -> str:
+    """A Whisper id from the menu. The id already in use is accepted too (an env override the menu shows as
+    an extra entry), so saving the form unchanged never fails."""
+    value = _model_id(value, what)
+    if value not in {o["id"] for o in WHISPER_OPTIONS} and value != current()[what]:
+        raise ValueError(f"{what} must be one of the listed Whisper models")
+    return value
+
+
 def _model_id(value, what: str) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > 200:
         raise ValueError(f"{what} must be a model id")
@@ -126,12 +139,46 @@ def current() -> dict:
     return chosen
 
 
+def _read_for_write() -> dict:
+    """The saved file for read-modify-write. One that does not parse is moved aside (never treated as empty
+    and overwritten in place), so the user's keys and choices can be recovered by hand."""
+    try:
+        raw = json.loads(path().read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            return raw
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        pass
+    aside = path().with_name(f"settings.corrupt-{time.strftime('%Y%m%d-%H%M%S')}.json")
+    try:
+        path().replace(aside)
+    except OSError:
+        raise ValueError("Saved settings couldn't be read and couldn't be set aside; nothing was changed.") from None
+    return {}
+
+
+def _write_private(target: Path, text: str) -> None:
+    """Atomic and owner-only: the file can hold an API key."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.", suffix=".tmp")  # mode 0600
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, target)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
 def update(patch: dict) -> dict:
-    raw = _read()
+    raw = _read_for_write()
     nxt = {k: raw[k] for k in (*_KEYS, "llm_url", "memory_url", "api_key", "known_llms", "provider", "hosted") if k in raw}
     for key in _KEYS:
         if patch.get(key) is not None:
-            nxt[key] = _model_id(patch[key], key)
+            nxt[key] = check_whisper(key, patch[key]) if key.startswith("whisper") else _model_id(patch[key], key)
     if "llm_url" in patch and patch["llm_url"] is not None:
         nxt["llm_url"] = normalize_llm_url(patch["llm_url"])
     if patch.get("memory_url") is not None:  # "" = auto (llm_url's server)
@@ -163,6 +210,5 @@ def update(patch: dict) -> dict:
         if model and model not in known:
             known.append(model)
     nxt["known_llms"] = known
-    path().parent.mkdir(parents=True, exist_ok=True)
-    path().write_text(json.dumps(nxt, indent=2) + "\n", encoding="utf-8")
+    _write_private(path(), json.dumps(nxt, indent=2) + "\n")
     return current()

@@ -4,6 +4,7 @@ import csv
 import json
 from typing import Annotated, Literal
 
+import anyio
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, StringConstraints
 from troubadour.lore import dnd_terms
@@ -94,7 +95,10 @@ def list_terms(
 
 
 def _add(pairs: list[tuple[str, str]]) -> AddedOut:
-    added, skipped = dnd_terms.add_custom(pairs)
+    try:
+        added, skipped = dnd_terms.add_custom(pairs)
+    except dnd_terms.TermsFileError as e:
+        raise HTTPException(409, str(e)) from None
     shown = [Skipped(name=n, reason=r) for n, r in skipped[:MAX_SKIPPED]]
     return AddedOut(added=len(added), skipped=shown, more_skipped=len(skipped) - len(shown))
 
@@ -106,7 +110,13 @@ def add_terms(body: TermsIn):
 
 @router.delete("/api/terms/{name}", status_code=204)
 def remove_term(name: str):
-    deps._call(dnd_terms.remove_custom, name)
+    def drop() -> None:
+        try:
+            dnd_terms.remove_custom(name)
+        except dnd_terms.TermsFileError as e:  # a ValueError, which _call would call a 400
+            raise HTTPException(409, str(e)) from None
+
+    deps._call(drop)
 
 
 def _parse_upload(text: str) -> list[tuple[str, str]]:
@@ -128,7 +138,7 @@ def _parse_upload(text: str) -> list[tuple[str, str]]:
                 else:
                     raise ValueError("unexpected entry")
             return pairs
-        except (ValueError, KeyError, TypeError):
+        except (ValueError, KeyError, TypeError, RecursionError):  # deeply nested input recurses
             raise HTTPException(400, "That JSON is not a list of terms.") from None
     pairs = []
     for row in csv.reader(text.splitlines()):
@@ -142,11 +152,25 @@ def _parse_upload(text: str) -> list[tuple[str, str]]:
     return pairs
 
 
-@router.post("/api/terms/upload", response_model=AddedOut)
-async def upload_terms(request: Request):
-    body = await request.body()
-    if len(body) > MAX_UPLOAD:
+async def _read_capped(request: Request) -> bytes:
+    """The body, refusing early on Content-Length and again while streaming (a chunked body has none)."""
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > MAX_UPLOAD:
         raise HTTPException(413, "That file is over 1 MB.")
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > MAX_UPLOAD:
+            raise HTTPException(413, "That file is over 1 MB.")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@router.post("/api/terms/upload", response_model=AddedOut)
+def upload_terms(request: Request):
+    # A plain def runs in the threadpool: parsing and the file write must not stall the event loop.
+    body = anyio.from_thread.run(_read_capped, request)
     try:
         text = body.decode("utf-8-sig")
     except UnicodeDecodeError:

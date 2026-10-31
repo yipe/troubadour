@@ -292,3 +292,10 @@ def test_unknown_sessions_are_404_and_a_down_model_is_503(api, monkeypatch):
     assert api.post("/api/sessions/not-an-id/recap", json=BODY).status_code == 404
     monkeypatch.setattr(deps.memory.llm, "problem", lambda: "down")
     assert api.post(f"/api/sessions/{SID}/recap", json=BODY).status_code == 503
+
+
+def test_the_model_check_runs_before_the_campaign_gate_is_taken(api, monkeypatch):
+    held = []
+    monkeypatch.setattr(deps.memory.llm, "problem", lambda: held.append(deps.campaign_gate.locked()) or None)
+    assert api.post(f"/api/sessions/{SID}/recap", json=BODY).status_code == 200
+    assert held == [False]
