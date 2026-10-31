@@ -5,13 +5,11 @@ hosted provider from providers.py. `llm` and `memory` are the local models; `hos
 provider's own pair, so switching back and forth keeps both choices."""
 
 import json
-import os
-import tempfile
 import time
-from pathlib import Path
 from urllib.parse import urlparse
 
 from . import config, providers
+from .fsutil import write_atomic
 
 WHISPER_TURBO = "mlx-community/whisper-large-v3-turbo"
 WHISPER_LARGE = "mlx-community/whisper-large-v3-mlx"
@@ -158,21 +156,6 @@ def _read_for_write() -> dict:
     return {}
 
 
-def _write_private(target: Path, text: str) -> None:
-    """Atomic and owner-only: the file can hold an API key."""
-    target.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.", suffix=".tmp")  # mode 0600
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, target)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
-
-
 def update(patch: dict) -> dict:
     raw = _read_for_write()
     nxt = {k: raw[k] for k in (*_KEYS, "llm_url", "memory_url", "api_key", "known_llms", "provider", "hosted") if k in raw}
@@ -210,5 +193,5 @@ def update(patch: dict) -> dict:
         if model and model not in known:
             known.append(model)
     nxt["known_llms"] = known
-    _write_private(path(), json.dumps(nxt, indent=2) + "\n")
+    write_atomic(path(), json.dumps(nxt, indent=2) + "\n", mode=0o600)  # it can hold an API key
     return current()

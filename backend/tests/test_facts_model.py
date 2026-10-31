@@ -163,7 +163,9 @@ def test_old_bullet_text_and_source():
 def test_old_notes_roundtrip_through_campaign_parser():
     note = "# Pip\n\n## Facts\n- Owes Kessia a favour. ([[2026-10-15 Session]])\n- Likes pie.\n"
     e = campaign.parse("Pip", note)
-    assert render_bullets(parse_bullets([f"- {x}" for x in e.facts], "Pip")) == [f"- {x}" for x in e.facts]
+    original = [line for line in note.splitlines() if line.startswith("- ")]
+    assert len(e.facts) == 2
+    assert render_bullets(e.facts) == original
 
 
 def test_asterisk_bullets_and_continuation_lines():

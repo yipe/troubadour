@@ -48,7 +48,7 @@ class TermsFileError(ValueError):
 
 def _entries(data) -> tuple[list[tuple[str, str]], int]:
     """(good pairs, number of bad entries). Raises ValueError when the file is not `{"terms": [...]}`."""
-    rows = data["terms"] if isinstance(data, dict) else None
+    rows = data.get("terms") if isinstance(data, dict) else None
     if not isinstance(rows, list):
         raise ValueError("no terms list")
     good = [

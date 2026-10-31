@@ -6,10 +6,11 @@ import tempfile
 from pathlib import Path
 
 
-def write_atomic(path: Path, data: str | bytes) -> None:
+def write_atomic(path: Path, data: str | bytes, mode: int = 0o644) -> None:
     """Write via a temp file and rename: a reader never sees half a file, and a crash after the
     rename keeps the new bytes (the file, then the folder entry, are fsynced). The temp name is
-    unique, so two writers never trample each other's half-written file. Text is UTF-8."""
+    unique, so two writers never trample each other's half-written file. Text is UTF-8. `mode` is the final
+    permission: 0o600 for a file that holds a key or token (it is created 0600 and never widened)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     tmp = Path(name)
@@ -18,7 +19,7 @@ def write_atomic(path: Path, data: str | bytes) -> None:
             f.write(data.encode("utf-8") if isinstance(data, str) else data)
             f.flush()
             os.fsync(f.fileno())
-        tmp.chmod(0o644)  # mkstemp makes it 0600; the old write_bytes + replace gave the umask default
+        tmp.chmod(mode)  # mkstemp makes it 0600; the default 0644 matches the old write_bytes + replace
         os.replace(tmp, path)
     except BaseException:
         tmp.unlink(missing_ok=True)

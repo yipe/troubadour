@@ -207,3 +207,14 @@ def test_upload_is_refused_early_on_content_length_and_deep_json_is_a_400(client
     assert client.post("/api/terms/upload", content=b"a", headers={"content-length": "2000000"}).status_code in (400, 413)
     assert client.post("/api/terms/upload", content=b"[" * 100_000).status_code == 400
     assert client.post("/api/terms/upload", content=b"[" * 5000 + b"]" * 5000).status_code == 400
+
+
+def test_a_file_without_a_terms_key_reads_as_empty_and_is_set_aside_on_write(files, client):
+    _, mine = files
+    mine.write_text("{}")
+    assert names("custom") == []  # lookups (live spelling cleanup) must not raise KeyError
+    r = client.post("/api/terms", json={"terms": [{"name": "Mirvane", "type": "npc"}]})
+    assert r.status_code == 409
+    assert len(list(mine.parent.glob("mine.corrupt-*.json"))) == 1
+    mine.write_text("{}")
+    assert client.delete("/api/terms/Zorbo").status_code == 409

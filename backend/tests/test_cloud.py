@@ -9,6 +9,7 @@ import json
 import stat
 import threading
 import time
+import types
 import unicodedata
 import uuid
 from pathlib import Path
@@ -18,7 +19,17 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from troubadour.cloud import backup as cloud
-from troubadour.cloud.backup import AutoBackup, Cloud, CloudError, NotConnected, fingerprint, path_problem, scan
+from troubadour.cloud.backup import (
+    MAIN_CHECK_FAIL_TTL_S,
+    MAIN_CHECK_TIMEOUT_S,
+    AutoBackup,
+    Cloud,
+    CloudError,
+    NotConnected,
+    fingerprint,
+    path_problem,
+    scan,
+)
 from troubadour.core import config
 from troubadour.server import deps
 from troubadour.server.app import app
@@ -932,3 +943,76 @@ def test_api_automatic_failure_is_quiet_but_remembered(api, service):
     assert job["state"] == "done"  # no red chip in the header
     assert job["message"].startswith("Automatic backup didn't run")
     assert api.get("/api/cloud").json()["last_error"]["message"] == "quota_exceeded"
+
+
+# ---------------------------------------------------------------- the main-device check when the cloud is down
+
+
+class Outage:
+    """Wraps the fake service: while `down`, every request fails; records each request's timeouts."""
+
+    def __init__(self, service):
+        self.service, self.down, self.seen = service, False, []
+
+    def __call__(self, request):
+        self.seen.append((request.method, str(request.url), request.extensions.get("timeout")))
+        if self.down:
+            raise httpx.ConnectError("unreachable", request=request)
+        return self.service.handle(request)
+
+    def vault_requests(self):
+        return [u for _, u, _ in self.seen if u.endswith("/api/v1/vaults")]
+
+
+@pytest.fixture
+def outage(client, service, vault):
+    wrapper = Outage(service)
+    clock = types.SimpleNamespace(t=1000.0)
+    client.http = httpx.Client(transport=httpx.MockTransport(wrapper))
+    client.clock = lambda: clock.t
+    connect(client, service)
+    client.backup("main", "The Sunken Gate", vault, noop)
+    client._vault_list = None  # as after a restart: the next status() asks the service
+    wrapper.seen.clear()
+    return wrapper, clock
+
+
+def test_a_failed_main_check_is_not_retried_on_every_status(client, outage):
+    wrapper, clock = outage
+    wrapper.down = True
+    for _ in range(5):
+        assert client.status("main")["is_main"] is True  # the last known answer
+    assert len(wrapper.vault_requests()) == 1
+    clock.t += MAIN_CHECK_FAIL_TTL_S + 1
+    client.status("main")
+    assert len(wrapper.vault_requests()) == 2
+    wrapper.down = False
+    clock.t += MAIN_CHECK_FAIL_TTL_S + 1
+    client.status("main")
+    client.status("main")
+    assert len(wrapper.vault_requests()) == 3  # recovered: the answer is cached again
+
+
+def test_the_token_refresh_inside_a_main_check_uses_the_short_timeout(client, service, outage):
+    wrapper, _ = outage
+    data = json.loads(client.path().read_text())
+    data["expires_at"] = 0  # expired: the check has to refresh first
+    client.path().write_text(json.dumps(data))
+    client.status("main")
+    (refresh,) = [t for m, u, t in wrapper.seen if u == f"{AUTH}/oauth/token"]
+    assert refresh["read"] == MAIN_CHECK_TIMEOUT_S
+
+
+def test_the_history_is_written_atomically_without_a_fixed_temp_name_and_read_once(client, service, vault, monkeypatch):
+    connect(client, service)
+    stray = client.path().with_name(".cloud_history.json.tmp")  # what a second writer on a fixed name would own
+    stray.write_text("half written")
+    reads = []
+    real = client._history_all
+    monkeypatch.setattr(client, "_history_all", lambda: (reads.append(1), real())[1])
+    client.backup("main", "The Sunken Gate", vault, noop)
+    assert stray.read_text() == "half written"
+    assert len(reads) == 1  # _record reads the file once
+    assert len(client.history("main")) == 1
+    assert stat.S_IMODE(client.path().stat().st_mode) == 0o600  # the token file stays private
+    assert sorted(p.name for p in client.path().parent.iterdir() if p.name.endswith(".tmp")) == [".cloud_history.json.tmp"]

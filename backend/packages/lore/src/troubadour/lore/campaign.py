@@ -762,6 +762,16 @@ class Vault:
             key = "suggested_facts" if suggested else "facts"
             return self.update(e.name, **{key: [*getattr(e, key), fact]})
 
+    def accept_fact(self, name: str, fact: Fact) -> Entity:
+        """Make `fact` a confirmed fact of `name`, whatever the note already holds. A pending suggestion that
+        says the same (any id) is promoted, not skipped: `add_fact` would leave it pending and the caller's
+        accept or delete would then drop the only copy. A fact `replaces` updates keeps the old one as history."""
+        with self.lock:
+            e = self.get(name)
+            fact = replace(fact, about=e.name)
+            pending = [s for s in e.suggested_facts if s.id != fact.id and not same_fact(fact, s)]
+            return self.update(e.name, facts=_accepted(e.facts, fact), suggested_facts=pending)
+
     def edit_fact(self, name: str, fid: str, **changes) -> Entity:
         """Change one fact (see `edited`); KeyError if it is not in this note's facts or suggestions."""
         with self.lock:
