@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo, useState, type CSSProperties } from "react"
 import { Link, useNavigate, useParams } from "react-router"
 import { FileX } from "lucide-react"
 import { useCampaign } from "@troubadour/api/campaign"
@@ -146,7 +146,7 @@ export function Component() {
     const shown = all?.filter((i) => matchesFilter(i, filter))
     if (!all || !shown?.length) return null
     return (
-      <div data-review={lineState(all)} className="flex flex-col gap-2 pt-0.5 pb-2 pl-7">
+      <div data-review={lineState(all)} className="flex flex-col gap-2 pt-0.5 pb-2 pl-10 lg:pl-7">
         {shown.map(card)}
       </div>
     )
@@ -162,8 +162,8 @@ export function Component() {
     ) : null
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <header className="flex flex-none flex-wrap items-center gap-4 border-b border-line px-7 py-3.5">
+    <div className="flex min-h-full flex-col lg:h-full lg:min-h-0">
+      <header className="flex flex-none flex-wrap items-center gap-4 border-b border-line px-5 py-3.5 md:px-7">
         <div>
           <div className="text-12 text-ink-subtle">
             Review · {label}
@@ -171,7 +171,7 @@ export function Component() {
           </div>
           <h1 className="font-serif text-22 leading-tight font-bold text-ink">{title}</h1>
         </div>
-        <div className="ml-6 flex w-[220px] flex-col gap-1.5">
+        <div className="flex w-[220px] flex-col gap-1.5 lg:ml-6">
           <div className="flex text-12 text-ink-subtle">
             <span>
               {done} of {total} reviewed
@@ -181,7 +181,7 @@ export function Component() {
           <Progress value={total > 0 ? done / total : 0} tone="success" />
         </div>
         <PillGroup
-          className="ml-3"
+          className="lg:ml-3"
           value={filter}
           onChange={(f) => setFilter(f as Filter)}
           items={FILTERS.map((f) => ({ ...f, count: counts[f.id] }))}
@@ -213,14 +213,14 @@ export function Component() {
       ) : null}
 
       <div
-        className="grid flex-none gap-0 px-5 pt-3"
-        style={{ gridTemplateColumns: `minmax(0,1fr) ${ASIDE_WIDTH}px` }}
+        className="grid flex-none grid-cols-1 gap-0 px-5 pt-3 lg:grid-cols-[minmax(0,1fr)_var(--aside-w)]"
+        style={{ "--aside-w": `${ASIDE_WIDTH}px` } as CSSProperties}
       >
         <SectionLabel className="px-2 pb-2.5">Transcript</SectionLabel>
-        <SectionLabel className="pb-2.5 pl-7">Suggestions on these lines</SectionLabel>
+        <SectionLabel className="hidden pb-2.5 pl-7 lg:block">Suggestions on these lines</SectionLabel>
       </div>
 
-      <div className={`flex min-h-0 flex-1 flex-col ${LINE_STYLES}`}>
+      <div className={`flex h-[75dvh] flex-none flex-col lg:min-h-0 lg:flex-1 ${LINE_STYLES}`}>
         {lines.length === 0 && loose.length === 0 ? (
           <p className="flex flex-1 items-center justify-center text-14 text-ink-muted">
             Nothing to review in this session.

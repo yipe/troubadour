@@ -120,7 +120,7 @@ export function Component() {
 
   if (!idle) {
     return (
-      <div className="flex flex-col items-start gap-3 p-10">
+      <div className="flex flex-col items-start gap-3 p-5 md:p-10">
         <PageHeading title="Session in progress" subtitle={`${table} is being transcribed right now.`} />
         <Button variant="primary" nativeButton={false} render={<Link to={paths.live()} />}>
           Go to session
@@ -130,7 +130,7 @@ export function Component() {
   }
 
   return (
-    <main className="grid min-h-0 grid-cols-[minmax(0,1fr)_400px] gap-6 px-10 py-7">
+    <main className="grid min-h-0 grid-cols-1 gap-6 px-5 py-7 md:px-10 lg:grid-cols-[minmax(0,1fr)_400px]">
       <section className="flex flex-col gap-4">
         <PageHeading
           title={`Session ${n} · ready check`}

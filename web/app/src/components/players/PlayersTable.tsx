@@ -50,7 +50,7 @@ export function PlayersTable({ mode }: { mode: "wizard" | "settings" }) {
           </Button>
         </div>
       )}
-      <div role="table" aria-label="Players" className="overflow-hidden rounded-card border border-line">
+      <div role="table" aria-label="Players" className="overflow-x-auto rounded-card border border-line">
         <div
           role="row"
           className={`${ROW_GRID} bg-sunken py-2.5 text-12 font-semibold tracking-wider text-ink-subtle uppercase`}

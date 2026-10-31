@@ -137,7 +137,7 @@ export function Component() {
         </div>
       }
     >
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-[75dvh] min-h-0 flex-col lg:h-full">
         <style>{`::highlight(${HIGHLIGHT_NAME}) { background-color: var(--color-warning); color: black; }`}</style>
         <div className="border-b border-line px-5 py-3">
           <SearchInput

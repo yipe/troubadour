@@ -54,23 +54,23 @@ export function Component() {
   const campaignName = campaigns?.campaigns.find((c) => c.id === campaigns.campaign)?.name
 
   return (
-    <div className="flex h-dvh flex-col bg-canvas text-ink">
-      <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-line px-5">
+    <div className="flex min-h-dvh flex-col bg-canvas text-ink lg:h-dvh">
+      <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-line px-4 md:px-5">
         <Feather size={20} className="text-accent" />
         <span className="font-serif text-[18px] font-bold">Troubadour</span>
-        <span className="ml-2 text-ink-subtle">New campaign</span>
-        <span className="ml-auto text-13 text-ink-subtle">
+        <span className="ml-2 text-ink-subtle max-sm:hidden">New campaign</span>
+        <span className="ml-auto text-right text-13 text-ink-subtle">
           Saved as you go ·{" "}
           <Link to={paths.home()} className="text-accent no-underline hover:text-ink">
             Finish later
           </Link>
         </span>
       </header>
-      <div className="flex min-h-0 flex-1">
-        <aside className="w-[300px] shrink-0 overflow-auto border-r border-line">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <aside className="hidden w-full shrink-0 border-b border-line md:block lg:w-[300px] lg:overflow-auto lg:border-r lg:border-b-0">
           <StepRail current={step} campaignName={campaignName} tableName={tableName} />
         </aside>
-        <main className="flex min-w-0 flex-1 flex-col gap-[22px] overflow-auto px-14 py-9">
+        <main className="flex min-w-0 flex-1 flex-col gap-[22px] px-5 py-9 md:px-14 lg:overflow-auto">
           <div>
             <div className="text-12 font-bold tracking-[0.08em] text-ink-subtle uppercase">
               Step {index + 1} of {WELCOME_STEPS.length}

@@ -56,9 +56,9 @@ export function SessionDetail({ session, numbers }: SessionDetailProps) {
   ]
 
   return (
-    <div className="flex flex-col gap-5 px-10 py-7">
-      <div className="flex items-start gap-4">
-        <div className="min-w-0 flex-1">
+    <div className="flex flex-col gap-5 px-5 py-7 md:px-10">
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
+        <div className="min-w-[16rem] flex-1">
           <div className="text-13 text-ink-subtle">
             {session.n === null ? "Session" : `Session ${session.n}`} · {dateLong(session.started_at)} ·{" "}
             {timeRange(session.started_at, session.started_at + session.duration_s)}
@@ -87,13 +87,13 @@ export function SessionDetail({ session, numbers }: SessionDetailProps) {
         ) : null}
       </div>
 
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {stats.map(([value, label]) => (
           <StatTile key={label} value={value} label={label} />
         ))}
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-5">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-3">
           <SectionLabel>Recap</SectionLabel>
           {session.summary ? (

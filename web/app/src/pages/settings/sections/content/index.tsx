@@ -4,7 +4,7 @@ import { TermsSection } from "./TermsSection.tsx"
 
 export function Component() {
   return (
-    <div className="flex max-w-[960px] flex-col gap-8 p-8">
+    <div className="flex max-w-[960px] flex-col gap-8 p-5 md:p-8">
       <PageHeading
         tone="accent"
         title="Content"

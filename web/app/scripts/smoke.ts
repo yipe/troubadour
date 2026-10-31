@@ -1,5 +1,6 @@
-// pnpm -C web/app smoke [--port 8770] [--out /tmp/smoke]
+// pnpm -C web/app smoke [--port 8770] [--out /tmp/smoke] [--width 1440] [--height 900]
 // Visits every route once and reports console errors, page errors and failed requests per route.
+// Also reports a route whose page scrolls sideways (scrollWidth past the window).
 // Never clicks anything: no Start, no mic test, no audio.
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
@@ -14,6 +15,14 @@ try {
   process.exit(1)
 }
 const outDir = typeof flags.out === "string" ? flags.out : "/tmp/smoke"
+const viewport = {
+  width: Number(flags.width ?? VIEWPORT.width),
+  height: Number(flags.height ?? VIEWPORT.height),
+}
+if (!(viewport.width > 0 && viewport.height > 0)) {
+  console.error("smoke: --width and --height must be positive numbers")
+  process.exit(1)
+}
 const base = `http://127.0.0.1:${port}`
 
 // Responses a route is expected to produce, as "<status> <path prefix>". Keep each entry justified.
@@ -67,12 +76,20 @@ const browser = await launch()
 const rows: { route: string; ok: boolean; problems: string[] }[] = []
 try {
   for (const route of routes) {
-    const page = await browser.newPage({ viewport: VIEWPORT })
+    const page = await browser.newPage({ viewport })
     const problems = collectProblems(page, ALLOW[route])
     try {
       await page.goto(base + encodeURI(route), { waitUntil: "networkidle" })
       await page.waitForTimeout(300)
       const slug = route.replace(/^\/|\/$/g, "").replace(/[^A-Za-z0-9]+/g, "-") || "home"
+      const overflow = await page.evaluate(() =>
+        // The page body is a `main` that scrolls itself, so the window alone never overflows.
+        Math.max(
+          document.documentElement.scrollWidth - window.innerWidth,
+          ...[...document.querySelectorAll("main")].map((m) => m.scrollWidth - m.clientWidth),
+        ),
+      )
+      if (overflow > 0) problems.push(`page scrolls sideways by ${overflow}px at ${viewport.width}px wide`)
       await page.screenshot({ path: join(outDir, `${slug}.png`) })
     } catch (e) {
       problems.push(`navigation: ${(e as Error).message}`)

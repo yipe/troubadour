@@ -5,8 +5,8 @@ import { WhatLeavesList } from "./WhatLeavesList.tsx"
 
 export function Component() {
   return (
-    <div className="flex items-start gap-8 p-8">
-      <div className="min-w-0 flex-1">
+    <div className="flex flex-col items-start gap-8 p-5 md:p-8 xl:flex-row">
+      <div className="w-full min-w-0 flex-1">
         <PageHeading
           tone="accent"
           title="Models & privacy"
@@ -15,7 +15,7 @@ export function Component() {
         />
         <ModelsSettings />
       </div>
-      <div className="flex w-[360px] shrink-0 flex-col gap-6">
+      <div className="flex w-full shrink-0 flex-col gap-6 xl:w-[360px]">
         <WhatLeavesList />
         <StorageBar />
       </div>

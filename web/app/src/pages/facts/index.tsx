@@ -59,6 +59,7 @@ export function Component() {
   return (
     <RailLayout
       railWidth={380}
+      railToggleLabel="filters"
       rail={
         <FactsRail
           filters={filters}
@@ -69,8 +70,9 @@ export function Component() {
         />
       }
     >
-      <div className="flex flex-col gap-4 px-10 py-5">
+      <div className="flex flex-col gap-4 px-5 py-5 md:px-10">
         <PageHeading
+          className="flex-wrap [&>div:first-child]:min-w-[14rem]"
           title="Facts"
           subtitle={`${rows.length} things that stay true between sessions. Every one links to the moment it was said.`}
           actions={<span className="text-12 text-ink-subtle">Sort: newest session first</span>}

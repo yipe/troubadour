@@ -48,8 +48,9 @@ export function Component() {
   if (!sessions) return <Spinner />
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 px-10 pt-5">
+    <div className="flex h-full min-h-0 flex-col gap-3 px-5 pt-5 md:px-10">
       <PageHeading
+        className="flex-wrap [&>div:first-child]:min-w-[14rem]"
         title="The story so far"
         subtitle={`${sessions.length} ${sessions.length === 1 ? "session" : "sessions"} · newest first · scrolls as the campaign grows`}
         actions={
@@ -108,7 +109,7 @@ function SessionTr({ item, ...props }: ItemProps<Row>) {
 }
 
 function FixedTable(props: ComponentProps<"table">) {
-  return <table {...props} className="w-full table-fixed border-collapse text-14" />
+  return <table {...props} className="w-full min-w-[960px] table-fixed border-collapse text-14" />
 }
 
 // Module-level: components defined inline would remount every row on each render.

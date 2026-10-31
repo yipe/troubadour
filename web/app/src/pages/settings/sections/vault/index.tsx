@@ -10,7 +10,7 @@ import { IgnoredWords } from "./IgnoredWords.tsx"
 export function Component() {
   const campaign = useCampaign().data
   return (
-    <div className="flex max-w-3xl flex-col gap-8 p-8">
+    <div className="flex max-w-3xl flex-col gap-8 p-5 md:p-8">
       <PageHeading
         tone="accent"
         title="Obsidian vault"
