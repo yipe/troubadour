@@ -241,6 +241,7 @@ class NotebookLoop:
         self._busy = threading.Lock()  # one pass at a time
         self._retry_at = 0.0
         self._stop = threading.Event()
+        self._closing = False  # the session ended: a pass finishing late saves the notebook itself
 
     def start(self) -> None:
         if config.env("NOTEBOOK", "1") == "0":
@@ -259,8 +260,21 @@ class NotebookLoop:
             except Exception:
                 log.exception("notebook pass failed")
 
+    def drain(self, timeout: float) -> bool:
+        """The session is ending: start no more passes and wait up to `timeout` s for the one in flight,
+        so its items are in the notebook before the final save. False if it was still running; it then
+        saves the notebook itself when it finishes (`_pass`)."""
+        self._closing = True
+        self._stop.set()
+        if not self._busy.acquire(timeout=timeout):
+            return False
+        self._busy.release()
+        return True
+
     def tick(self) -> bool:
         """One wake-up. True when a pass ran."""
+        if self._stop.is_set():
+            return False
         if not self.engine.llm_ok or self._clock() < self._retry_at:
             return False
         if not self._busy.acquire(blocking=False):
@@ -299,6 +313,8 @@ class NotebookLoop:
         nb.add_items(items)
         self.refresh_spellings()
         nb.set_updating(False)
+        if self._closing:  # the final save already happened without these items
+            nb.save(eng.sessions_dir() / self.sess.id / "notebook.json")
         return True
 
     def _line(self, m) -> llm_pass.Line:

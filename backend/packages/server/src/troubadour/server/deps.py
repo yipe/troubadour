@@ -24,6 +24,7 @@ engine = Engine(bus)
 
 
 vault = Vault(engine.vault_dir)  # the open campaign's notes, looked up on every use
+engine.vault = vault  # glossary corrections, Whisper name hints, heard-as suggestions and the notebook read it
 
 
 memory = Memory(vault, bus, sessions_dir=engine.sessions_dir, seed=engine.known_names)
