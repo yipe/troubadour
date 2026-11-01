@@ -400,3 +400,22 @@ it("adds one session per heading when the pasted notes split", async () => {
     ],
   })
 })
+
+it("shows a dash, not 0, for what a queued notes session added", () => {
+  const job = campaignJob({ id: "j1", kind: "import", state: "queued", sessions: ["n1"] })
+  renderWithProviders(
+    <Routes>
+      <Route path="/sessions/:id" element={<SessionsPage />} />
+    </Routes>,
+    {
+      route: "/sessions/n1",
+      queryData: [
+        [keys.sessions(), [bells]],
+        [keys.campaign(), campaign({ jobs: [job] })],
+        [["notes", "n1"], { text: "We rang them." }],
+      ],
+    },
+  )
+  expect(screen.getByText(/Waiting its turn/)).toBeInTheDocument()
+  expect(screen.getAllByText("–")).toHaveLength(2)
+})

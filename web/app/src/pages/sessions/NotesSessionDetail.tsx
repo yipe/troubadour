@@ -83,8 +83,9 @@ export function NotesSessionDetail({ session, numbers }: NotesSessionDetailProps
         </div>
       )}
       <div className="grid max-w-md grid-cols-2 gap-3">
-        <StatTile value={String(gains.facts)} label="New facts" />
-        <StatTile value={String(gains.entries)} label="New entries" />
+        {/* Not read yet: nothing to count, which isn't the same as none. */}
+        <StatTile value={status.state === "queued" ? "–" : String(gains.facts)} label="New facts" />
+        <StatTile value={status.state === "queued" ? "–" : String(gains.entries)} label="New entries" />
       </div>
       <section aria-label="Notes" className="flex max-w-3xl flex-col gap-3">
         <SectionHeading>Notes</SectionHeading>
