@@ -3,6 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { PillGroup } from "./pill-group"
+import { RailGroup } from "./rail-group"
 import { SegmentedBar } from "./segmented-bar"
 import { UnderlineTabs } from "./underline-tabs"
 
@@ -96,5 +97,20 @@ describe("PillGroup", () => {
     expect(screen.getByRole("button", { name: "All 9" })).toHaveAttribute("aria-pressed", "true")
     await userEvent.click(screen.getByRole("button", { name: "Facts 4" }))
     expect(onChange).toHaveBeenCalledWith("facts")
+  })
+})
+
+describe("RailGroup", () => {
+  it("closes from its triangle and then shows how many it holds", async () => {
+    render(
+      <RailGroup label="People" count={3}>
+        <a href="#a">Ash</a>
+      </RailGroup>,
+    )
+    const group = document.querySelector("details")!
+    expect(group.open).toBe(true)
+    await userEvent.click(screen.getByText("People"))
+    expect(group.open).toBe(false)
+    expect(screen.getByLabelText("3 inside")).toHaveTextContent("3")
   })
 })

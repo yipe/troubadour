@@ -4,7 +4,7 @@ import { useClasses } from "@troubadour/api/players"
 import { Button } from "@troubadour/ui/button"
 import { NavItem } from "@troubadour/ui/nav-item"
 import { SearchInput } from "@troubadour/ui/search-input"
-import { SectionLabel } from "@troubadour/ui/section-label"
+import { RailGroup } from "@troubadour/ui/rail-group"
 import { playerColor } from "../../lib/players.ts"
 import { ABOUT_FILTERS, SURE_FILTERS, type Facet, type Filters } from "./data.ts"
 
@@ -16,12 +16,11 @@ export type FactsRailProps = {
   onAdd: () => void
 }
 
-function Group({ label, children }: { label: string; children: React.ReactNode }) {
+function Group({ label, count, children }: { label: string; count: number; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-0.5 px-2 pb-3">
-      <SectionLabel className="px-3 pt-2 pb-1">{label}</SectionLabel>
+    <RailGroup label={label} count={count} className="px-2 pb-3">
       {children}
-    </div>
+    </RailGroup>
   )
 }
 
@@ -48,7 +47,7 @@ export function FactsRail({ filters, counts, players, onChange, onAdd }: FactsRa
         </Button>
       </div>
       <nav aria-label="Fact filters" className="pt-2">
-        <Group label="About">
+        <Group label="About" count={ABOUT_FILTERS.length + 1}>
           <NavItem
             selected={!filters.about}
             count={counts.about.get(undefined) ?? 0}
@@ -67,7 +66,7 @@ export function FactsRail({ filters, counts, players, onChange, onAdd }: FactsRa
             </NavItem>
           ))}
         </Group>
-        <Group label="How sure">
+        <Group label="How sure" count={SURE_FILTERS.length}>
           {SURE_FILTERS.map((f) => (
             <NavItem
               key={f.id}
@@ -80,7 +79,7 @@ export function FactsRail({ filters, counts, players, onChange, onAdd }: FactsRa
             </NavItem>
           ))}
         </Group>
-        <Group label="Said by">
+        <Group label="Said by" count={players.length}>
           {players.map((p) => (
             <NavItem
               key={p.id}

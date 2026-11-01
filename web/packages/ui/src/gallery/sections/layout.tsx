@@ -8,6 +8,7 @@ import { NavItem } from "../../components/nav-item"
 import { PillGroup } from "../../components/pill-group"
 import { Progress } from "../../components/progress"
 import { RailLayout } from "../../components/rail-layout"
+import { RailGroup } from "../../components/rail-group"
 import { SectionLabel } from "../../components/section-label"
 import { SegmentedBar, SegmentedLegend, type Segment } from "../../components/segmented-bar"
 import { Table, TD, TH, THead, TR } from "../../components/table"
@@ -33,7 +34,7 @@ export function Section() {
           railWidth={220}
           aside={<div className="p-3 text-13 text-ink-muted">Aside</div>}
           rail={
-            <div className="flex flex-col gap-1 p-2">
+            <RailGroup label="A group" count={2} className="p-2">
               <NavItem
                 selected={nav === "a"}
                 onClick={() => setNav("a")}
@@ -46,7 +47,7 @@ export function Section() {
               <NavItem selected={nav === "b"} onClick={() => setNav("b")} dot="warning" count={12}>
                 Other item
               </NavItem>
-            </div>
+            </RailGroup>
           }
         >
           <div className="p-3 text-13 text-ink-muted">Main</div>
