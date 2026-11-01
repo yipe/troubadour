@@ -4,24 +4,14 @@ import { TableVirtuoso, type ItemProps } from "react-virtuoso"
 import { useLive } from "@troubadour/api/live"
 import { useClasses } from "@troubadour/api/players"
 import { useTimeline, type TimelineSession } from "@troubadour/api/timeline"
-import { Chip } from "@troubadour/ui/chip"
 import { PageHeading } from "@troubadour/ui/page-heading"
-import { SegmentedBar } from "@troubadour/ui/segmented-bar"
 import { Spinner } from "@troubadour/ui/spinner"
+import { TimelineCells, TimelineHead } from "@troubadour/views/timeline-cells"
+import { ROW_HEIGHT } from "@troubadour/views/travel-line"
+import { travelStops, type TravelStop } from "@troubadour/views/travel"
 import { playerColor } from "../../lib/players.ts"
 import { talkSegments } from "../../lib/talk.ts"
 import { paths } from "../../paths.ts"
-import { ROW_HEIGHT, TravelLine } from "./TravelLine.tsx"
-import { travelStops, type TravelStop } from "./travel.ts"
-
-const COLUMNS = ["Session", "Where", "Who talked", "New faces", "Facts"]
-const WIDTHS = [200, 300, 280, undefined, 90]
-const CELL = "border-l border-line-subtle px-4"
-const FACT_BAR_MAX = 56
-
-// The server sends "YYYY-MM-DD" in local time; format it without a timezone shift.
-const DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
-const shortDate = (iso: string) => DATE.format(new Date(`${iso}T12:00:00Z`))
 
 type Row = { session: TimelineSession; stop: TravelStop; olderLane: number | null; newest: boolean }
 
@@ -74,19 +64,7 @@ export function Component() {
             fixedItemHeight={ROW_HEIGHT}
             computeItemKey={(_, r) => r.session.id}
             components={TABLE}
-            fixedHeaderContent={() => (
-              <tr className="bg-sunken font-serif font-bold text-ink-muted">
-                {COLUMNS.map((name, i) => (
-                  <th
-                    key={name}
-                    style={{ width: WIDTHS[i] }}
-                    className={`border-b border-line py-2.5 text-left ${i === 0 ? "px-4" : CELL} ${i === 4 ? "text-right" : ""}`}
-                  >
-                    {name}
-                  </th>
-                ))}
-              </tr>
-            )}
+            fixedHeaderContent={() => <TimelineHead />}
             itemContent={(_, row) => <RowCells row={row} maxFacts={maxFacts} />}
           />
         </div>
@@ -118,56 +96,28 @@ function RowCells({ row, maxFacts }: { row: Row; maxFacts: number }) {
   const { session, stop, olderLane, newest } = row
   const players = useLive((s) => s.players)
   const classes = useClasses().data ?? []
-  const barWidth = (session.facts_accepted / maxFacts) * FACT_BAR_MAX
   return (
-    <>
-      <td className="px-4">
-        <div className="flex items-baseline gap-2 whitespace-nowrap">
-          <Link
-            to={paths.session(session.id)}
-            onClick={(e) => e.stopPropagation()}
-            className="font-serif font-bold text-ink hover:no-underline"
-          >
-            S{session.n}
-          </Link>
-          <span className="text-12 text-ink-subtle">{shortDate(session.date)}</span>
-        </div>
-        <div className={`truncate text-13 ${newest ? "text-ink" : "text-ink-muted"}`}>
-          {session.title ?? "Untitled"}
-        </div>
-      </td>
-      <td className="relative border-l border-line-subtle p-0">
-        <TravelLine stop={stop} olderLane={olderLane} hasNewer={!newest} newest={newest} />
-      </td>
-      <td className={CELL}>
-        {session.kind === "notes" ? (
-          <div className="text-12 text-ink-subtle">From notes</div>
-        ) : (
-          <SegmentedBar
-            segments={talkSegments(session.talk, players, classes, "share")}
-            height={18}
-            gap={1}
-            labels
-          />
-        )}
-      </td>
-      <td className={CELL}>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {session.new_entities.map((e) => (
-            <Link key={e.name} to={paths.codex(e.name)} onClick={(ev) => ev.stopPropagation()}>
-              <Chip className={`rounded-sm px-2 py-0.5 text-12 ${e.type === "item" ? "text-legendary" : ""}`}>
-                {e.name}
-              </Chip>
-            </Link>
-          ))}
-        </div>
-      </td>
-      <td className={CELL}>
-        <div className="flex items-center justify-end gap-2">
-          <span className="h-1.5 rounded-sm bg-accent-strong" style={{ width: barWidth }} />
-          <span className="w-5 text-right text-13 text-ink-muted tabular-nums">{session.facts_accepted}</span>
-        </div>
-      </td>
-    </>
+    <TimelineCells
+      session={session}
+      stop={stop}
+      olderLane={olderLane}
+      newest={newest}
+      talk={talkSegments(session.talk, players, classes, "share")}
+      maxFacts={maxFacts}
+      sessionLink={(content) => (
+        <Link
+          to={paths.session(session.id)}
+          onClick={(e) => e.stopPropagation()}
+          className="hover:no-underline"
+        >
+          {content}
+        </Link>
+      )}
+      entityLink={(name, content) => (
+        <Link to={paths.codex(name)} onClick={(ev) => ev.stopPropagation()}>
+          {content}
+        </Link>
+      )}
+    />
   )
 }

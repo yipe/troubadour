@@ -17,6 +17,7 @@
     "@tanstack/react-query": "^5.100.0",
     "@troubadour/api": "workspace:*",
     "@troubadour/ui": "workspace:*",
+    "@troubadour/views": "workspace:*",
     "@yipe/tokens": "workspace:*",
     "html-to-image": "^1.11.13",
     "lucide-react": "^1.52.0",

@@ -1,2 +1,3 @@
 @import "@troubadour/ui/theme.css";
 @source "./";
+@source "../../packages/views/src";

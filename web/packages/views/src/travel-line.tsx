@@ -1,4 +1,4 @@
-import type { TravelStop } from "./travel.ts"
+import type { TravelStop } from "./travel"
 
 export const LANE_START = 22
 export const LANE_STEP = 30
