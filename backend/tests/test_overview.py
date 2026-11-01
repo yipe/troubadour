@@ -152,7 +152,7 @@ def test_the_vault_ignores_the_folder(lore):
 
 def test_a_backup_builds_the_pages_before_scanning(client, service, lore):  # noqa: F811
     connect(client, service)
-    client.before_scan = lambda root: overview.write(root, build(lore))
+    client.before_scan = lambda root, _include: overview.write(root, build(lore))
     client.backup("main", "Camp", lore.root, noop)
     (v,) = service.vaults.values()
     paths = {f["path"] for f in service.snapshots[v["head_snapshot"]]}
@@ -162,7 +162,7 @@ def test_a_backup_builds_the_pages_before_scanning(client, service, lore):  # no
 def test_a_failing_builder_does_not_stop_the_backup(client, service, lore):  # noqa: F811
     connect(client, service)
 
-    def boom(_root):
+    def boom(_root, _include):
         raise RuntimeError("no")
 
     client.before_scan = boom

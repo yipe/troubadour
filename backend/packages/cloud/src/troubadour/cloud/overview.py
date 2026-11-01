@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("troubadour")
 
 FOLDER = "_Overview"
+RECAPS = f"{FOLDER}/Recaps"  # vault_format's recap pages
 MARKER = "troubadour: generated"
 NOTICE = "This page is rebuilt on every backup. Changes made here are lost."
 RECENT_FACTS = 10
@@ -207,13 +208,15 @@ def _generated(path: Path) -> bool:
 
 
 def write(root: Path, pages: dict[str, str]) -> list[str]:
-    """Write the pages under `root/_Overview/`; returns the paths that changed. A file that is already
-    right is not touched (its mtime stays), and a file without the marker is the user's: skipped."""
+    """Write the pages under `root/_Overview/` (and its `Recaps/` folder); returns the paths that changed. A file
+    that is already right is not touched (its mtime stays), and a file without the marker is the user's: skipped.
+    A generated recap no longer in `pages` (its session was deleted or merged) is removed."""
     folder = (root / FOLDER).resolve()
+    allowed = {folder, (root / RECAPS).resolve()}
     changed: list[str] = []
     for rel, text in pages.items():
         path = (root / rel).resolve()
-        if path.parent != folder or folder.parent != root.resolve():
+        if path.parent not in allowed or folder.parent != root.resolve():
             log.warning("overview: refusing to write outside %s: %s", FOLDER, rel)
             continue
         if path.exists():
@@ -225,6 +228,13 @@ def write(root: Path, pages: dict[str, str]) -> list[str]:
                     continue
             except (OSError, UnicodeDecodeError):
                 pass
+        path.parent.mkdir(parents=True, exist_ok=True)
         write_atomic(path, text)
         changed.append(rel)
+    recaps = root / RECAPS
+    wanted = {(root / rel).resolve() for rel in pages}
+    for path in recaps.glob("*.md") if recaps.is_dir() else []:
+        if path.resolve() not in wanted and _generated(path):
+            path.unlink()
+            changed.append(path.relative_to(root).as_posix())
     return changed

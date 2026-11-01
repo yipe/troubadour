@@ -209,7 +209,8 @@ class Cloud:
         self._main_failed_at: float | None = None  # when the last main check failed (see _check_main)
         # Runs right before each backup reads the vault (the server sets it to rebuild `_Overview/`).
         # Whatever it raises is logged: a failure there never stops a backup.
-        self.before_scan: Callable[[Path], None] | None = None
+        # (vault root, include_transcripts): builds _Overview/ just before the scan
+        self.before_scan: Callable[[Path, bool], None] | None = None
 
     # ---------------------------------------------------------------- stored state
 
@@ -501,12 +502,12 @@ class Cloud:
 
     def _push(self, campaign_id: str, name: str, root: Path, progress: Callable[[int, int, str], None]) -> dict:
         progress(0, 0, "Reading the notes")
+        include = self.campaign_settings(campaign_id)["include_transcripts"]
         if self.before_scan is not None:
             try:
-                self.before_scan(root)
+                self.before_scan(root, include)
             except Exception:
                 log.exception("cloud backup: could not build the _Overview pages")
-        include = self.campaign_settings(campaign_id)["include_transcripts"]
         # Taken before reading: an edit made during the backup changes it, so a later backup picks the edit up.
         before = fingerprint(root, include)
         files, where, skipped = scan(root, include, self._hashes)
