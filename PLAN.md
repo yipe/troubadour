@@ -337,7 +337,11 @@ of what is here fixed a measured failure, and several obvious-looking changes we
    scene to the last, what each player character did, people (with npc/creature/faction), places, loot and
    deals, still open, the ending, and misheard spellings of glossary names. Rules learned from errors: rolls
    and damage are not beats unless they decided something; who did what is copied from the transcript; no
-   "how" the transcript doesn't say; a player's joke name isn't a name until the GM uses it.
+   "how" the transcript doesn't say; a player's joke name isn't a name until the GM uses it. The reading also
+   gets the last written-up session's wrap-up (`pages.wrap_up`; the summary of an older page, or imported
+   notes) with the rule that nothing in it is a beat: the GM rarely names what last session settled ("your
+   newly allied tribe" was written up as the wrong tribe). The rule rides in the user message, not the
+   system prompt: there it sent one session without a previous page into an endless reply.
 3. **Write** (one call that sees only the notes, thinking off, plus the made-up example page
    `writeup_example.md` for style and level of detail): title, "Last time" wrap-up (350-550 words, past
    tense, every turn of the session in order, the ending, what they carry forward), a spotlight per player

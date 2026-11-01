@@ -1,8 +1,8 @@
 """Session write-ups: the language model reads the whole session into notes, then writes the page from them.
 
-1. read: one call over the whole labelled transcript (thinking on) returns notes: timestamped beats from the
-   first scene to the last, what each player character did, the people, places and loot, what is still open,
-   how it ended, and misheard spellings of glossary names.
+1. read: one call over the whole labelled transcript (thinking on), with the last session's wrap-up for context,
+   returns notes: timestamped beats from the first scene to the last, what each player character did, the people,
+   places and loot, what is still open, how it ended, and misheard spellings of glossary names.
 2. write: one call that sees only the notes (thinking off; a thinking writer wrote short wrap-ups) and a
    made-up example page (writeup_example.md) for style and level of detail, returns the title, the "Last time"
    wrap-up, a spotlight per player character and the highlights.
@@ -96,6 +96,12 @@ More rules:
 - A name a player jokes about or guesses is not a name until the GM uses it.
 - Players' guesses about what something is ("it's probably a mimic") are not facts.
 Answer with JSON only."""
+
+# Goes in the user message with the wrap-up, so a session without one reads exactly as before (the same
+# rule in the system prompt sent one session's reading into an endless reply).
+PREVIOUSLY_INTRO = """Last session, for context only. Use it to know who and what the table means ("your newly
+allied tribe", "the cave", "the crown"). Nothing in it happened in this session: never make a beat, loot, a place
+or an open thread from it alone."""
 
 WRITE_SYSTEM = """You write the session page a Dungeons & Dragons group reads before their next game, from their
 note-taker's notes. You do not have the transcript: everything you write must come from the notes.
@@ -235,10 +241,12 @@ def parse_page(raw: dict, stamps: set[str]) -> Page:
     )
 
 
-def read(llm, lines: list[str], cast: str, glossary: str, progress=None) -> Notes:
-    """The whole session in one call, thinking on (more of the session's facts, measured). `progress` hears a
-    streaming call's progress (Job.model_progress)."""
-    user = f"Who is at the table:\n{cast}\n\nGlossary:\n{glossary}\n\nTranscript:\n" + "\n".join(lines)
+def read(llm, lines: list[str], cast: str, glossary: str, progress=None, previously: str = "") -> Notes:
+    """The whole session in one call, thinking on (more of the session's facts, measured). `previously` is the last
+    session's wrap-up: without it a transcript that says "your newly allied tribe" got the wrong tribe. `progress`
+    hears a streaming call's progress (Job.model_progress)."""
+    last = f"{PREVIOUSLY_INTRO}\n{previously}\n\n" if previously else ""
+    user = f"Who is at the table:\n{cast}\n\nGlossary:\n{glossary}\n\n{last}Transcript:\n" + "\n".join(lines)
 
     end = _clock_seconds(lines[-1].split(" ", 1)[0]) if lines else 0.0
     reached = [0.0]  # the furthest beat so far (the bar never goes back)

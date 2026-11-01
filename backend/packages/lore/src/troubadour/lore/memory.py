@@ -30,7 +30,7 @@ from pathlib import Path
 import httpx
 from troubadour.core import config, providers, transcript
 
-from . import dnd_terms, writeup
+from . import dnd_terms, pages, writeup
 from .campaign import TYPES, Entity, Vault, add_unique, everyday, norm, safe_name, trash_copy, write_atomic
 from .facts import Fact, Source
 
@@ -903,7 +903,7 @@ class Memory:
         job.plan("Read the whole session", "Write the page", "Scenes", "Suggest names, facts and spellings", "Save the page")
         job.stats(writeup.table_stats(record, [n for e in self.vault.entities() for n in (e.name, *e.aliases)]))
         job.step(0, f"Reading {len(lines)} lines…")
-        notes = writeup.read(self.llm, lines, cast, glossary_brief(self.vault), job.model_progress)
+        notes = writeup.read(self.llm, lines, cast, glossary_brief(self.vault), job.model_progress, self._previously(s["id"]))
         if not notes.beats:
             raise ValueError("The language model's notes on this session came back empty; nothing was written.")
         job.step(1, f"Noted {len(notes.beats)} beats; writing the page…")
@@ -1106,6 +1106,15 @@ class Memory:
                 if f"session_id: {want}\n" in head:
                     return path
         return None
+
+    def _previously(self, sid: str) -> str:
+        """The wrap-up of the latest written-up session before `sid`, for the reading to know who "your newly allied
+        tribe" is. Ids start with the local start time, so they sort by it. A page whose session folder is gone (a
+        deleted session, or one merged into another) is skipped."""
+        skip = {sid, *self.absorbed().get(sid, [])}
+        written = self.written_up()
+        earlier = [i for i in written if i < sid and i not in skip and (self.sessions_dir() / i).is_dir()]
+        return pages.wrap_up(self.vault.root, written[max(earlier)]) if earlier else ""
 
     def written_up(self) -> dict[str, str]:
         """session id → vault-relative path of its write-up. A session that other sessions were merged into

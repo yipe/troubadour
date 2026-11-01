@@ -246,6 +246,22 @@ def test_session_page_caps_the_summary_and_survives_missing_pages(tmp_path):
     assert pages.session_page(tmp_path, "r.md")["summary"] is None
 
 
+def test_wrap_up_reads_the_whole_wrap_up_or_what_stands_in_for_it(tmp_path):
+    (tmp_path / "p.md").write_text(PAGE)
+    assert pages.wrap_up(tmp_path, "p.md") == "The party reached Saltreach at dusk.\n\nThey left at dawn."
+    notes = "---\ntype: notes\nsession: x\n---\n# 2026-01-01 Session 3\n\nWe met [[Zorbo]].\n\nHe owes us.\n"
+    (tmp_path / "n.md").write_text(notes)
+    assert pages.wrap_up(tmp_path, "n.md") == "We met Zorbo.\n\nHe owes us."  # imported notes stand in
+    older = "---\nsession_id: x\n---\n# 2026-01-01 Old\n\nThe party met [[Zorbo]].\n\n## Highlights\n- not it\n"
+    (tmp_path / "o.md").write_text(older)
+    assert pages.wrap_up(tmp_path, "o.md") == "The party met Zorbo."  # an older page: its summary before the sections
+    (tmp_path / "r.md").write_text("# T\n\n## Last time\n(no wrap-up)\n\n## Highlights\n- not a wrap-up\n")
+    assert pages.wrap_up(tmp_path, "r.md") == ""
+    (tmp_path / "long.md").write_text("# T\n\n## Last time\n" + "word " * 2000 + "\n")
+    assert len(pages.wrap_up(tmp_path, "long.md")) <= pages.WRAP_UP_MAX
+    assert pages.wrap_up(tmp_path, "nope.md") == pages.wrap_up(tmp_path, "../outside.md") == ""
+
+
 @pytest.mark.parametrize("case", json.loads(VECTORS.read_text()))
 def test_session_numbers_pass_the_shared_vectors(case):
     sessions = [{**s, "started_at": _epoch(s["started_at"])} for s in case["sessions"]]

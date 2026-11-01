@@ -294,7 +294,7 @@ def test_a_refreshed_write_up_keeps_confirmed_facts_trashes_the_old_page_and_onl
     assert "Everything is rewritten." in new_page.read_text()
     (kept,) = (vault.root / ".trash").glob("*.md")
     assert kept.read_text() == old_page
-    assert pipeline_of(idle.sessions_dir() / OLD) == {"writeup": 1}
+    assert pipeline_of(idle.sessions_dir() / OLD) == {"writeup": pipeline.BY_NAME["writeup"].version}
     assert job.suggested == 2
     assert job.note == "Sessions/" + new_page.name
 
@@ -514,7 +514,7 @@ def test_saving_a_finished_live_session_again_keeps_the_stamps_a_refresh_wrote(e
     pipeline.stamp(folder, pipeline.BY_NAME["writeup"], engine._transcript_lock)
     pipeline.stamp(folder, pipeline.BY_NAME["talk"], engine._transcript_lock)
     engine.save_transcript(force=True)  # e.g. a new session starts: the old one is saved a last time
-    assert pipeline_of(folder) == {**pipeline.live_stamp(), "writeup": 1}
+    assert pipeline_of(folder) == {**pipeline.live_stamp(), "writeup": pipeline.BY_NAME["writeup"].version}
     assert pipeline_of(folder, "transcript.json") == pipeline_of(folder)
 
 

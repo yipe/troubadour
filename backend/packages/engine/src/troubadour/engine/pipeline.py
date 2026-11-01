@@ -225,7 +225,7 @@ STEPS: tuple[Step, ...] = (
     ),
     Step(
         "writeup",
-        1,
+        2,  # 2: the reading sees the last session's wrap-up
         "Write up the session",
         ("llm", "page"),
         ("Sessions/<page>.md", "scenes.json", "suggested facts"),

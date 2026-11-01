@@ -290,6 +290,38 @@ def test_write_up_reads_the_session_then_writes_the_page_from_the_notes(setup):
     assert job.live is None
 
 
+def _write_page(vault, name: str, sid: str, wrap_up: str) -> None:
+    (vault.root / "Sessions").mkdir(parents=True, exist_ok=True)
+    body = f"---\ntype: session\nsession_id: {sid}\n---\n# {name}\n\n## Last time\n{wrap_up}\n\n## Highlights\n- a highlight\n"
+    (vault.root / "Sessions" / f"{name}.md").write_text(body)
+
+
+def test_write_up_reads_with_the_last_written_up_sessions_wrap_up(setup):
+    """The transcript says "your newly allied tribe"; only last session's page says which tribe."""
+    vault, sessions, make = setup
+    _session(sessions, sid="2026-09-01_190000-aaaa")
+    _write_page(vault, "2026-09-01 Older", "2026-09-01_190000-aaaa", "Older news.")
+    _session(sessions, sid="2026-09-24_190000-bbbb")
+    _write_page(
+        vault, "2026-09-24 Kobold King", "2026-09-24_190000-bbbb", "The [[Kobolds]] crowned Elara.\n\nThey swore to help."
+    )
+    _write_page(vault, "2026-09-30 Deleted", "2026-09-30_190000-dddd", "A deleted session's page.")  # no session folder
+    _session(sessions, sid="2026-10-15_190000-cccc")
+    _write_page(vault, "2026-10-15 Later", "2026-10-15_190000-cccc", "Later news.")
+    llm = FakeLLM()
+    wait(make(llm).write_up(_session(sessions)))
+    read = llm.calls[0]
+    assert f"{writeup.PREVIOUSLY_INTRO}\nThe Kobolds crowned Elara.\n\nThey swore to help.\n\nTranscript:" in read
+    assert not any(x in read for x in ("Older news", "deleted session", "Later news"))
+
+
+def test_the_first_written_up_session_reads_without_a_last_session(setup):
+    _, sessions, make = setup
+    llm = FakeLLM()
+    wait(make(llm).write_up(_session(sessions)))
+    assert writeup.PREVIOUSLY_INTRO not in llm.calls[0]
+
+
 def test_empty_notes_fail_the_job_and_write_nothing(setup):
     vault, sessions, make = setup
     sid = _session(sessions)

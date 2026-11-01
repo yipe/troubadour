@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 SUMMARY_MAX = 600
+WRAP_UP_MAX = 5000  # chars; a wrap-up is asked for at 350-550 words
 
 _DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}\s+")
 _LINK = re.compile(r"\[\[([^\]|]*)(?:\|([^\]]*))?\]\]|\[([^\]]*)\]\([^)]*\)")
@@ -23,27 +24,54 @@ def _plain(text: str) -> str:
     return _LINK.sub(lambda m: m.group(2) or m.group(1) or m.group(3) or "", text)
 
 
+def _body(vault_dir: Path, rel_path: str) -> str | None:
+    """A vault page without its frontmatter; None when it is missing, unreadable or outside the vault."""
+    try:
+        root = vault_dir.resolve()
+        path = (root / rel_path).resolve()
+        if not path.is_relative_to(root):
+            return None
+        text = path.read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return None
+    return re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.S)
+
+
+def _last_time(body: str) -> str | None:
+    """The "Last time" section's text; None when the page has no such section (imported notes)."""
+    wrap = re.search(r"^## +Last time\s*$(.*?)(?=^#{1,2} |\Z)", body, re.M | re.S)
+    if not wrap:
+        return None
+    text = wrap.group(1).strip()
+    return "" if text == "(no wrap-up)" else text  # what the write-up prints when the model gave none
+
+
 def session_page(vault_dir: Path, rel_path: str) -> dict[str, str | None]:
     """{"title", "summary"} of a write-up page. The title is the page's own heading without the date the
     write-up puts in front of it; the summary is the first paragraph of "Last time" (the wrap-up), links
     stripped, at most 600 characters. A missing or unreadable page gives Nones."""
     out: dict[str, str | None] = {"title": None, "summary": None}
-    try:
-        root = vault_dir.resolve()
-        path = (root / rel_path).resolve()
-        if not path.is_relative_to(root):
-            return out
-        text = path.read_text(encoding="utf-8")
-    except (OSError, ValueError):
+    body = _body(vault_dir, rel_path)
+    if body is None:
         return out
-    body = re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.S)
     heading = re.search(r"^# +(.+?)\s*$", body, re.M)
     if heading:
         out["title"] = _DATE_PREFIX.sub("", _plain(heading.group(1))).strip() or None
-    wrap = re.search(r"^## +Last time\s*$(.*?)(?=^#{1,2} |\Z)", body, re.M | re.S)
-    if wrap:
-        first = next((p for p in re.split(r"\n\s*\n", wrap.group(1).strip()) if p.strip()), "")
-        summary = " ".join(_plain(first).split())
-        if summary != "(no wrap-up)":  # what the write-up prints when the model gave none
-            out["summary"] = summary[:SUMMARY_MAX].rstrip() or None
+    first = next((p for p in re.split(r"\n\s*\n", _last_time(body) or "") if p.strip()), "")
+    out["summary"] = " ".join(_plain(first).split())[:SUMMARY_MAX].rstrip() or None
     return out
+
+
+def wrap_up(vault_dir: Path, rel_path: str) -> str:
+    """The whole "Last time" wrap-up of a write-up page, links stripped, paragraphs kept. A page without that
+    section (an older write-up, imported notes) gives its text before the first "## " section, or all of it when
+    there is none. "" when the page is missing or its wrap-up is empty."""
+    body = _body(vault_dir, rel_path)
+    if body is None:
+        return ""
+    text = _last_time(body)
+    if text is None:
+        body = re.sub(r"\A\s*# .*\n", "", body)
+        text = re.split(r"^## ", body, maxsplit=1, flags=re.M)[0].strip() or body
+    paragraphs = (" ".join(_plain(p).split()) for p in re.split(r"\n\s*\n", text.strip()))
+    return "\n\n".join(p for p in paragraphs if p)[:WRAP_UP_MAX].rstrip()
