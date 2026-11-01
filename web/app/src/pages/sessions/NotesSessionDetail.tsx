@@ -33,7 +33,8 @@ export function NotesSessionDetail({ session, numbers }: NotesSessionDetailProps
   const status = notesStatus(session, campaign?.jobs ?? [])
   const waiting = status.state === "queued" || status.state === "reading"
   const current: NotesValues | undefined = notes.data && {
-    date: new Date(session.started_at * 1000).toLocaleDateString("en-CA"), // YYYY-MM-DD, local time
+    // YYYY-MM-DD, local time; none for an unknown date, so unticking "unknown" asks for a real one.
+    date: isPast(session.started_at) ? "" : new Date(session.started_at * 1000).toLocaleDateString("en-CA"),
     past: isPast(session.started_at),
     title: session.title ?? "",
     text: notes.data.text,

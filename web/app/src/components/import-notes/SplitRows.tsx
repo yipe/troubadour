@@ -48,7 +48,9 @@ export function SplitRows({ rows, onChange }: SplitRowsProps) {
                 <Checkbox
                   aria-label={`${label} date unknown`}
                   checked={r.past}
-                  onCheckedChange={(past) => set(r.index, { past: past === true })}
+                  onCheckedChange={(past) =>
+                    set(r.index, { past: past === true, include: past === true || r.date !== "" })
+                  }
                 />
                 Unknown
               </label>
