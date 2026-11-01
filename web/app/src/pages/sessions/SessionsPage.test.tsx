@@ -352,3 +352,51 @@ it("puts a dragged session where it is dropped, and leaves dated sessions fixed"
   await waitFor(() => expect(api.writes()).toHaveLength(1))
   expect(bodyOf(api.writes()[0]!)).toEqual({ ids: ["u2", "u1"] })
 })
+
+it("adds one session per heading when the pasted notes split", async () => {
+  const api = mockFetch((c) =>
+    c.url === "/api/campaign/import/preview"
+      ? {
+          sessions: [
+            { n: 1, date: null, title: null, preview: "a" },
+            { n: 2, date: "2026-09-21", title: null, preview: "b" },
+          ],
+          more: 0,
+          background: "Cast",
+          background_chars: 4,
+        }
+      : c.url === "/api/campaign/import"
+        ? campaignJob({ id: "j9", state: "queued" })
+        : c.url === "/api/sessions/upgrades"
+          ? { sessions: [], current: {} }
+          : [],
+  )
+  renderWithProviders(
+    <Routes>
+      <Route path="/sessions" element={<SessionsPage />} />
+    </Routes>,
+    {
+      route: "/sessions",
+      queryData: [
+        [keys.sessions(), [s2]],
+        [keys.campaign(), campaign()],
+        [keys.record("s2"), sessionRecord({ id: "s2" })],
+      ],
+    },
+  )
+  await userEvent.click(screen.getByRole("button", { name: /Add session notes/ }))
+  fireEvent.change(await screen.findByRole("textbox", { name: "Notes" }), {
+    target: { value: "Cast\nSession I\na\nSession II\nb" },
+  })
+  expect(await screen.findByText(/Found 2 sessions/)).toBeInTheDocument()
+  expect(screen.queryByLabelText("Date")).not.toBeInTheDocument() // each session has its own date
+  await userEvent.click(screen.getByRole("button", { name: "Add 2 sessions" }))
+  await waitFor(() => expect(api.writes().some((c) => c.url === "/api/campaign/import")).toBe(true))
+  expect(bodyOf(api.writes().find((c) => c.url === "/api/campaign/import")!)).toMatchObject({
+    background: true,
+    sessions: [
+      { index: 0, date: null },
+      { index: 1, date: "2026-09-21" },
+    ],
+  })
+})

@@ -3,7 +3,6 @@ import { useCampaign } from "@troubadour/api/campaign"
 import { Button } from "@troubadour/ui/button"
 import { Card, CardBody } from "@troubadour/ui/card"
 import { PageHeading } from "@troubadour/ui/page-heading"
-import { ImportNotes } from "../../../../components/import-notes/ImportNotes.tsx"
 import { obsidianUrl } from "../../../../lib/entities.ts"
 import { IgnoredWords } from "./IgnoredWords.tsx"
 
@@ -41,10 +40,6 @@ export function Component() {
           </p>
         </CardBody>
       </Card>
-      <section aria-label="Import notes" className="flex flex-col gap-3">
-        <h2 className="font-serif text-20 font-bold">Import notes</h2>
-        <ImportNotes />
-      </section>
       <IgnoredWords />
     </div>
   )
