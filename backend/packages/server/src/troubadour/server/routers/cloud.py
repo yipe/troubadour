@@ -7,17 +7,18 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
-from troubadour.cloud import overview
+from troubadour.cloud import overview, vault_format
 from troubadour.cloud.backup import AutoBackup, CloudError
-from troubadour.lore import pages, timeline
+from troubadour.lore import pages, recap, timeline
 from troubadour.server import deps
 
 log = logging.getLogger("troubadour")
 router = APIRouter()
 
 
-def write_overview(root: Path) -> None:
-    """Rebuild `_Overview/` in the open campaign's vault just before a backup scans it (Cloud.before_scan)."""
+def write_overview(root: Path, include_transcripts: bool = False) -> None:
+    """Rebuild `_Overview/` in the open campaign's vault just before a backup scans it (Cloud.before_scan): the
+    summary pages, plus the Timeline and Recaps the cloud website shows (vault format v1)."""
     vault = deps.vault
     if root.resolve() != vault.root.resolve():
         return  # another campaign's vault: its sessions aren't the open ones
@@ -28,7 +29,12 @@ def write_overview(root: Path) -> None:
     titles = {s["id"]: s["title"] for s in sessions}
     ids_for = {s["page"]: s["id"] for s in sessions}
     rows_timeline = timeline.timeline(vault, deps.engine.sessions_dir(), rows, numbers, titles, ids_for)
-    overview.write(vault.root, overview.generate(vault, sessions, rows_timeline, numbers))
+    page_for = {s["id"]: s["page"] for s in sessions}
+    recaps = {sid: r for sid in page_for if (r := recap.read(deps.engine.sessions_dir(), sid)) is not None}
+    players = [p.to_json() for p in deps.engine.players.values()]
+    built = overview.generate(vault, sessions, rows_timeline, numbers)
+    built |= vault_format.generate(rows_timeline, players, page_for, recaps, include_transcripts)
+    overview.write(vault.root, built)
 
 
 deps.cloud.before_scan = write_overview

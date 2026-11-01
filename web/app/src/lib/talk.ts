@@ -1,5 +1,6 @@
 import type { Message, Voice } from "@troubadour/api/session"
 import type { Player } from "@troubadour/api/players"
+import { talkSegments as segmentsOf, type TalkSegment } from "@troubadour/views/talk-segments"
 import { playerColor, type ClassInfo, type ColoredPlayer } from "./players"
 
 export interface TalkTime {
@@ -84,35 +85,14 @@ export function talkDuration(seconds: number): string {
   return `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}m`
 }
 
-export interface TalkSegment {
-  value: number
-  color: string
-  label: string
-}
-
 type TalkPlayer = ColoredPlayer & { id: string; name: string }
 
-/**
- * The talk-time bar: one segment per player who spoke, in the players list's order, or biggest share first
- * with `order: "share"` (ties keep roster order). Keys that are not a player (unnamed voices,
- * `voice:<id>`, deleted players) are grouped as "Others", always last.
- */
+/** The talk-time bar's segments, coloured by class (custom classes included): see @troubadour/views. */
 export function talkSegments(
   talk: Record<string, number>,
   players: TalkPlayer[],
   classes: ClassInfo[] = [],
   order: "roster" | "share" = "roster",
 ): TalkSegment[] {
-  const ids = new Set(players.map((p) => p.id))
-  const segments: TalkSegment[] = []
-  for (const p of players) {
-    const value = talk[p.id] ?? 0
-    if (value > 0) segments.push({ value, color: playerColor(p, classes), label: p.name })
-  }
-  if (order === "share") segments.sort((a, b) => b.value - a.value)
-  const others = Object.entries(talk)
-    .filter(([key]) => !ids.has(key))
-    .reduce((sum, [, seconds]) => sum + Math.max(0, seconds), 0)
-  if (others > 0) segments.push({ value: others, color: "var(--color-fg-subtle)", label: "Others" })
-  return segments
+  return segmentsOf(talk, players, (p) => playerColor(p, classes), order)
 }

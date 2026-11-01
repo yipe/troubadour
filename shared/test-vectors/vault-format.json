@@ -1,0 +1,300 @@
+[
+  {
+    "name": "timeline: a recording and imported notes",
+    "kind": "timeline",
+    "input": {
+      "timeline": [
+        {
+          "id": "s2",
+          "kind": "recording",
+          "n": 2,
+          "date": "2026-10-08",
+          "title": "The Abbey",
+          "places": [
+            "Drowned Abbey"
+          ],
+          "talk": {
+            "p1": 1200.04,
+            "p2": 300.0,
+            "voice:v9": 12.5
+          },
+          "new_entities": [
+            {
+              "name": "Sister Merrow",
+              "type": "npc"
+            }
+          ],
+          "facts_accepted": 3
+        },
+        {
+          "id": "s1",
+          "kind": "notes",
+          "n": 1,
+          "date": "2026-10-01",
+          "title": null,
+          "places": [],
+          "talk": {},
+          "new_entities": [],
+          "facts_accepted": 0
+        }
+      ],
+      "players": [
+        {
+          "id": "p1",
+          "name": "Alex",
+          "character": "",
+          "is_gm": true,
+          "dnd_class": null,
+          "color": null
+        },
+        {
+          "id": "p2",
+          "name": "Sam",
+          "character": "Pip Tallowmere",
+          "is_gm": false,
+          "dnd_class": "bard",
+          "color": null
+        },
+        {
+          "id": "p3",
+          "name": "Jo",
+          "character": "Thessaly",
+          "is_gm": false,
+          "dnd_class": "druid",
+          "color": "#3a7"
+        }
+      ],
+      "pages": {
+        "s2": "2026-10-08 The Abbey"
+      }
+    },
+    "markdown": "---\ntroubadour: generated\ntype: timeline\ntroubadour_format: 1\nplayers:\n  - {\"id\": \"p1\", \"name\": \"Alex\", \"character\": \"\", \"gm\": true, \"class\": null, \"color\": null}\n  - {\"id\": \"p2\", \"name\": \"Sam\", \"character\": \"Pip Tallowmere\", \"gm\": false, \"class\": \"bard\", \"color\": null}\n  - {\"id\": \"p3\", \"name\": \"Jo\", \"character\": \"Thessaly\", \"gm\": false, \"class\": \"druid\", \"color\": \"#3a7\"}\nsessions:\n  - {\"id\": \"s2\", \"n\": 2, \"kind\": \"recording\", \"date\": \"2026-10-08\", \"title\": \"The Abbey\", \"page\": \"2026-10-08 The Abbey\", \"places\": [\"Drowned Abbey\"], \"talk\": {\"p1\": 1200.0, \"p2\": 300.0, \"voice:v9\": 12.5}, \"new_entities\": [{\"name\": \"Sister Merrow\", \"type\": \"npc\"}], \"facts_accepted\": 3}\n  - {\"id\": \"s1\", \"n\": 1, \"kind\": \"notes\", \"date\": \"2026-10-01\", \"title\": null, \"page\": null, \"places\": [], \"talk\": {}, \"new_entities\": [], \"facts_accepted\": 0}\n---\n# Timeline\n\n*This page is rebuilt on every backup. Changes made here are lost.*\n\n- **S2** 2026-10-08 [[2026-10-08 The Abbey|The Abbey]] · Drowned Abbey\n- **S1** 2026-10-01 Untitled session\n",
+    "front_matter": {
+      "troubadour": "generated",
+      "type": "timeline",
+      "troubadour_format": 1,
+      "players": [
+        {
+          "id": "p1",
+          "name": "Alex",
+          "character": "",
+          "gm": true,
+          "class": null,
+          "color": null
+        },
+        {
+          "id": "p2",
+          "name": "Sam",
+          "character": "Pip Tallowmere",
+          "gm": false,
+          "class": "bard",
+          "color": null
+        },
+        {
+          "id": "p3",
+          "name": "Jo",
+          "character": "Thessaly",
+          "gm": false,
+          "class": "druid",
+          "color": "#3a7"
+        }
+      ],
+      "sessions": [
+        {
+          "id": "s2",
+          "n": 2,
+          "kind": "recording",
+          "date": "2026-10-08",
+          "title": "The Abbey",
+          "page": "2026-10-08 The Abbey",
+          "places": [
+            "Drowned Abbey"
+          ],
+          "talk": {
+            "p1": 1200.0,
+            "p2": 300.0,
+            "voice:v9": 12.5
+          },
+          "new_entities": [
+            {
+              "name": "Sister Merrow",
+              "type": "npc"
+            }
+          ],
+          "facts_accepted": 3
+        },
+        {
+          "id": "s1",
+          "n": 1,
+          "kind": "notes",
+          "date": "2026-10-01",
+          "title": null,
+          "page": null,
+          "places": [],
+          "talk": {},
+          "new_entities": [],
+          "facts_accepted": 0
+        }
+      ]
+    }
+  },
+  {
+    "name": "timeline: no sessions yet",
+    "kind": "timeline",
+    "input": {
+      "timeline": [],
+      "players": [],
+      "pages": {}
+    },
+    "markdown": "---\ntroubadour: generated\ntype: timeline\ntroubadour_format: 1\nplayers: []\nsessions: []\n---\n# Timeline\n\n*This page is rebuilt on every backup. Changes made here are lost.*\n\n",
+    "front_matter": {
+      "troubadour": "generated",
+      "type": "timeline",
+      "troubadour_format": 1,
+      "players": [],
+      "sessions": []
+    }
+  },
+  {
+    "name": "recap: transcripts backed up (quote kept)",
+    "kind": "recap",
+    "input": {
+      "sid": "s2",
+      "page": "2026-10-08 The Abbey",
+      "recap": {
+        "title": "Into the abbey",
+        "body": "The party crossed the causeway.\n\nThey met \"Sister Merrow\".",
+        "quote": {
+          "text": "Nobody touch the candles.",
+          "speaker": "Alex",
+          "player_id": "p1",
+          "t": 61.5
+        },
+        "moments": [
+          {
+            "player_id": "p2",
+            "text": "Sang the bell to sleep."
+          },
+          {
+            "player_id": "gone",
+            "text": "x"
+          }
+        ],
+        "questions": [
+          "Who lit the candles?"
+        ],
+        "built_at": 1761955200.0
+      },
+      "players": [
+        {
+          "id": "p1",
+          "name": "Alex",
+          "character": "",
+          "is_gm": true,
+          "dnd_class": null,
+          "color": null
+        },
+        {
+          "id": "p2",
+          "name": "Sam",
+          "character": "Pip Tallowmere",
+          "is_gm": false,
+          "dnd_class": "bard",
+          "color": null
+        },
+        {
+          "id": "p3",
+          "name": "Jo",
+          "character": "Thessaly",
+          "is_gm": false,
+          "dnd_class": "druid",
+          "color": "#3a7"
+        }
+      ],
+      "include_quote": true
+    },
+    "markdown": "---\ntroubadour: generated\ntype: recap\ntroubadour_format: 1\nsession_id: \"s2\"\nsession: \"2026-10-08 The Abbey\"\ntitle: \"Into the abbey\"\nbuilt_at: 1761955200.0\nquote: {\"text\": \"Nobody touch the candles.\", \"speaker\": \"Alex\"}\n---\n# Into the abbey\n\n*Recap of [[2026-10-08 The Abbey]].*\n\nThe party crossed the causeway.\n\nThey met \"Sister Merrow\".\n\n> Nobody touch the candles.\n> — Alex\n\n## Moments\n- **Sam:** Sang the bell to sleep.\n\n## Questions\n- Who lit the candles?\n",
+    "front_matter": {
+      "troubadour": "generated",
+      "type": "recap",
+      "troubadour_format": 1,
+      "session_id": "s2",
+      "session": "2026-10-08 The Abbey",
+      "title": "Into the abbey",
+      "built_at": 1761955200.0,
+      "quote": {
+        "text": "Nobody touch the candles.",
+        "speaker": "Alex"
+      }
+    }
+  },
+  {
+    "name": "recap: transcripts not backed up (no quote)",
+    "kind": "recap",
+    "input": {
+      "sid": "s2",
+      "page": "2026-10-08 The Abbey",
+      "recap": {
+        "title": "Into the abbey",
+        "body": "The party crossed the causeway.\n\nThey met \"Sister Merrow\".",
+        "quote": {
+          "text": "Nobody touch the candles.",
+          "speaker": "Alex",
+          "player_id": "p1",
+          "t": 61.5
+        },
+        "moments": [
+          {
+            "player_id": "p2",
+            "text": "Sang the bell to sleep."
+          },
+          {
+            "player_id": "gone",
+            "text": "x"
+          }
+        ],
+        "questions": [
+          "Who lit the candles?"
+        ],
+        "built_at": 1761955200.0
+      },
+      "players": [
+        {
+          "id": "p1",
+          "name": "Alex",
+          "character": "",
+          "is_gm": true,
+          "dnd_class": null,
+          "color": null
+        },
+        {
+          "id": "p2",
+          "name": "Sam",
+          "character": "Pip Tallowmere",
+          "is_gm": false,
+          "dnd_class": "bard",
+          "color": null
+        },
+        {
+          "id": "p3",
+          "name": "Jo",
+          "character": "Thessaly",
+          "is_gm": false,
+          "dnd_class": "druid",
+          "color": "#3a7"
+        }
+      ],
+      "include_quote": false
+    },
+    "markdown": "---\ntroubadour: generated\ntype: recap\ntroubadour_format: 1\nsession_id: \"s2\"\nsession: \"2026-10-08 The Abbey\"\ntitle: \"Into the abbey\"\nbuilt_at: 1761955200.0\n---\n# Into the abbey\n\n*Recap of [[2026-10-08 The Abbey]].*\n\nThe party crossed the causeway.\n\nThey met \"Sister Merrow\".\n\n## Moments\n- **Sam:** Sang the bell to sleep.\n\n## Questions\n- Who lit the candles?\n",
+    "front_matter": {
+      "troubadour": "generated",
+      "type": "recap",
+      "troubadour_format": 1,
+      "session_id": "s2",
+      "session": "2026-10-08 The Abbey",
+      "title": "Into the abbey",
+      "built_at": 1761955200.0
+    }
+  }
+]

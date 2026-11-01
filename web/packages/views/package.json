@@ -1,0 +1,21 @@
+{
+  "name": "@troubadour/views",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.tsx",
+    "./travel": "./src/travel.ts",
+    "./talk-segments": "./src/talk-segments.ts"
+  },
+  "scripts": {
+    "test": "TZ=UTC vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@troubadour/ui": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8"
+  }
+}

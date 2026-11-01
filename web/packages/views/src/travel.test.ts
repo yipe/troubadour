@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { MAX_LANES, travelStops } from "./travel.ts"
+import { MAX_LANES, travelStops } from "./travel"
 
 const lanes = (places: string[][]) => travelStops(places).map((s) => s.lane)
 

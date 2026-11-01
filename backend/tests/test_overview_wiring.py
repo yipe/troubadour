@@ -14,6 +14,7 @@ def test_backups_rebuild_the_overview_of_the_open_campaign(dirs, engine, monkeyp
     deps.vault.create("Orsa Vell", "npc", description="Captain of the Gull.")
     cloud_router.write_overview(deps.vault.root)
     assert (deps.vault.root / "_Overview" / "Campaign overview.md").is_file()
+    assert "type: timeline" in (deps.vault.root / "_Overview" / "Timeline.md").read_text(encoding="utf-8")
 
     other = tmp_path / "other-vault"
     other.mkdir()

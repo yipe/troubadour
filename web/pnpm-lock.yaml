@@ -56,6 +56,9 @@ importers:
       '@troubadour/ui':
         specifier: workspace:*
         version: link:../packages/ui
+      '@troubadour/views':
+        specifier: workspace:*
+        version: link:../packages/views
       '@yipe/tokens':
         specifier: workspace:*
         version: link:../packages/tokens
@@ -157,6 +160,15 @@ importers:
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
+
+  packages/views:
+    dependencies:
+      '@troubadour/ui':
+        specifier: workspace:*
+        version: link:../ui
+      react:
+        specifier: ^19.2.8
+        version: 19.3.1
 
 packages:
 
