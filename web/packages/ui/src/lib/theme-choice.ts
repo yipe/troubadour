@@ -41,7 +41,16 @@ function systemIsLight(): boolean {
 
 export function applyTheme(choice: ThemeChoice): Theme {
   const theme = resolveTheme(choice, systemIsLight())
-  document.documentElement.dataset.theme = theme
+  const root = document.documentElement
+  if (root.dataset.theme === theme) return theme
+  // Without this, anything with `transition-colors` (buttons, tabs) fades into the new theme a beat
+  // after the rest of the page has switched. Turn transitions off, swap, flush styles, turn them back on.
+  const pause = document.createElement("style")
+  pause.textContent = "*,*::before,*::after{transition:none!important}"
+  document.head.appendChild(pause)
+  root.dataset.theme = theme
+  void getComputedStyle(root).color
+  setTimeout(() => pause.remove(), 1)
   return theme
 }
 

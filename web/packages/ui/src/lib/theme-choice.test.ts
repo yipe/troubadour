@@ -12,6 +12,7 @@ import {
 afterEach(() => {
   localStorage.clear()
   delete document.documentElement.dataset.theme
+  document.head.replaceChildren()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -78,6 +79,25 @@ describe("applyTheme and watchSystemTheme", () => {
     watchSystemTheme(() => "midnight")
     media.flip(true)
     expect(document.documentElement.dataset.theme).toBe("midnight")
+  })
+
+  it("switches with transitions paused, so nothing fades in late", () => {
+    vi.useFakeTimers()
+    stubMedia(false)
+    applyTheme("dark")
+    vi.runAllTimers()
+    applyTheme("light")
+    expect(document.head.querySelector("style")?.textContent).toContain("transition:none!important")
+    vi.runAllTimers()
+    expect(document.head.querySelector("style")).toBeNull()
+    vi.useRealTimers()
+  })
+
+  it("leaves transitions alone when the theme doesn't change", () => {
+    stubMedia(false)
+    document.documentElement.dataset.theme = "dark"
+    applyTheme("dark")
+    expect(document.head.querySelector("style")).toBeNull()
   })
 })
 
