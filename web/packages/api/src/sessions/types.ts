@@ -76,7 +76,7 @@ export interface SessionRecord {
   version: number
   session: Omit<
     SavedSession,
-    "audio" | "replayable" | "restorable" | "quality" | "n" | "summary" | "scenes" | LaterFields
+    "audio" | "replayable" | "restorable" | "quality" | "n" | "summary" | "scenes" | "ingested" | LaterFields
   > &
     Partial<Pick<SavedSession, LaterFields>> & {
       improved?: ImprovedInfo

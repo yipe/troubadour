@@ -12,7 +12,7 @@ from datetime import date
 
 MIN_HEADINGS = 2
 MAX_HEADING = 120  # a longer line is prose, not a heading
-YEAR_RANGE = (1970, 2100)
+YEAR_RANGE = (1971, 2100)  # before 1971 is where pages.is_past puts sessions with an unknown date
 
 _MONTHS = {
     name: i
@@ -41,7 +41,12 @@ _ISO = re.compile(r"(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)")
 _MDY = re.compile(_MONTH.format("m") + r"\s+(?P<d>\d{1,2})(?:st|nd|rd|th)?,?\s+(?P<y>\d{4})\b", re.I)
 _DMY = re.compile(r"\b(?P<d>\d{1,2})(?:st|nd|rd|th)?\s+" + _MONTH.format("m") + r",?\s+(?P<y>\d{4})\b", re.I)
 _MD = re.compile(r"\b" + _MONTH.format("m") + r"\s+(?P<d>\d{1,2})(?:st|nd|rd|th)?\b", re.I)  # no year: matched to strip it
-_SESSION = re.compile(r"^(?:session|sess\.?|s)\s*#?\s*(?P<n>\d{1,3})(?![\d\w])(?P<rest>.*)$", re.I)
+# "Session 3", "S3", and "Session III": capital Roman numerals only after the whole word, so a line like "SIX" is not one.
+_SESSION = re.compile(
+    r"^(?:(?:session|sess\.?)\s*#?\s*(?P<n>\d{1,3}|(?-i:[IVXLC]+))|s\s*#?\s*(?P<s>\d{1,3}))(?![\d\w])(?P<rest>.*)$", re.I
+)
+_ROMAN = re.compile(r"^(C?)(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$")
+_ROMAN_DIGITS = {"C": 100, "L": 50, "X": 10, "V": 5, "I": 1}
 _SEPARATORS = " \t-–—:.,;|()[]*_#"
 
 
@@ -76,6 +81,19 @@ def _take_date(text: str) -> tuple[str | None, str, bool]:
     return None, text, False
 
 
+def _number(digits: str) -> int | None:
+    """ "12" or a Roman numeral ("XII", up to CXCIX) as a number; None for anything else ("IIII", "VX")."""
+    if digits.isdigit():
+        return int(digits)
+    if not _ROMAN.match(digits):
+        return None
+    total = 0
+    for here, after in zip(digits, digits[1:] + " ", strict=True):
+        value = _ROMAN_DIGITS[here]
+        total += -value if _ROMAN_DIGITS.get(after, 0) > value else value
+    return total
+
+
 def _title(rest: str) -> str | None:
     rest = rest.strip(_SEPARATORS + " ")
     return re.sub(r"\s+", " ", rest) or None
@@ -87,13 +105,13 @@ def _heading(line: str) -> tuple[int | None, str | None, str | None] | None:
     body = (md.group(1) if md else line.strip()).strip(" *_#\t")
     if not body or len(body) > MAX_HEADING:
         return None
-    if m := _SESSION.match(body):
+    if (m := _SESSION.match(body)) and (n := _number(m["n"] or m["s"])) is not None:
         rest = m["rest"].lstrip()
         # "Session 12 was great." is a sentence; a heading goes on with a separator, a date, or nothing.
         if rest and rest[0] not in _SEPARATORS and _date_start(rest) != 0:
             return None
         when, rest, _ = _take_date(m["rest"])
-        return int(m["n"]), when, _title(rest)
+        return n, when, _title(rest)
     when, rest, _ = _take_date(body)
     # A heading of only a date has to start with one that includes the year ("Sept 14, 2026 - The Abbey").
     # In plain text it is the whole line: "Oct 2: met the queen" is a sentence in the notes, not a heading.
@@ -111,12 +129,26 @@ def _date_start(body: str) -> int | None:
     return None
 
 
+def _headings(lines: list[str]) -> list[tuple[int, tuple[int | None, str | None, str | None]]]:
+    """(line number, heading) of each session heading; [] when there are fewer than two (not "clearly" split)."""
+    found = [(i, h) for i, line in enumerate(lines) if (h := _heading(line)) is not None]
+    return found if len(found) >= MIN_HEADINGS else []
+
+
+def preamble(text: str) -> str:
+    """What comes before the first session heading (a cast list, a world summary), when `text` splits into
+    sessions; "" otherwise. It belongs to no session, so it is read as background notes."""
+    lines = text.splitlines()
+    found = _headings(lines)
+    return "\n".join(lines[: found[0][0]]).strip() if found else ""
+
+
 def split_sessions(text: str) -> list[NotesSession]:
     """The sessions in `text`, or [] when it has fewer than two session headings (then it is not "clearly"
-    split). Text before the first heading belongs to no session and is dropped."""
+    split). Text before the first heading belongs to no session: see `preamble`."""
     lines = text.splitlines()
-    found = [(i, h) for i, line in enumerate(lines) if (h := _heading(line)) is not None]
-    if len(found) < MIN_HEADINGS:
+    found = _headings(lines)
+    if not found:
         return []
     out = []
     for k, (i, (n, when, title)) in enumerate(found):

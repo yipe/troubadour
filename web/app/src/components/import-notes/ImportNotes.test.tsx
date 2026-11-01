@@ -54,6 +54,9 @@ describe("ImportNotes", () => {
         { n: 1, date: "2026-09-14", title: "The Road", preview: "We left." },
         { n: 2, date: null, title: null, preview: "Rested." },
       ],
+      more: 0,
+      background: null,
+      background_chars: 0,
     }
     const api = mockFetch((c) =>
       c.url === "/api/campaign/import/preview" ? found : campaignJob({ id: "j3", state: "queued" }),
@@ -61,8 +64,8 @@ describe("ImportNotes", () => {
     renderWithProviders(<ImportNotes />, { queryData: seeded() as never })
     await userEvent.type(screen.getByLabelText("Notes"), "Session 1\nWe left.\nSession 2\nRested.")
     expect(await screen.findByText(/Found 2 sessions/)).toBeInTheDocument()
-    // The row without a date starts unchecked until one is picked.
-    expect(screen.getByRole("checkbox", { name: "Add Session 2" })).toHaveAttribute("aria-disabled", "true")
+    // The row without a date starts unknown until one is picked.
+    expect(screen.getByRole("checkbox", { name: "Session 2 date unknown" })).toBeChecked()
     fireEvent.change(screen.getByLabelText("Session 2 date"), { target: { value: "2026-09-21" } })
     fireEvent.change(screen.getByLabelText("Session 1 title"), { target: { value: "The Long Road" } })
     await userEvent.click(screen.getByRole("button", { name: /^Import$/ }))
@@ -76,10 +79,93 @@ describe("ImportNotes", () => {
     })
   })
 
+  it("sends undated sessions with an unknown date, can mark them all unknown, and warns of sessions past the limit", async () => {
+    const api = mockFetch((c) =>
+      c.url === "/api/campaign/import/preview"
+        ? {
+            sessions: [
+              { n: 1, date: null, title: null, preview: "a" },
+              { n: 2, date: "2026-09-21", title: null, preview: "b" },
+            ],
+            more: 3,
+            background: null,
+            background_chars: 0,
+          }
+        : campaignJob({ id: "j5", state: "queued" }),
+    )
+    renderWithProviders(<ImportNotes />, { queryData: seeded() as never })
+    await userEvent.type(screen.getByLabelText("Notes"), "Session 1\na\nSession 2\nb")
+    expect(await screen.findByText(/3 more sessions were found/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: /^Import$/ }))
+    await waitFor(() => expect(api.writes().some((c) => c.url === "/api/campaign/import")).toBe(true))
+    expect(bodyOf(api.writes().find((c) => c.url === "/api/campaign/import")!)).toMatchObject({
+      sessions: [
+        { index: 0, date: null },
+        { index: 1, date: "2026-09-21" },
+      ],
+    })
+  })
+
+  it("Mark every date unknown moves the dated ones too", async () => {
+    const api = mockFetch((c) =>
+      c.url === "/api/campaign/import/preview"
+        ? {
+            sessions: [
+              { n: 1, date: "2026-09-14", title: null, preview: "a" },
+              { n: 2, date: "2026-09-21", title: null, preview: "b" },
+            ],
+            more: 0,
+            background: null,
+            background_chars: 0,
+          }
+        : campaignJob({ id: "j6", state: "queued" }),
+    )
+    renderWithProviders(<ImportNotes />, { queryData: seeded() as never })
+    await userEvent.type(screen.getByLabelText("Notes"), "Session 1\na\nSession 2\nb")
+    await userEvent.click(await screen.findByRole("button", { name: "Mark every date unknown" }))
+    await userEvent.click(screen.getByRole("button", { name: /^Import$/ }))
+    await waitFor(() => expect(api.writes().some((c) => c.url === "/api/campaign/import")).toBe(true))
+    expect(bodyOf(api.writes().find((c) => c.url === "/api/campaign/import")!)).toMatchObject({
+      sessions: [
+        { index: 0, date: null },
+        { index: 1, date: null },
+      ],
+    })
+  })
+
+  it("reads what comes before the first session as background notes, unless unticked", async () => {
+    const api = mockFetch((c) =>
+      c.url === "/api/campaign/import/preview"
+        ? {
+            sessions: [
+              { n: 1, date: null, title: null, preview: "a" },
+              { n: 2, date: null, title: null, preview: "b" },
+            ],
+            more: 0,
+            background: "Cast list",
+            background_chars: 1846,
+          }
+        : campaignJob({ id: "j8", state: "queued" }),
+    )
+    renderWithProviders(<ImportNotes />, { queryData: seeded() as never })
+    await userEvent.type(screen.getByLabelText("Notes"), "Cast\nSession I\na\nSession II\nb")
+    expect(await screen.findByText(/1,846 characters before the first session/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: /^Import$/ }))
+    await waitFor(() => expect(api.writes().some((c) => c.url === "/api/campaign/import")).toBe(true))
+    expect(bodyOf(api.writes().find((c) => c.url === "/api/campaign/import")!)).toMatchObject({
+      background: true,
+    })
+  })
+
   it("imports as plain notes when the Timeline option is off", async () => {
     const api = mockFetch((c) =>
       c.url === "/api/campaign/import/preview"
-        ? { sessions: [{ n: 1, date: "2026-09-14", title: null, preview: "x" }] }
+        ? {
+            sessions: [{ n: 1, date: "2026-09-14", title: null, preview: "x" }],
+            more: 0,
+            background: null,
+            background_chars: 0,
+          }
         : campaignJob({ id: "j4", state: "queued" }),
     )
     renderWithProviders(<ImportNotes />, { queryData: seeded() as never })
@@ -96,6 +182,9 @@ describe("ImportNotes", () => {
         { n: 1, date: "2026-09-14", title: "The Road", preview: "We left." },
         { n: 2, date: null, title: null, preview: "Rested." },
       ],
+      more: 0,
+      background: null,
+      background_chars: 0,
     }
     const api = mockFetch((c) =>
       c.url === "/api/campaign/import/preview" ? found : campaignJob({ id: "j3", state: "queued" }),
@@ -103,8 +192,8 @@ describe("ImportNotes", () => {
     renderWithProviders(<ImportNotes />, { queryData: seeded() as never })
     await userEvent.type(screen.getByLabelText("Notes"), "Session 1")
     expect(await screen.findByText(/Found 2 sessions/)).toBeInTheDocument()
-    // The row without a date starts unchecked until one is picked.
-    expect(screen.getByRole("checkbox", { name: "Add Session 2" })).toHaveAttribute("aria-disabled", "true")
+    // The row without a date starts unknown until one is picked.
+    expect(screen.getByRole("checkbox", { name: "Session 2 date unknown" })).toBeChecked()
     fireEvent.change(screen.getByLabelText("Session 2 date"), { target: { value: "2026-09-21" } })
     fireEvent.change(screen.getByLabelText("Session 1 title"), { target: { value: "The Long Road" } })
     await userEvent.click(screen.getByRole("button", { name: /^Import$/ }))
@@ -121,7 +210,12 @@ describe("ImportNotes", () => {
   it("imports as plain notes when the Timeline option is off", async () => {
     const api = mockFetch((c) =>
       c.url === "/api/campaign/import/preview"
-        ? { sessions: [{ n: 1, date: "2026-09-14", title: null, preview: "x" }] }
+        ? {
+            sessions: [{ n: 1, date: "2026-09-14", title: null, preview: "x" }],
+            more: 0,
+            background: null,
+            background_chars: 0,
+          }
         : campaignJob({ id: "j4", state: "queued" }),
     )
     renderWithProviders(<ImportNotes />, { queryData: seeded() as never })

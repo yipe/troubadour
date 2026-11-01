@@ -1,6 +1,17 @@
 import { useState } from "react"
-import { Ellipsis, GitMerge, Mic, NotebookPen, Plus, Trash2 } from "lucide-react"
+import {
+  ArrowDown,
+  ArrowUp,
+  Ellipsis,
+  GitMerge,
+  GripVertical,
+  Mic,
+  NotebookPen,
+  Plus,
+  Trash2,
+} from "lucide-react"
 import { Link } from "react-router"
+import { useCampaign } from "@troubadour/api/campaign"
 import type { SavedSession } from "@troubadour/api/sessions"
 import { Badge } from "@troubadour/ui/badge"
 import { Button } from "@troubadour/ui/button"
@@ -17,7 +28,10 @@ import { sessionStatus, type SessionStatus } from "../../lib/sessions.ts"
 import { paths } from "../../paths.ts"
 import { sessionTitle } from "./stats.ts"
 import { AddNotesDialog, MergeDialog } from "./tools/index.ts"
+import { notesStatus } from "./notesStatus.ts"
+import { NotesStatusBadge } from "./NotesStatusBadge.tsx"
 import { useRemoveSessions } from "./useRemoveSessions.ts"
+import { useUnknownOrder } from "./useUnknownOrder.ts"
 
 /** Sessions shorter than this are probably a mic test or a false start. */
 export const VERY_SHORT_S = 60
@@ -41,6 +55,8 @@ type Pending =
 
 export function SessionList({ sessions, selectedId, writtenUp, running }: SessionListProps) {
   const remove = useRemoveSessions()
+  const unknown = useUnknownOrder(sessions)
+  const campaign = useCampaign().data
   const [pending, setPending] = useState<Pending>(null)
   const [onlyShort, setOnlyShort] = useState(false)
   const [addingNotes, setAddingNotes] = useState(false)
@@ -97,7 +113,11 @@ export function SessionList({ sessions, selectedId, writtenUp, running }: Sessio
           const previous = isNotes || sessions[at + 1]?.kind === "notes" ? undefined : sessions[at + 1]
           const busy = s.id === liveId
           return (
-            <div key={s.id} className="group relative">
+            <div
+              key={s.id}
+              className={`group relative rounded-control ${unknown.over === s.id ? "ring-2 ring-accent" : ""}`}
+              {...unknown.dragProps(s.id)}
+            >
               <NavItem
                 selected={s.id === selectedId}
                 render={<Link to={paths.session(s.id)} />}
@@ -110,13 +130,20 @@ export function SessionList({ sessions, selectedId, writtenUp, running }: Sessio
                 }
                 sub={
                   <span className="flex items-center gap-2">
+                    {unknown.canShift(s.id, 1) || unknown.canShift(s.id, -1) ? (
+                      <GripVertical aria-hidden className="-ml-1 size-3.5 cursor-grab" />
+                    ) : null}
                     <span>{dateShort(s.started_at)}</span>
                     {!isNotes && s.duration_s < VERY_SHORT_S && !busy && (
                       <Badge tone="warning">Very short</Badge>
                     )}
-                    <Badge tone={isNotes ? "neutral" : status.tone} className="ml-auto">
-                      {isNotes ? "Notes" : status.label}
-                    </Badge>
+                    {isNotes ? (
+                      <NotesStatusBadge status={notesStatus(s, campaign?.jobs ?? [])} className="ml-auto" />
+                    ) : (
+                      <Badge tone={status.tone} className="ml-auto">
+                        {status.label}
+                      </Badge>
+                    )}
                   </span>
                 }
               >
@@ -136,6 +163,16 @@ export function SessionList({ sessions, selectedId, writtenUp, running }: Sessio
                     <Ellipsis className="size-4" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
+                    {unknown.canShift(s.id, 1) && (
+                      <DropdownMenuItem icon={<ArrowUp />} onClick={() => unknown.shift(s.id, 1)}>
+                        Move later
+                      </DropdownMenuItem>
+                    )}
+                    {unknown.canShift(s.id, -1) && (
+                      <DropdownMenuItem icon={<ArrowDown />} onClick={() => unknown.shift(s.id, -1)}>
+                        Move earlier
+                      </DropdownMenuItem>
+                    )}
                     {next && (
                       <DropdownMenuItem
                         icon={<GitMerge />}

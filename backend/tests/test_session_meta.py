@@ -1,6 +1,8 @@
 """Session start options, the summary fields of saved sessions, and the reviewed flag."""
 
 import json
+import time
+import types
 from pathlib import Path
 
 import pytest
@@ -343,3 +345,71 @@ def test_a_notes_session_lists_on_the_timeline_and_refuses_audio_jobs(engine, cl
     assert client.post("/api/sessions/merge", json={"ids": [note, rec]}).status_code == 409
     assert client.post(f"/api/campaign/writeup/{note}").status_code == 409
     assert client.delete(f"/api/sessions/{note}").status_code == 204
+
+
+def test_editing_a_notes_session_changes_its_date_and_title_and_reads_it_again(engine, client, tmp_path, monkeypatch):
+    monkeypatch.setattr(deps.vault, "_root", tmp_path)
+    monkeypatch.setattr(deps.memory, "sessions_dir", engine.sessions_dir)
+    monkeypatch.setattr(deps.memory, "llm", types.SimpleNamespace(json=lambda *a, **k: {}))
+    rec, note = "2026-01-02_120000-aaaa", "2026-01-01_120000-bbbb"
+    _write_saved(engine, rec, 2_000_000_000.0, messages=[])
+    _write_saved(
+        engine, note, 1_990_000_000.0, {"kind": "notes", "note": "Notes/2026-01-01 Bells.md", "campaign": engine.campaign}
+    )
+    (tmp_path / "Notes").mkdir()
+    (tmp_path / "Notes" / "2026-01-01 Bells.md").write_text(
+        f"---\ntype: notes\nsession: {note}\n---\n# 2026-01-01 Bells\n\nWe rang them.\n"
+    )
+    edit = {"date": "2026-03-04", "title": "Tolling", "text": "We rang them twice."}
+    assert client.put(f"/api/sessions/{rec}/notes", json=edit).status_code == 409  # a recording has no notes
+    assert client.put(f"/api/sessions/{note}/notes", json={**edit, "date": "2026-13-01"}).status_code == 422
+    res = client.put(f"/api/sessions/{note}/notes", json=edit)
+    assert res.status_code == 200
+    job = res.json()
+    assert job["sessions"] == [note]
+    deadline = time.monotonic() + 5
+    while deps.memory.jobs[job["id"]].state in ("queued", "running") and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert deps.memory.jobs[job["id"]].state == "done"
+    row = {r["id"]: r for r in client.get("/api/sessions").json()}[note]
+    assert (row["title"], row["ingested"], row["started_at"]) == ("Tolling", True, time.mktime((2026, 3, 4, 12, 0, 0, 0, 0, -1)))
+    assert client.get(f"/api/sessions/{note}/notes").json() == {"text": "We rang them twice."}
+    assert not (tmp_path / "Notes" / "2026-01-01 Bells.md").exists()
+    res = client.put(f"/api/sessions/{note}/notes", json={**edit, "date": None})  # no date: unknown
+    assert res.status_code == 200
+    deadline = time.monotonic() + 5
+    while deps.memory.jobs[res.json()["id"]].state in ("queued", "running") and time.monotonic() < deadline:
+        time.sleep(0.01)
+    rows = {r["id"]: r for r in client.get("/api/sessions").json()}
+    assert rows[note]["started_at"] < rows[rec]["started_at"]
+    assert rows[note]["n"] == 1
+    assert (
+        client.put(f"/api/sessions/{note}/notes", json={**edit, "date": "1970-06-01"}).status_code == 422
+    )  # real dates start in 1971
+
+
+def test_the_import_preview_lists_up_to_the_limit_and_counts_the_rest(client):
+    text = "\n".join(f"Session {n}\nWe did thing {n}." for n in range(1, 206))
+    got = client.post("/api/campaign/import/preview", json={"title": "", "text": text}).json()
+    assert (len(got["sessions"]), got["more"]) == (200, 5)
+    assert got["sessions"][0]["date"] is None  # undated headings: the client marks them unknown
+    assert (
+        client.post("/api/campaign/import/preview", json={"title": "", "text": "Session 1\nx\nSession 2\ny"}).json()["more"] == 0
+    )
+
+
+def test_the_order_of_unknown_dated_sessions_is_set_over_the_api(engine, client, tmp_path, monkeypatch):
+    monkeypatch.setattr(deps.vault, "_root", tmp_path)
+    monkeypatch.setattr(deps.memory, "sessions_dir", engine.sessions_dir)
+    a, b, dated = "1970-01-01_120000-aaaa", "1970-01-01_120000-bbbb", "2026-01-02_120000-cccc"
+    for sid, at in ((a, 172_802.0), (b, 172_803.0), (dated, 2_000_000_000.0)):
+        _write_saved(engine, sid, at, {"kind": "notes", "note": f"Notes/{sid}.md", "campaign": engine.campaign})
+    ids = lambda rows: [r["id"] for r in rows]  # noqa: E731
+    assert ids(client.get("/api/sessions").json()) == [dated, b, a]  # newest first
+    res = client.put("/api/sessions/order", json={"ids": [b, a]})
+    assert res.status_code == 200
+    assert ids(res.json()) == [dated, a, b]
+    assert {r["id"]: r["n"] for r in res.json()} == {b: 1, a: 2, dated: 3}
+    assert client.put("/api/sessions/order", json={"ids": [a]}).status_code == 409  # not all of them
+    assert client.put("/api/sessions/order", json={"ids": [a, b, dated]}).status_code == 409  # a dated one
+    assert client.put("/api/sessions/order", json={"ids": ["nope"]}).status_code == 422

@@ -258,16 +258,31 @@ export function useUnrejectMisheard() {
 /* ---- Background jobs: the response is the queued job, put into the campaign's job list ---- */
 
 export function useImportNotes() {
+  const client = useQueryClient()
   return useCampaignWrite(
-    (vars: { title: string; text: string; sessions?: ImportRow[] }) =>
-      importNotes(vars.title, vars.text, vars.sessions),
-    { apply: (job) => withNewJob(job) },
+    (vars: { title: string; text: string; sessions?: ImportRow[]; background?: boolean }) =>
+      importNotes(vars.title, vars.text, vars.sessions, vars.background),
+    {
+      apply: (job) => withNewJob(job),
+      // The new notes sessions are in the lists at once, while they wait to be read.
+      onSuccess: () =>
+        Promise.all([
+          client.invalidateQueries({ queryKey: keys.sessions() }),
+          client.invalidateQueries({ queryKey: keys.timeline() }),
+        ]),
+    },
   )
 }
 
 export function useAddNotesSession() {
+  const client = useQueryClient()
   return useCampaignWrite((session: NotesSessionInput) => addNotesSession(session), {
     apply: (job) => withNewJob(job),
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: keys.sessions() }),
+        client.invalidateQueries({ queryKey: keys.timeline() }),
+      ]),
   })
 }
 

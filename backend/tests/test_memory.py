@@ -2,6 +2,7 @@
 
 import json
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import pytest
 from conftest import RecordingBus
 from troubadour.core.transcript import build
 from troubadour.lore import memory as mem
-from troubadour.lore import writeup
+from troubadour.lore import pages, writeup
 from troubadour.lore.campaign import Vault
 from troubadour.lore.facts import Fact, render_bullets
 
@@ -170,6 +171,162 @@ def test_import_sessions_makes_notes_only_sessions_and_credits_their_facts(setup
     assert lines(vault.get("Zorbo").facts) == ["Zorbo waved. ([[2026-09-14 The Abbey]])"]  # credited to its own page
     wait(m.import_sessions("main", "Notes", rows))  # the same paste again adds nothing
     assert len(list(sessions.glob("*/meta.json"))) == 2
+
+
+def test_import_sessions_lists_each_session_while_it_waits_to_be_read(setup):
+    _, sessions, make = setup
+    gate = threading.Event()
+
+    class Gated(FakeLLM):
+        def json(self, *args, **kwargs):
+            gate.wait(5)
+            return super().json(*args, **kwargs)
+
+    m = make(Gated())
+    rows = [
+        {"n": 1, "date": "2026-09-14", "title": "The Abbey", "text": "Zorbo waved."},
+        {"n": 2, "date": "2026-09-21", "title": None, "text": "Quill waved."},
+    ]
+    job = m.import_sessions("main", "Notes", rows)
+    metas = {p.parent.name: json.loads(p.read_text()) for p in sessions.glob("*/meta.json")}  # before any note is read
+    assert len(metas) == 2
+    assert not any(x["ingested"] for x in metas.values())
+    assert job.sessions == sorted(metas)  # dates lead the ids, so this is the order of the rows
+    gate.set()
+    wait(job)
+    assert job.sessions == []
+    assert all(json.loads(p.read_text())["ingested"] for p in sessions.glob("*/meta.json"))
+
+
+def test_reingest_notes_moves_the_page_forgets_old_facts_and_reads_the_new_notes(setup):
+    vault, sessions, make = setup
+    note = lambda who, fact: {  # noqa: E731
+        "entities": [{"name": who, "type": "npc", "description": "", "facts": [fact]}],
+        "campaign_facts": [f"{fact} (campaign)"],
+    }
+    m = make(FakeLLM(notes=[note("Zorbo", "Zorbo waved."), note("Zorbo", "Zorbo bowed.")]))
+    wait(m.import_sessions("main", "Notes", [{"n": 1, "date": "2026-09-14", "title": "The Abbey", "text": "Zorbo waved."}]))
+    (sid,) = [p.name for p in sessions.iterdir()]
+    old_page = vault.root / "Notes" / "2026-09-14 The Abbey.md"
+    assert old_page.exists()
+
+    job = m.reingest_notes(sid, "2026-09-15", "The Cellar", "Zorbo bowed.")
+    meta = json.loads((sessions / sid / "meta.json").read_text())
+    assert (meta["title"], meta["ingested"], meta["id"]) == ("The Cellar", False, sid)  # listed as not read yet
+    assert meta["started_at"] == mem._noon("2026-09-15")
+    assert job.sessions == [sid]
+    wait(job)
+    assert json.loads((sessions / sid / "meta.json").read_text())["ingested"] is True
+    assert not old_page.exists()
+    assert (vault.root / ".trash" / old_page.name).exists()  # the old page is kept, not destroyed
+    assert "Zorbo bowed." in (vault.root / "Notes" / "2026-09-15 The Cellar.md").read_text()
+    assert {sid: Path(rel).stem for sid, rel in m.written_up().items()} == {sid: "2026-09-15 The Cellar"}
+    assert lines(vault.get("Zorbo").facts) == ["Zorbo bowed. ([[2026-09-15 The Cellar]])"]  # the old fact is gone
+    assert lines(vault.campaign_facts()) == ["Zorbo bowed. (campaign) ([[2026-09-15 The Cellar]])"]
+
+
+def test_import_sessions_reads_the_background_before_the_first_session_first(setup):
+    vault, sessions, make = setup
+    llm = FakeLLM()
+    m = make(llm)
+    rows = [{"n": 1, "date": None, "title": None, "text": "One."}]
+    job = m.import_sessions("main", "Culty", rows, background="Cast: Elara plays a cleric.")
+    assert job.sessions == [p.parent.name for p in sessions.glob("*/meta.json")]  # the background is no session
+    wait(job)
+    assert "Cast: Elara" in llm.calls[0]
+    assert "One." in llm.calls[1]
+    assert "Cast: Elara" in (vault.root / "Notes" / "Culty (background).md").read_text()
+    assert len(list(sessions.glob("*/meta.json"))) == 1
+    wait(m.import_sessions("main", "Culty", rows, background="Cast: Elara plays a cleric."))  # pasted again
+    assert [p.name for p in (vault.root / "Notes").glob("*background*")] == ["Culty (background).md"]
+
+
+def test_undated_sessions_go_in_the_past_before_every_dated_one_in_session_order(setup):
+    vault, sessions, make = setup
+    m = make(FakeLLM())
+    rows = [
+        {"n": 2, "date": None, "title": None, "text": "Two."},
+        {"n": None, "date": "2026-09-14", "title": "The Abbey", "text": "Dated."},
+        {"n": 1, "date": None, "title": "Origins", "text": "One."},
+    ]
+    wait(m.import_sessions("main", "Notes", rows))
+    metas = sorted((json.loads(p.read_text()) for p in sessions.glob("*/meta.json")), key=lambda x: x["started_at"])
+    assert [(x["title"], pages.is_past(x["started_at"])) for x in metas] == [
+        ("Origins", True),
+        (None, True),
+        ("The Abbey", False),
+    ]
+    assert metas[0]["id"].startswith("1970-01-01_120000-")
+    assert sorted(p.name for p in (vault.root / "Notes").glob("*.md")) == [
+        "2026-09-14 The Abbey.md",
+        "Unknown date - Origins.md",
+        "Unknown date - Session 2.md",
+    ]
+    assert "# Origins\n" in (vault.root / "Notes" / "Unknown date - Origins.md").read_text()  # no date in the heading
+    assert list(pages.session_numbers(metas).values()) == [1, 2, 3]
+    wait(m.import_sessions("main", "Notes", [{"n": None, "date": None, "title": "Later", "text": "Three."}]))
+    latest = max(json.loads(p.read_text())["started_at"] for p in sessions.glob("*/meta.json") if "1970" in p.parent.name)
+    assert latest > metas[1]["started_at"]  # a later paste of undated notes follows the earlier ones
+
+
+def test_unknown_dated_sessions_can_be_put_in_any_order_and_new_ones_follow(setup):
+    _, sessions, make = setup
+    m = make(FakeLLM())
+    rows = [{"n": n, "date": None, "title": f"T{n}", "text": f"Text {n}."} for n in (1, 2, 3)]
+    rows.append({"n": None, "date": "2026-09-14", "title": "Dated", "text": "Dated."})
+    wait(m.import_sessions("main", "Notes", rows))
+
+    def order():
+        metas = [json.loads(p.read_text()) for p in sessions.glob("*/meta.json")]
+        return [x["title"] for x in sorted(metas, key=lambda x: x["started_at"])]
+
+    assert order() == ["T1", "T2", "T3", "Dated"]
+    by_title = {json.loads(p.read_text())["title"]: p.parent.name for p in sessions.glob("*/meta.json")}
+    m.reorder_unknown("main", [by_title[t] for t in ("T3", "T1", "T2")])
+    assert order() == ["T3", "T1", "T2", "Dated"]
+    wait(m.import_sessions("main", "Notes", [{"n": None, "date": None, "title": "T4", "text": "Four."}]))
+    assert order() == ["T3", "T1", "T2", "T4", "Dated"]  # a new one goes last among the unknown
+    with pytest.raises(ValueError, match="changed"):  # the dated one isn't in the list, and one is missing
+        m.reorder_unknown("main", [by_title["T1"], by_title["T2"], by_title["Dated"]])
+    with pytest.raises(ValueError, match="changed"):
+        m.reorder_unknown("main", [by_title["T1"], by_title["T2"], by_title["T3"]])  # T4 is left out
+
+
+def test_reingest_notes_can_move_a_session_into_the_past_and_out_again(setup):
+    vault, sessions, make = setup
+    m = make(FakeLLM())
+    wait(m.import_sessions("main", "Notes", [{"n": 4, "date": "2026-09-14", "title": None, "text": "One."}]))
+    (sid,) = [p.name for p in sessions.iterdir()]
+    wait(m.reingest_notes(sid, None, None, "One."))
+    meta = json.loads((sessions / sid / "meta.json").read_text())
+    assert pages.is_past(meta["started_at"])
+    assert [p.name for p in (vault.root / "Notes").glob("*.md")] == ["Unknown date - Session 4.md"]
+    wait(m.reingest_notes(sid, None, "Origins", "One."))  # still in the past: keeps its place
+    assert json.loads((sessions / sid / "meta.json").read_text())["started_at"] == meta["started_at"]
+    wait(m.reingest_notes(sid, "2026-10-01", None, "One."))
+    assert not pages.is_past(json.loads((sessions / sid / "meta.json").read_text())["started_at"])
+    assert [p.name for p in (vault.root / "Notes").glob("*.md")] == ["2026-10-01 Notes.md"]
+
+
+def test_reingest_notes_keeps_the_page_name_when_only_the_text_changes(setup):
+    vault, sessions, make = setup
+    m = make(FakeLLM())
+    wait(m.import_sessions("main", "Notes", [{"n": 3, "date": "2026-09-14", "title": None, "text": "One."}]))
+    (sid,) = [p.name for p in sessions.iterdir()]
+    wait(m.reingest_notes(sid, "2026-09-14", None, "Two."))
+    assert [p.name for p in (vault.root / "Notes").glob("*.md")] == ["2026-09-14 Session 3.md"]
+    assert "Two." in (vault.root / "Notes" / "2026-09-14 Session 3.md").read_text()
+
+
+def test_reingest_notes_refuses_a_recording_and_empty_notes(setup):
+    _, sessions, make = setup
+    m = make(FakeLLM())
+    (sessions / "2026-01-01_120000-aaaa").mkdir(parents=True)
+    (sessions / "2026-01-01_120000-aaaa" / "meta.json").write_text(json.dumps({"kind": "recording", "started_at": 1}))
+    with pytest.raises(FileNotFoundError):
+        m.reingest_notes("2026-01-01_120000-aaaa", "2026-01-02", None, "text")
+    with pytest.raises(ValueError, match="empty"):
+        m.reingest_notes("2026-01-01_120000-aaaa", "2026-01-02", None, "  ")
 
 
 def test_import_refuses_empty_notes(setup):

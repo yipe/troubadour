@@ -23,7 +23,8 @@ const FACT_BAR_MAX = 56
 
 // "YYYY-MM-DD" in the campaign's local time; formatted without a timezone shift.
 const DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
-const shortDate = (iso: string) => DATE.format(new Date(`${iso}T12:00:00Z`))
+// Before 1971 is an unknown date: a session with no date (the server's `is_past`).
+const shortDate = (iso: string) => (iso < "1971" ? "Unknown" : DATE.format(new Date(`${iso}T12:00:00Z`)))
 
 /** The header row's cells. */
 export function TimelineHead() {

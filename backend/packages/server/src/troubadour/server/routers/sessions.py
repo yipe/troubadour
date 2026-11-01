@@ -12,6 +12,7 @@ from troubadour.engine import improve, pipeline, session_audio
 from troubadour.lore import pages
 from troubadour.server import deps
 from troubadour.server.models import CampaignJob
+from troubadour.server.routers.campaign import NotesSessionIn
 from troubadour.server.routers.session import FileDesc, MicDesc, ReplayDesc
 
 router = APIRouter()
@@ -57,6 +58,7 @@ class SavedSession(BaseModel):
     id: str
     kind: Literal["recording", "notes"]  # notes: imported notes standing in for a session (no audio, no transcript)
     n: int | None  # 1-based position among the campaign's sessions, oldest first (None: not listed)
+    ingested: bool  # notes: read into the codex; false while queued, or when the job that read them failed or was cut short
     started_at: float  # epoch seconds
     source: Annotated[MicDesc | FileDesc | ReplayDesc, Field(discriminator="kind")] | None
     duration_s: float
@@ -129,7 +131,9 @@ def _not_busy(*sids: str) -> None:
     """409 while a queued or running job works on one of these sessions: moving, merging or restoring
     its files under the job would lose either the job's result or the change."""
     for job in deps.memory.list_jobs():
-        if job["kind"] in SESSION_JOBS and job["title"] in sids and job["state"] in ("queued", "running"):
+        if job["state"] in ("queued", "running") and (
+            (job["kind"] in SESSION_JOBS and job["title"] in sids) or set(sids) & set(job["sessions"])
+        ):
             raise HTTPException(409, "A job is working on this session. Wait for it to finish.")
 
 
@@ -362,6 +366,38 @@ def session_notes(sid: Annotated[str, Path(pattern=SESSION_PATTERN)]):
         raise HTTPException(404, f"not found: {sid}") from None
     body = re.sub(r"\A---\n.*?\n---\n", "", body, count=1, flags=re.S)
     return {"text": re.sub(r"\A\s*# .*\n", "", body, count=1).strip()}
+
+
+class SessionOrderIn(BaseModel):
+    # Every notes session with an unknown date, oldest first.
+    ids: list[Annotated[str, Field(pattern=SESSION_PATTERN)]] = Field(max_length=2000)
+
+
+@router.put("/api/sessions/order", response_model=list[SavedSession])
+def order_unknown_sessions(body: SessionOrderIn):
+    """Set the order of the sessions whose dates are unknown (they come before every dated session). 409 when
+    the list isn't exactly those sessions: it changed since the client read it."""
+    with deps.campaign_gate:
+        try:
+            deps.memory.reorder_unknown(deps.engine.campaign, body.ids)
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from None
+    return _summaries(deps.engine.list_sessions())
+
+
+@router.put("/api/sessions/{sid}/notes", response_model=CampaignJob)
+def edit_session_notes(sid: Annotated[str, Path(pattern=SESSION_PATTERN)], body: NotesSessionIn):
+    """Replace a notes-only session's notes, date and title, and read the new notes into the codex again
+    (a background job). What the old notes taught it is forgotten first."""
+    with deps.campaign_gate:
+        deps._require_open_campaign(sid)
+        if deps._call(deps.engine.session_kind, sid) != "notes":
+            raise HTTPException(409, "That session is a recording: there are no notes to edit.")
+        _not_busy(sid)
+        try:
+            return deps._call(deps.memory.reingest_notes, sid, body.date, body.title.strip() or None, body.text).to_json()
+        except FileNotFoundError:
+            raise HTTPException(404, f"not found: {sid}") from None
 
 
 @router.get("/api/sessions/{sid}/quality", response_model=dict[str, Any])

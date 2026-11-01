@@ -6,6 +6,8 @@ export type SplitRow = {
   n: number | null
   include: boolean
   date: string
+  /** No date: its date is unknown and it goes before every dated session. */
+  past: boolean
   title: string
   preview: string
 }
@@ -15,7 +17,7 @@ export type SplitRowsProps = {
   onChange: (rows: SplitRow[]) => void
 }
 
-/** The sessions found in a paste: each can be left out, and its date and title corrected before importing. */
+/** The sessions found in a paste: each can be left out, and its date (or "unknown") and title corrected before importing. */
 export function SplitRows({ rows, onChange }: SplitRowsProps) {
   const set = (index: number, patch: Partial<SplitRow>) =>
     onChange(rows.map((r) => (r.index === index ? { ...r, ...patch } : r)))
@@ -29,7 +31,6 @@ export function SplitRows({ rows, onChange }: SplitRowsProps) {
               <Checkbox
                 aria-label={`Add ${label}`}
                 checked={r.include}
-                disabled={!r.date}
                 onCheckedChange={(include) => set(r.index, { include: include === true })}
               />
               <span className="w-20 text-13 font-semibold">{label}</span>
@@ -37,11 +38,20 @@ export function SplitRows({ rows, onChange }: SplitRowsProps) {
                 type="date"
                 aria-label={`${label} date`}
                 className="w-40"
-                min="1970-01-01"
+                min="1971-01-01"
                 max="2100-12-31"
-                value={r.date}
-                onChange={(e) => set(r.index, { date: e.target.value, include: e.target.value !== "" })}
+                disabled={r.past}
+                value={r.past ? "" : r.date}
+                onChange={(e) => set(r.index, { date: e.target.value, past: e.target.value === "" })}
               />
+              <label className="flex items-center gap-1.5 text-13 whitespace-nowrap">
+                <Checkbox
+                  aria-label={`${label} date unknown`}
+                  checked={r.past}
+                  onCheckedChange={(past) => set(r.index, { past: past === true })}
+                />
+                Unknown
+              </label>
               <Input
                 aria-label={`${label} title`}
                 className="min-w-40 flex-1"
@@ -51,9 +61,9 @@ export function SplitRows({ rows, onChange }: SplitRowsProps) {
                 onChange={(e) => set(r.index, { title: e.target.value })}
               />
             </div>
-            {!r.date && (
-              <p className="text-12 text-warning">
-                No date in the heading. Pick one to add it to the Timeline.
+            {r.past && !r.date && (
+              <p className="text-12 text-ink-subtle">
+                No date in the heading, so its date is unknown. Pick a date to place it.
               </p>
             )}
             <p className="truncate text-12 text-ink-subtle">{r.preview}</p>

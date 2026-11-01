@@ -315,4 +315,21 @@ describe("bridgeSocket", () => {
     emit({ type: "campaign.job", data: campaignJob({ id: "r", kind: "recap", title: "s12", state: "done" }) })
     expect(spy).toHaveBeenCalledWith({ queryKey: keys.recap("s12") })
   })
+
+  it("refetches the session lists as an import finishes reading each notes session", () => {
+    const { socket, emit } = fakeSocket()
+    bridgeSocket(socket, client)
+    client.setQueryData(keys.campaign(), campaign({ jobs: [] })) // the bridge compares a job with the cached one
+    const spy = vi.spyOn(client, "invalidateQueries")
+    const job = (state: "running" | "done", sessions: string[]) =>
+      campaignJob({ id: "i", kind: "import", state, sessions })
+    emit({ type: "campaign.job", data: job("running", ["a", "b"]) })
+    expect(spy).not.toHaveBeenCalled()
+    emit({ type: "campaign.job", data: job("running", ["b"]) }) // "a" is read
+    expect(spy).toHaveBeenCalledWith({ queryKey: keys.sessions() })
+    expect(spy).toHaveBeenCalledWith({ queryKey: keys.timeline() })
+    spy.mockClear()
+    emit({ type: "campaign.job", data: job("done", []) })
+    expect(spy).toHaveBeenCalledWith({ queryKey: keys.sessions() })
+  })
 })

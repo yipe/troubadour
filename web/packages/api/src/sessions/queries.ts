@@ -1,15 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import type { NotesSessionInput } from "../campaign/types.ts"
 import { putJob } from "../query/cache.ts"
 import { keys } from "../query/keys.ts"
 import {
   cancelRefresh,
   deleteSession,
+  editSessionNotes,
   estimateInCharacter,
   fixSpellings,
   improveSession,
   markReviewed,
   mergeSessions,
   refreshSession,
+  reorderUnknownSessions,
   sessionNotes,
   restoreSession,
   retranscribeSession,
@@ -32,6 +35,35 @@ export function useSessionNotes(id: string | undefined, enabled = true) {
     queryKey: ["notes", id ?? ""] as const,
     queryFn: () => sessionNotes(id!),
     enabled: !!id && enabled,
+  })
+}
+
+/** Put the sessions with unknown dates in a new order (`mutate(idsOldestFirst)`). A refused order refetches the list. */
+export function useReorderUnknownSessions() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (ids: string[]) => reorderUnknownSessions(ids),
+    onSuccess: (list) => {
+      client.setQueryData(keys.sessions(), list)
+      return client.invalidateQueries({ queryKey: keys.timeline() })
+    },
+    onError: () => client.invalidateQueries({ queryKey: keys.sessions() }),
+  })
+}
+
+/** Change a notes session's notes, date or title; the notes are read again as a job. */
+export function useEditSessionNotes(id: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (notes: NotesSessionInput) => editSessionNotes(id, notes),
+    onSuccess: (job) => {
+      putJob(client, job)
+      return Promise.all([
+        client.invalidateQueries({ queryKey: keys.sessions() }),
+        client.invalidateQueries({ queryKey: ["notes", id] }),
+        client.invalidateQueries({ queryKey: keys.timeline() }),
+      ])
+    },
   })
 }
 

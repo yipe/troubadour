@@ -34,14 +34,22 @@ export function durationShort(seconds: number): string {
   return hm(seconds)
 }
 
-/** "Oct 22" */
+/**
+ * Sessions with no date ("Unknown") sit in early 1970, before any real date (those start in 1971). The
+ * server follows the same rule (`lore.pages.is_past`).
+ */
+export const PAST_BEFORE_S = 350 * 86400
+
+export const isPast = (epochS: number): boolean => epochS < PAST_BEFORE_S
+
+/** "Oct 22", or "Unknown" for a session with no date. */
 export function dateShort(epochS: number): string {
-  return SHORT_DATE.format(new Date(epochS * 1000))
+  return isPast(epochS) ? "Unknown" : SHORT_DATE.format(new Date(epochS * 1000))
 }
 
-/** "Thursday, October 22" */
+/** "Thursday, October 22", or "Unknown". */
 export function dateLong(epochS: number): string {
-  return LONG_DATE.format(new Date(epochS * 1000))
+  return isPast(epochS) ? "Unknown" : LONG_DATE.format(new Date(epochS * 1000))
 }
 
 function clockParts(epochS: number): { time: string; period: string } {

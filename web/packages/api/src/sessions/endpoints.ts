@@ -1,10 +1,18 @@
-import type { CampaignJob } from "../campaign/types.ts"
+import type { CampaignJob, NotesSessionInput } from "../campaign/types.ts"
 import { req, segment } from "../http/index.ts"
 import { transcriptUrl } from "../session/endpoints.ts"
 import type { RecordingQuality, ReviewedResult, SavedSession, SessionRecord, Upgrades } from "./types.ts"
 
 /** What a notes-only session says (imported notes). */
 export const sessionNotes = (id: string) => req<{ text: string }>("GET", `/api/sessions/${segment(id)}/notes`)
+
+/** Replace a notes-only session's notes, date and title, and read the new notes into the codex again (a background job). */
+export const editSessionNotes = (id: string, notes: NotesSessionInput) =>
+  req<CampaignJob>("PUT", `/api/sessions/${segment(id)}/notes`, notes)
+
+/** Set the order of the sessions whose dates are unknown (oldest first, every one of them). Returns the new list. */
+export const reorderUnknownSessions = (ids: string[]) =>
+  req<SavedSession[]>("PUT", "/api/sessions/order", { ids })
 
 export const sessions = () => req<SavedSession[]>("GET", "/api/sessions")
 

@@ -24,5 +24,6 @@ class CampaignJob(BaseModel):
     note: str | None
     player_id: str | None
     steps: list[dict[str, Any]]
+    sessions: list[str] = []  # notes sessions the job has yet to read, in order; the first is in progress
     live: dict[str, Any] | None
     snippets: list[dict[str, Any]]

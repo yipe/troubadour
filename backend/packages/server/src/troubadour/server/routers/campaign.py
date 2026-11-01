@@ -119,7 +119,7 @@ class MergeIn(BaseModel):
     into: EntityName
 
 
-MAX_IMPORT_SESSIONS = 50
+MAX_IMPORT_SESSIONS = 200
 
 
 def _real_date(v: str) -> str:
@@ -128,7 +128,7 @@ def _real_date(v: str) -> str:
     except ValueError:
         ok = False
     if not ok:
-        raise ValueError("That isn't a date between 1970 and 2100.")
+        raise ValueError("That isn't a date between 1971 and 2100.")
     return v
 
 
@@ -139,12 +139,12 @@ class ImportRow(BaseModel):
     """One session of a split paste to add to the Timeline, with the date and title the user settled on."""
 
     index: int = Field(ge=0, le=MAX_IMPORT_SESSIONS * 20)  # its place in what /import/preview listed
-    date: DateText
+    date: DateText | None  # null: unknown, before every dated session
     title: str | None = Field(None, max_length=120)
 
 
 class NotesSessionIn(BaseModel):
-    date: DateText
+    date: DateText | None  # null: unknown, before every dated session
     title: str = Field("", max_length=120)
     text: str = Field(min_length=1, max_length=500_000)
 
@@ -154,6 +154,8 @@ class ImportIn(BaseModel):
     text: str = Field(min_length=1, max_length=2_000_000)
     # Rows of the split to add as notes-only sessions; null imports the paste as one set of notes.
     sessions: list[ImportRow] | None = Field(None, max_length=MAX_IMPORT_SESSIONS)
+    # With `sessions`: also read what comes before the first session heading (a cast list) as background notes.
+    background: bool = False
 
 
 class SplitSession(BaseModel):
@@ -165,6 +167,9 @@ class SplitSession(BaseModel):
 
 class SplitOut(BaseModel):
     sessions: list[SplitSession]  # empty: no clear session headings, so the paste imports as plain notes
+    more: int  # sessions found beyond the first MAX_IMPORT_SESSIONS, which one import can't take
+    background: str | None  # the start of what comes before the first session heading, if anything does
+    background_chars: int
 
 
 class SaidByOut(BaseModel):
@@ -484,8 +489,15 @@ def delete_campaign_fact(fact_id: str):
 @router.post("/api/campaign/import/preview", response_model=SplitOut)
 def preview_import(body: ImportIn):
     """The sessions a paste splits into by its headings (a pure function: no job, nothing is written)."""
-    found = notes_split.split_sessions(body.text)[:MAX_IMPORT_SESSIONS]
-    return {"sessions": [{"n": s.n, "date": s.date, "title": s.title, "preview": s.text[:200]} for s in found]}
+    found = notes_split.split_sessions(body.text)
+    shown = found[:MAX_IMPORT_SESSIONS]
+    background = notes_split.preamble(body.text)
+    return {
+        "background": background[:200] or None,
+        "background_chars": len(background),
+        "sessions": [{"n": s.n, "date": s.date, "title": s.title, "preview": s.text[:200]} for s in shown],
+        "more": len(found) - len(shown),
+    }
 
 
 @router.post("/api/sessions/notes", response_model=CampaignJob)
@@ -511,7 +523,8 @@ def import_notes(body: ImportIn):
         for r in body.sessions
     ]
     with deps.campaign_gate:
-        return deps._call(deps.memory.import_sessions, deps.engine.campaign, body.title, rows).to_json()
+        background = notes_split.preamble(body.text) if body.background else ""
+        return deps._call(deps.memory.import_sessions, deps.engine.campaign, body.title, rows, background).to_json()
 
 
 def _queue_write_up(sid: str):

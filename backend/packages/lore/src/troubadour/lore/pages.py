@@ -6,6 +6,17 @@ from pathlib import Path
 SUMMARY_MAX = 600
 WRAP_UP_MAX = 5000  # chars; a wrap-up is asked for at 350-550 words
 
+# Unknown date: notes sessions with no date, which always come before every dated one. They start a day or two
+# into 1970 (one second apart, in the order they were added); a real date is never before 1971-01-01
+# (notes_split.YEAR_RANGE), so anything earlier than PAST_BEFORE has an unknown date. The client's `isPast` follows the same rule.
+PAST_START = 2 * 86400.0
+PAST_BEFORE = 350 * 86400.0
+
+
+def is_past(started_at: float) -> bool:
+    return started_at < PAST_BEFORE
+
+
 _DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}\s+")
 _LINK = re.compile(r"\[\[([^\]|]*)(?:\|([^\]]*))?\]\]|\[([^\]]*)\]\([^)]*\)")
 

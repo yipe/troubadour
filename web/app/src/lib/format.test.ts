@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest"
 import hmsVectors from "../../../../shared/test-vectors/hms.json"
-import { ago, bytes, dateLong, dateShort, duration, durationShort, hm, hms, timeRange } from "./format"
+import {
+  ago,
+  bytes,
+  dateLong,
+  dateShort,
+  duration,
+  durationShort,
+  hm,
+  hms,
+  isPast,
+  timeRange,
+} from "./format"
 
 const at = (y: number, mo: number, d: number, h = 0, mi = 0) => Date.UTC(y, mo - 1, d, h, mi) / 1000
 
@@ -29,6 +40,13 @@ describe("dates", () => {
   it("dateShort and dateLong", () => {
     expect(dateShort(at(2026, 10, 22, 12))).toBe("Oct 22")
     expect(dateLong(at(2026, 10, 22, 12))).toBe("Thursday, October 22")
+  })
+
+  it("a session with no date has an unknown date, and the first real date is not", () => {
+    expect(dateShort(172_802)).toBe("Unknown")
+    expect(dateLong(172_802)).toBe("Unknown")
+    expect(isPast(at(1971, 1, 1, 12))).toBe(false)
+    expect(dateShort(at(1971, 1, 1, 12))).toBe("Jan 1")
   })
 
   it("timeRange shares the am/pm when both ends have it", () => {

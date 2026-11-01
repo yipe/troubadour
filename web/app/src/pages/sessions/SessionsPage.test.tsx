@@ -195,3 +195,160 @@ it("badges a notes session, offers no merge for it, and adds session notes from 
     text: "We went to the fair.",
   })
 })
+
+const bells = savedSession({ id: "n1", kind: "notes", n: 1, started_at: 1_759_000_000, title: "Bells" })
+const fair = savedSession({ id: "n2", kind: "notes", n: 2, started_at: 1_759_600_000, title: "The Fair" })
+const lost = savedSession({
+  id: "n3",
+  kind: "notes",
+  n: 3,
+  started_at: 1_759_700_000,
+  title: "Lost",
+  ingested: false,
+})
+
+it("lists a notes session that waits to be read, is being read, or was never read", () => {
+  const job = campaignJob({ id: "j1", kind: "import", state: "running", sessions: ["n1", "n2"] })
+  renderWithProviders(
+    <Routes>
+      <Route path="/sessions" element={<SessionsPage />} />
+    </Routes>,
+    {
+      route: "/sessions",
+      queryData: [
+        [keys.sessions(), [lost, fair, bells]],
+        [keys.campaign(), campaign({ jobs: [job] })],
+      ],
+    },
+  )
+  const list = within(screen.getByRole("navigation", { name: "Saved sessions" }))
+  const row = (name: string) => list.getByRole("link", { name: new RegExp(name) })
+  expect(within(row("Bells")).getByText("Reading notes")).toBeInTheDocument() // first on the job
+  expect(within(row("The Fair")).getByText("Queued")).toBeInTheDocument()
+  expect(within(row("Lost")).getByText("Not read")).toBeInTheDocument() // no job has it, and it isn't in the codex
+})
+
+it("edits a notes session's date, title and notes, and sends them to be read again", async () => {
+  const api = mockFetch((c) =>
+    c.method === "PUT"
+      ? campaignJob({ id: "j2", kind: "import", state: "queued", sessions: ["n1"] })
+      : c.url === "/api/sessions/upgrades"
+        ? { sessions: [], current: {} }
+        : [],
+  )
+  renderWithProviders(
+    <Routes>
+      <Route path="/sessions/:id" element={<SessionsPage />} />
+    </Routes>,
+    {
+      route: "/sessions/n1",
+      queryData: [
+        [keys.sessions(), [bells]],
+        [keys.campaign(), campaign()],
+        [["notes", "n1"], { text: "We rang them." }],
+      ],
+    },
+  )
+  await userEvent.click(await screen.findByRole("button", { name: "Edit these notes" }))
+  expect(screen.getByLabelText("Date")).toHaveValue("2025-09-27")
+  expect(screen.getByLabelText("Title")).toHaveValue("Bells")
+  expect(screen.getByRole("textbox", { name: "Notes" })).toHaveValue("We rang them.")
+  fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2025-09-28" } })
+  fireEvent.change(screen.getByRole("textbox", { name: "Notes" }), {
+    target: { value: "We rang them twice." },
+  })
+  await userEvent.click(screen.getByRole("button", { name: "Save and read again" }))
+  await waitFor(() => expect(api.writes()).toHaveLength(1))
+  expect(api.writes()[0]).toMatchObject({ method: "PUT", url: "/api/sessions/n1/notes" })
+  expect(bodyOf(api.writes()[0]!)).toEqual({
+    date: "2025-09-28",
+    title: "Bells",
+    text: "We rang them twice.",
+  })
+})
+
+it("lists a session with an unknown date as Unknown, and adds one with no date", async () => {
+  const origins = savedSession({ id: "p1", kind: "notes", n: 1, started_at: 172_802, title: "Origins" })
+  const api = mockFetch((c) =>
+    c.url === "/api/sessions/notes"
+      ? campaignJob({ id: "j7", state: "queued" })
+      : c.url === "/api/sessions/upgrades"
+        ? { sessions: [], current: {} }
+        : [],
+  )
+  renderWithProviders(
+    <Routes>
+      <Route path="/sessions" element={<SessionsPage />} />
+    </Routes>,
+    {
+      route: "/sessions",
+      queryData: [
+        [keys.sessions(), [s2, origins]],
+        [keys.campaign(), campaign({ written_up: written })],
+        [keys.record("s2"), sessionRecord({ id: "s2" })],
+      ],
+    },
+  )
+  const list = within(screen.getByRole("navigation", { name: "Saved sessions" }))
+  expect(within(list.getByRole("link", { name: /Origins/ })).getByText("Unknown")).toBeInTheDocument()
+  await userEvent.click(screen.getByRole("button", { name: /Add session notes/ }))
+  await userEvent.click(await screen.findByRole("checkbox", { name: "Date unknown" }))
+  expect(screen.getByLabelText("Date")).toBeDisabled()
+  fireEvent.change(screen.getByLabelText("Notes"), { target: { value: "Long ago." } })
+  await userEvent.click(screen.getByRole("button", { name: "Add session" }))
+  await waitFor(() => expect(api.writes()).toHaveLength(1))
+  expect(bodyOf(api.writes()[0]!)).toMatchObject({ date: null, text: "Long ago." })
+})
+
+const unknownRows = () => {
+  const dated = savedSession({ id: "d1", kind: "notes", n: 3, started_at: 1_759_000_000, title: "Dated" })
+  const u2 = savedSession({ id: "u2", kind: "notes", n: 2, started_at: 172_803, title: "Second" })
+  const u1 = savedSession({ id: "u1", kind: "notes", n: 1, started_at: 172_802, title: "First" })
+  return [dated, u2, u1] // newest first
+}
+
+function reorderable() {
+  const api = mockFetch((c) =>
+    c.url === "/api/sessions/order"
+      ? [...unknownRows().slice(0, 1), ...unknownRows().slice(1).reverse()]
+      : c.url === "/api/sessions/upgrades"
+        ? { sessions: [], current: {} }
+        : [],
+  )
+  renderWithProviders(
+    <Routes>
+      <Route path="/sessions" element={<SessionsPage />} />
+    </Routes>,
+    {
+      route: "/sessions",
+      queryData: [
+        [keys.sessions(), unknownRows()],
+        [keys.campaign(), campaign()],
+      ],
+    },
+  )
+  return api
+}
+
+it("moves a session with an unknown date one place from its menu", async () => {
+  const api = reorderable()
+  await userEvent.click(screen.getByRole("button", { name: "More for First" }))
+  expect(screen.queryByRole("menuitem", { name: "Move earlier" })).not.toBeInTheDocument() // it is the first
+  await userEvent.click(await screen.findByRole("menuitem", { name: "Move later" }))
+  await waitFor(() => expect(api.writes()).toHaveLength(1))
+  expect(api.writes()[0]).toMatchObject({ method: "PUT", url: "/api/sessions/order" })
+  expect(bodyOf(api.writes()[0]!)).toEqual({ ids: ["u2", "u1"] })
+})
+
+it("puts a dragged session where it is dropped, and leaves dated sessions fixed", async () => {
+  const api = reorderable()
+  const nav = within(screen.getByRole("navigation", { name: "Saved sessions" }))
+  const row = (name: RegExp) => nav.getByRole("link", { name }).closest<HTMLElement>("[draggable]")
+  expect(row(/Dated/)).toBeNull()
+  const data = { setData: () => undefined, effectAllowed: "" }
+  fireEvent.dragStart(row(/First/)!, { dataTransfer: data })
+  fireEvent.dragOver(row(/Second/)!, { dataTransfer: data })
+  fireEvent.drop(row(/Second/)!, { dataTransfer: data })
+  await waitFor(() => expect(api.writes()).toHaveLength(1))
+  expect(bodyOf(api.writes()[0]!)).toEqual({ ids: ["u2", "u1"] })
+})

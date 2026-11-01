@@ -152,5 +152,29 @@
         "text": "b"
       }
     ]
+  },
+  {
+    "name": "roman numerals, as in 'Session XII', and no false heading from SIX or a sentence",
+    "text": "Cast\nSIX\nSession I:\nOne.\nSession II (The Road)\nTwo.\nSession I think we won.\nSession XII\nTwelve.",
+    "expected": [
+      {
+        "n": 1,
+        "date": null,
+        "title": null,
+        "text": "One."
+      },
+      {
+        "n": 2,
+        "date": null,
+        "title": "The Road",
+        "text": "Two.\nSession I think we won."
+      },
+      {
+        "n": 12,
+        "date": null,
+        "title": null,
+        "text": "Twelve."
+      }
+    ]
   }
 ]

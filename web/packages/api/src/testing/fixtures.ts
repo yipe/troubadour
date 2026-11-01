@@ -81,6 +81,7 @@ export function session(s: Partial<Session> = {}): Session {
 export function savedSession(s: Partial<SavedSession> & { id: string }): SavedSession {
   return {
     kind: "recording",
+    ingested: true,
     started_at: 1_760_000_000,
     source: null,
     duration_s: 0,

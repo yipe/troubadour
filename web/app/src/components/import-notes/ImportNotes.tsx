@@ -27,6 +27,10 @@ export function ImportNotes({ onDone }: ImportNotesProps) {
   const importNotes = useImportNotes()
   const preview = usePreviewImport()
   const [rows, setRows] = useState<SplitRow[]>([])
+  const [more, setMore] = useState(0) // sessions found beyond what one import takes
+  // What comes before the first session heading (a cast list): read as background notes unless unticked.
+  const [background, setBackground] = useState<{ chars: number; preview: string } | null>(null)
+  const [readBackground, setReadBackground] = useState(true)
   const [onTimeline, setOnTimeline] = useState(true)
   const queued = importNotes.data
   const job =
@@ -37,6 +41,8 @@ export function ImportNotes({ onDone }: ImportNotesProps) {
   useEffect(() => {
     if (!text.trim()) {
       setRows([])
+      setMore(0)
+      setBackground(null)
       return
     }
     const timer = setTimeout(
@@ -44,17 +50,23 @@ export function ImportNotes({ onDone }: ImportNotesProps) {
         findSessions(
           { title: "", text },
           {
-            onSuccess: (found) =>
+            onSuccess: (found) => {
+              setMore(found.more)
+              setBackground(
+                found.background ? { chars: found.background_chars, preview: found.background } : null,
+              )
               setRows(
-                (found.sessions ?? []).map((s, index) => ({
+                found.sessions.map((s, index) => ({
                   index,
                   n: s.n,
-                  include: s.date !== null,
+                  include: true,
                   date: s.date ?? "",
+                  past: s.date === null, // no date in the heading: before every dated session
                   title: s.title ?? "",
                   preview: s.preview,
                 })),
-              ),
+              )
+            },
           },
         ),
       400,
@@ -71,14 +83,21 @@ export function ImportNotes({ onDone }: ImportNotesProps) {
     dismiss()
   }
 
-  const chosen = onTimeline ? rows.filter((r) => r.include && r.date) : []
+  const chosen = onTimeline ? rows.filter((r) => r.include && (r.past || r.date)) : []
   const submit = () =>
     importNotes.mutate(
       {
         title: title.trim() || DEFAULT_TITLE,
         text,
         ...(rows.length > 0 && chosen.length > 0
-          ? { sessions: chosen.map((r) => ({ index: r.index, date: r.date, title: r.title.trim() || null })) }
+          ? {
+              ...(background && readBackground ? { background: true } : {}),
+              sessions: chosen.map((r) => ({
+                index: r.index,
+                date: r.past ? null : r.date,
+                title: r.title.trim() || null,
+              })),
+            }
           : {}),
       },
       { onSuccess: (j) => setJobId(j.id) },
@@ -165,6 +184,36 @@ export function ImportNotes({ onDone }: ImportNotesProps) {
             />
             Add them to the Timeline
           </label>
+          {more > 0 && (
+            <p className="text-13 text-warning">
+              {more} more {more === 1 ? "session was" : "sessions were"} found than one import can add. Only
+              the first {rows.length} are listed; paste the rest in another import.
+            </p>
+          )}
+          {onTimeline && background && (
+            <label className="flex items-start gap-2 text-13">
+              <Checkbox
+                checked={readBackground}
+                onCheckedChange={(v) => setReadBackground(v === true)}
+                aria-label="Read what comes before the first session"
+              />
+              <span>
+                Also read the {background.chars.toLocaleString("en-US")} characters before the first session
+                as background notes
+                <span className="block truncate text-12 text-ink-subtle">{background.preview}</span>
+              </span>
+            </label>
+          )}
+          {onTimeline && rows.length > 1 && (
+            <Button
+              type="button"
+              variant="link"
+              className="self-start text-13"
+              onClick={() => setRows(rows.map((r) => ({ ...r, past: true })))}
+            >
+              Mark every date unknown
+            </Button>
+          )}
           {onTimeline && <SplitRows rows={rows} onChange={setRows} />}
         </div>
       )}

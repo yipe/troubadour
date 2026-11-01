@@ -31,7 +31,7 @@ import httpx
 from troubadour.core import config, providers, transcript
 
 from . import dnd_terms, pages, writeup
-from .campaign import TYPES, Entity, Vault, add_unique, everyday, norm, safe_name, trash_copy, write_atomic
+from .campaign import TYPES, Entity, Vault, add_unique, everyday, norm, safe_name, trash_copy, trash_move, write_atomic
 from .facts import Fact, Source
 
 log = logging.getLogger("troubadour")
@@ -511,6 +511,15 @@ def glossary_brief(vault: Vault, limit: int = 300) -> str:
     return "\n".join(rows) or "(empty)"
 
 
+PAST_DAY = "1970-01-01"  # the date part of the id of a session with an unknown date: it sorts before every real one
+PAST_PREFIX = "Unknown date - "  # what such a session's notes page is called, in place of a date
+
+
+def _noon(day: str) -> float:
+    """Epoch seconds of noon local time on `day` (YYYY-MM-DD): where a notes-only session sits on the Timeline."""
+    return time.mktime(time.strptime(f"{day} 12:00:00", "%Y-%m-%d %H:%M:%S"))
+
+
 # ------------------------------------------------------------------ jobs
 
 
@@ -531,6 +540,8 @@ class Job:
     player_id: str | None = None  # voice-clone jobs: whose voice
     # A job with stages: [{"label", "state": "pending" | "running" | "done"}] (plan(), step()).
     steps: list[dict] = field(default_factory=list)
+    # Notes sessions this job still has to read, in the order it reads them (the first is the one in progress).
+    sessions: list[str] = field(default_factory=list)
     # The model call in flight (model_progress): {"phase": "reading" | "thinking" | "writing", "tokens" (estimated),
     # "tok_s", "started" (epoch seconds)}; None between calls.
     live: dict | None = None
@@ -597,6 +608,7 @@ class Memory:
         self.jobs: dict[str, Job] = {}
         self._q: queue.Queue = queue.Queue()
         self._lock = threading.Lock()
+        self._meta_lock = threading.Lock()  # one writer at a time of a notes session's meta.json
         threading.Thread(target=self._run, name="memory", daemon=True).start()
 
     # ---------------------------------------------------------------- job plumbing
@@ -611,9 +623,17 @@ class Memory:
             log.exception("couldn't write Glossary.md")
         self.bus.emit("campaign.updated", {})
 
-    def submit(self, kind: str, title: str, work, player_id: str | None = None, note: str | None = None) -> Job:
+    def submit(
+        self,
+        kind: str,
+        title: str,
+        work,
+        player_id: str | None = None,
+        note: str | None = None,
+        sessions: list[str] | None = None,
+    ) -> Job:
         """Queue work(job) on the job thread (one job at a time); progress goes out as campaign.job."""
-        job = Job(id=uuid.uuid4().hex[:8], kind=kind, title=title, player_id=player_id, note=note)
+        job = Job(id=uuid.uuid4().hex[:8], kind=kind, title=title, player_id=player_id, note=note, sessions=sessions or [])
         job.on_change = lambda: self.emit(job)
         with self._lock:
             self.jobs[job.id] = job
@@ -675,16 +695,141 @@ class Memory:
             raise ValueError("Paste some notes first.")
         return self.submit("import", title, lambda job: self._import(job, title, text))
 
-    def import_sessions(self, campaign: str, title: str, rows: list[dict]) -> Job:
-        """Notes pasted with session headings: each row (`date` YYYY-MM-DD, `title`, `text`, `n`) becomes a
-        notes-only session on the Timeline, then the same notes pass reads it, crediting its facts to its own
-        page. A row whose text is already a notes session of this campaign is skipped, so pasting twice adds
-        nothing. ValueError when no row has text."""
+    def import_sessions(self, campaign: str, title: str, rows: list[dict], background: str = "") -> Job:
+        """Notes pasted with session headings: each row (`date` YYYY-MM-DD or None for an unknown date, `title`,
+        `text`, `n`) becomes a notes-only session on the Timeline at once (so the list shows it while it
+        waits), then the job reads each one's notes into the codex, crediting its facts to its own page.
+        Undated rows go before every dated session, in the order of their `n` when all have one, else as
+        given. A row whose text is already a notes session of this campaign is skipped, so pasting twice
+        adds nothing. `background`: what came before the first session heading (a cast list); it is kept as a
+        plain note and read first, unless every session was already imported. ValueError when no row has text."""
         rows = [r for r in rows if r["text"].strip()]
+        past = [r for r in rows if r["date"] is None]
+        if past and all(r.get("n") for r in past):
+            by_n = iter(sorted(past, key=lambda r: r["n"]))
+            rows = [next(by_n) if r["date"] is None else r for r in rows]
         if not rows:
             raise ValueError("Those sessions have no notes in them.")
         title = safe_name(title or time.strftime("Notes %Y-%m-%d"))
-        return self.submit("import", title, lambda job: self._import_sessions(job, campaign, rows))
+        have = self._notes_fingerprints(campaign)
+        stamp = time.strftime("%Y-%m-%d")
+        latest_past = self._latest_past() if past else 0.0
+        made: list[tuple[str | None, str, str]] = []  # (session id, page name, text); no id: background notes
+        for row in rows:
+            text = row["text"].strip()
+            fingerprint = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            if fingerprint in have:
+                continue
+            have.add(fingerprint)
+            label = row.get("title") or (f"Session {row['n']}" if row.get("n") else "Notes")
+            day = row["date"]
+            folder = self._new_notes_folder(day or PAST_DAY)
+            path = self._write_notes_page(folder.name, day, label, text, stamp)
+            if day is None:
+                latest_past += 1
+            meta = {
+                "id": folder.name,
+                "kind": "notes",
+                "campaign": campaign,
+                "started_at": _noon(day) if day else latest_past,
+                "title": row.get("title") or None,
+                "note": path.relative_to(self.vault.root).as_posix(),
+                "duration": 0,
+                "duration_s": 0,
+                "lines": 0,
+                "pipeline": {},
+                "fingerprint": fingerprint,
+                "ingested": False,  # until a job has read the notes into the codex
+            }
+            write_atomic(folder / "meta.json", json.dumps(meta, ensure_ascii=False))
+            made.append((folder.name, path.stem, text))
+        background = background.strip() if made else ""
+        if background:
+            page = self.vault.write_note(
+                "Notes",
+                f"{title} (background)",
+                f"---\ntype: notes\nimported: {stamp}\ntags: [troubadour/notes]\n---\n# {title} (background)\n\n{background}\n",
+            )
+            made.insert(0, (None, page.stem, background))
+        self.bus.emit("campaign.updated", {})
+        return self.submit(
+            "import",
+            title,
+            lambda job: self._read_sessions(job, made, len(rows) - len(made) + (1 if background else 0)),
+            sessions=[sid for sid, _, _ in made if sid],
+        )
+
+    def _latest_past(self) -> float:
+        """started_at of the latest session with an unknown date (just before the first when there is none): the next one follows it."""
+        latest = pages.PAST_START - 1
+        for path in self.sessions_dir().glob("*/meta.json"):
+            try:
+                at = float(json.loads(path.read_text(encoding="utf-8")).get("started_at") or 0)
+            except (OSError, ValueError, TypeError, AttributeError):
+                continue
+            if pages.is_past(at):
+                latest = max(latest, at)
+        return latest
+
+    def _write_notes_page(
+        self, sid: str, day: str | None, label: str, text: str, stamp: str, overwrite: Path | None = None
+    ) -> Path:
+        """Notes/<day> <label>.md (unknown date: "Unknown date - <label>.md"): the notes verbatim, with the session they
+        stand in for. `overwrite`: the session's existing page, replaced in place when the new page has the same name."""
+        name = safe_name(f"{day} {label}" if day else f"{PAST_PREFIX}{label}")
+        heading = f"{day} {label}" if day else label
+        body = f"---\ntype: notes\nimported: {stamp}\nsession: {sid}\ntags: [troubadour/notes]\n---\n# {heading}\n\n{text}\n"
+        return self.vault.write_note("Notes", name, body, overwrite=overwrite is not None and overwrite.stem == name)
+
+    def reingest_notes(self, sid: str, day: str | None, title: str | None, text: str) -> Job:
+        """Replace a notes session's notes, date (None: unknown) and title, then read the new notes into the
+        codex. What the old notes taught it (facts credited to their page) is forgotten first; entries stay.
+        FileNotFoundError: no such notes session. ValueError: empty notes."""
+        text = text.strip()
+        if not text:
+            raise ValueError("Those notes are empty.")
+        meta_path = self.sessions_dir() / sid / "meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if meta.get("kind") != "notes":
+            raise FileNotFoundError(sid)
+        old = self.vault.root / str(meta["note"])
+        was_past = pages.is_past(meta["started_at"])
+        old_prefix = PAST_PREFIX if was_past else time.strftime("%Y-%m-%d ", time.localtime(meta["started_at"]))
+        # Without a title the page keeps its "Session 3" / "Notes" name, whatever date it moves to.
+        kept = old.stem.removeprefix(old_prefix) if old.stem.startswith(old_prefix) and not meta.get("title") else "Notes"
+        label = (title or "").strip() or kept
+        self._forget_page(old.stem)
+        path = self._write_notes_page(sid, day, label, text, time.strftime("%Y-%m-%d"), overwrite=old)
+        if path != old and old.exists():
+            trash_move(self.vault.root, old)
+        with self._meta_lock:  # not `meta` from above: a reorder may have moved the session since
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            meta.update(
+                {
+                    "started_at": _noon(day) if day else meta["started_at"] if was_past else self._latest_past() + 1,
+                    "title": (title or "").strip() or None,
+                    "note": path.relative_to(self.vault.root).as_posix(),
+                    "fingerprint": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                    "ingested": False,
+                }
+            )
+            write_atomic(meta_path, json.dumps(meta, ensure_ascii=False))
+        self.bus.emit("campaign.updated", {})
+        return self.submit("import", path.stem, lambda job: self._read_sessions(job, [(sid, path.stem, text)], 0), sessions=[sid])
+
+    def _forget_page(self, page: str) -> None:
+        """Drop every fact (entry facts, suggestions, campaign facts) whose source is the vault page `page`."""
+
+        def theirs(f: Fact) -> bool:
+            return f.source is not None and f.source.session_page == page
+
+        for e in self.vault.entities():
+            facts, suggested = [f for f in e.facts if not theirs(f)], [f for f in e.suggested_facts if not theirs(f)]
+            if not e.read_only and (len(facts), len(suggested)) != (len(e.facts), len(e.suggested_facts)):
+                self.vault.update(e.name, facts=facts, suggested_facts=suggested)
+        campaign = self.vault.campaign_facts()
+        if any(theirs(f) for f in campaign):
+            self.vault.set_campaign_facts([f for f in campaign if not theirs(f)])
 
     def _notes_fingerprints(self, campaign: str) -> set[str]:
         out = set()
@@ -709,58 +854,70 @@ class Memory:
                 continue
             return folder
 
-    def _import_sessions(self, job: Job, campaign: str, rows: list[dict]) -> None:
+    def _read_sessions(self, job: Job, made: list[tuple[str | None, str, str]], already: int) -> None:
+        """The job's work: read each session's notes into the codex, one session after another."""
         self.seed_known()
-        have = self._notes_fingerprints(campaign)
-        stamp = time.strftime("%Y-%m-%d")
-        made: list[tuple[str, str]] = []  # (page name, text)
-        for row in rows:
-            text, day = row["text"].strip(), row["date"]
-            fingerprint = hashlib.sha256(text.encode("utf-8")).hexdigest()
-            if fingerprint in have:
-                continue
-            have.add(fingerprint)
-            label = row.get("title") or (f"Session {row['n']}" if row.get("n") else "Notes")
-            folder = self._new_notes_folder(day)
-            sid = folder.name
-            path = self.vault.write_note(
-                "Notes",
-                f"{day} {label}",
-                f"---\ntype: notes\nimported: {stamp}\nsession: {sid}\ntags: [troubadour/notes]\n---\n# {day} {label}\n\n{text}\n",
-            )
-            started = time.mktime(time.strptime(f"{day} 12:00:00", "%Y-%m-%d %H:%M:%S"))
-            meta = {
-                "id": sid,
-                "kind": "notes",
-                "campaign": campaign,
-                "started_at": started,
-                "title": row.get("title") or None,
-                "note": path.relative_to(self.vault.root).as_posix(),
-                "duration": 0,
-                "duration_s": 0,
-                "lines": 0,
-                "pipeline": {},
-                "fingerprint": fingerprint,
-            }
-            write_atomic(folder / "meta.json", json.dumps(meta, ensure_ascii=False))
-            made.append((path.stem, text))
-        job.note = f"{len(made)} sessions"
-        parts = [(page, part) for page, text in made for part in chunks(text, CHUNK_CHARS)]
-        job.total = len(parts)
+        count = sum(1 for sid, _, _ in made if sid)
+        job.note = f"{count} {'session' if count == 1 else 'sessions'}"
+        job.total = sum(len(chunks(text, CHUNK_CHARS)) for _, _, text in made)
         self.emit(job)
-        self.bus.emit("campaign.updated", {})
-        for page, part in parts:
-            out = self.llm.json(NOTES_SYSTEM, f"Existing glossary:\n{glossary_brief(self.vault)}\n\nNotes:\n{part}", NOTES_SCHEMA)
-            self._merge_notes(job, out, page)
-            job.done += 1
-            job.message = f"Read part {job.done} of {job.total}"
+        for sid, page, text in made:
+            for part in chunks(text, CHUNK_CHARS):
+                out = self.llm.json(
+                    NOTES_SYSTEM, f"Existing glossary:\n{glossary_brief(self.vault)}\n\nNotes:\n{part}", NOTES_SCHEMA
+                )
+                self._merge_notes(job, out, page)
+                job.done += 1
+                job.message = f"Read part {job.done} of {job.total}"
+                self.emit(job)
+                self.bus.emit("campaign.updated", {})
+            if sid:
+                self._mark_ingested(sid)
+                job.sessions = [s for s in job.sessions if s != sid]
             self.emit(job)
-            self.bus.emit("campaign.updated", {})
-        job.message = f"{len(made)} sessions added; {len(job.created)} new, {len(job.updated)} updated"
-        if len(made) < len(rows):
-            job.message += f"; {len(rows) - len(made)} already imported"
+        job.message = f"{job.note} read; {len(job.created)} new, {len(job.updated)} updated"
+        if already:
+            job.message += f"; {already} already imported"
         if job.skipped:
             job.message += f"; left alone (fix in Obsidian first): {', '.join(job.skipped)}"
+
+    def _mark_ingested(self, sid: str) -> None:
+        """The session's notes are in the codex. A session deleted while its job ran has no folder to write to."""
+        path = self.sessions_dir() / sid / "meta.json"
+        with self._meta_lock:
+            try:
+                meta = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return
+            write_atomic(path, json.dumps({**meta, "ingested": True}, ensure_ascii=False))
+
+    def reorder_unknown(self, campaign: str, ids: list[str]) -> None:
+        """Put the notes sessions whose dates are unknown in this order, oldest first. `ids` must be exactly
+        those of this campaign (ValueError when the list has changed since the caller read it)."""
+        with self._meta_lock:
+            found: dict[str, dict] = {}
+            for path in self.sessions_dir().glob("*/meta.json"):
+                try:
+                    meta = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                if (
+                    isinstance(meta, dict)
+                    and meta.get("kind") == "notes"
+                    and meta.get("campaign") == campaign
+                    and pages.is_past(float(meta.get("started_at") or 0))
+                ):
+                    found[path.parent.name] = meta
+            if len(set(ids)) != len(ids) or set(ids) != set(found):
+                raise ValueError("The sessions changed. Reload the list and try again.")
+            for place, sid in enumerate(ids):
+                at = pages.PAST_START + place
+                if found[sid]["started_at"] != at:
+                    write_atomic(
+                        self.sessions_dir() / sid / "meta.json",
+                        json.dumps({**found[sid], "started_at": at}, ensure_ascii=False),
+                    )
+        self.bus.emit("campaign.updated", {})
 
     def _import(self, job: Job, title: str, text: str) -> None:
         self.seed_known()

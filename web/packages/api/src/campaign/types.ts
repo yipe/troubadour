@@ -53,6 +53,7 @@ export interface CampaignJob {
   note: string | null /* vault-relative path it wrote */
   player_id: string | null /* clone / say / read / profile: whose voice */
   steps?: JobStep[] /* a job with stages (a write-up): in order */
+  sessions?: string[] /* an import's notes sessions still to read, in order; the first is in progress */
   live?: JobLive | null /* the model call in flight, when it streams */
   snippets?: JobSnippet[] /* found so far: code-counted stats first, then what the model has written */
 }

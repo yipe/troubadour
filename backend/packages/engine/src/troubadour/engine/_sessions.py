@@ -206,6 +206,7 @@ class SessionsMixin:
             s.setdefault("lines", 0)
             s.setdefault("merged_from", [])
             s.setdefault("kind", "recording")  # "notes": imported notes standing in for a session; no audio or transcript
+            s.setdefault("ingested", True)  # notes: read into the codex (False until the job that reads them has finished)
             s.setdefault("title", None)
             s.setdefault("present_player_ids", None)
             s.setdefault("reviewed_at", None)
