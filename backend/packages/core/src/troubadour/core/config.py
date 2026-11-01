@@ -74,7 +74,7 @@ DATA_DIR = Path(env("DATA", str(Path.home() / "troubador")))
 SAMPLES_DIR = Path(env("SAMPLES", str(BACKEND / "samples" / "eval")))
 WEB_DIST = REPO / "web" / "dist"
 # Troubadour Cloud (optional backup + web view of the campaign vault). Nothing is sent until the user connects.
-CLOUD_URL = env("CLOUD_URL", "https://cloud.5eapps.com")
+CLOUD_URL = env("CLOUD_URL", "https://troubadour.cloud")
 
 
 def vault_dir() -> Path:
