@@ -212,6 +212,28 @@ def test_refresh_can_be_cancelled_between_steps(idle, memory, job):
     assert log == ["a", "a", "b"]
 
 
+def test_stop_ends_a_transcript_rewrite_mid_loop_before_it_saves_and_reports_its_progress(idle, memory, job):
+    folder = make_session(idle)
+    seen: list[float | None] = []
+    saved: list[bool] = []
+
+    def listen(run_, child):
+        for done in range(1, 11):  # a long Whisper pass: "Line n of 10"
+            child.done, child.total, child.message = done, 10, f"Line {done} of 10"
+            seen.append(job.part)
+            child.on_change()
+            if done == 3:
+                pipeline.request_cancel(job.id)
+        saved.append(True)  # the one save at the end
+
+    steps = [Step("transcribe", 1, "Listen again", (), (), listen, skip=lambda r: None), step("b", [])]
+    pipeline.refresh(job, Run(idle, memory, OLD), steps)
+    assert saved == []  # stopped at line 4, before saving
+    assert "Stopped during" in job.message
+    assert not pipeline_of(folder)  # nothing was recorded as done
+    assert job.part == 0.3  # the bar showed how far the step got (3 of 10), not 0%
+
+
 def test_only_stale_steps_run_in_an_upgrade(idle, memory, job):
     make_session(idle, stamped={"a": 1})
     log: list[str] = []

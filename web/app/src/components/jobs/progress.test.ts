@@ -47,3 +47,9 @@ describe("progress maths", () => {
     expect(pickSnippet([], seen, 0)).toBeNull()
   })
 })
+
+it("a refresh counts finished steps plus how far the running one is", () => {
+  // Step 1 of 8 is a quarter through: "Listen to the recording again: Line 523 of 2022".
+  expect(jobFraction(campaignJob({ id: "r", done: 0, total: 8, part: 523 / 2022 }))).toBeCloseTo(0.0323, 3)
+  expect(jobFraction(campaignJob({ id: "r", done: 2, total: 8, part: 0.5 }))).toBe(0.3125)
+})

@@ -373,8 +373,13 @@ _cancelled: set[str] = set()
 _cancel_lock = threading.Lock()
 
 
+class Cancelled(Exception):
+    """Raised inside a step that rewrites the transcript when Stop is pressed: it has not saved yet."""
+
+
 def request_cancel(job_id: str) -> None:
-    """Stop the job with this id before its next step. A step in progress finishes."""
+    """Stop the job with this id: a step that rewrites the transcript stops before it saves (they save once, at
+    the end, and the restore point holds the old one); any other step finishes first."""
     with _cancel_lock:
         _cancelled.add(job_id)
 
@@ -390,8 +395,12 @@ def _child(parent: Job, step: Step) -> Job:
     child = Job(id=parent.id, kind=step.name, title=parent.title)
 
     def relay() -> None:
+        # Mid-loop (done < total) is before the step's one save: safe to stop there.
+        if step.name in REWRITES and child.total > 0 and child.done < child.total and _was_cancelled(parent.id):
+            raise Cancelled
         text = f"{step.label}: {child.message}" if child.message else step.label
-        parent.update(message=text, live=child.live, snippets=child.snippets)
+        part = child.done / child.total if child.total else None
+        parent.update(message=text, live=child.live, snippets=child.snippets, part=part)
 
     child.on_change = relay
     return child
@@ -425,6 +434,9 @@ def refresh(job: Job, run: Run, steps: Sequence[Step] = STEPS, only_stale: bool 
             child = _child(job, step)
             try:
                 step.run(run, child)
+            except Cancelled:
+                job.update(message=f"Stopped during “{step.label}”; it saved nothing, and earlier steps are kept")
+                return
             except Exception as e:
                 raise RuntimeError(f"{step.label} failed ({e}). Earlier steps are kept.") from e
             stamp(run.folder, step, run.engine._transcript_lock)

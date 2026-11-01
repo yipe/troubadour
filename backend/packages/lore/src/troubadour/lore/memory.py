@@ -540,6 +540,8 @@ class Job:
     player_id: str | None = None  # voice-clone jobs: whose voice
     # A job with stages: [{"label", "state": "pending" | "running" | "done"}] (plan(), step()).
     steps: list[dict] = field(default_factory=list)
+    # A job with stages: how far the running stage is, 0-1, when it can tell (a refresh's "Line 523 of 2022").
+    part: float | None = None
     # Notes sessions this job still has to read, in the order it reads them (the first is the one in progress).
     sessions: list[str] = field(default_factory=list)
     # The model call in flight (model_progress): {"phase": "reading" | "thinking" | "writing", "tokens" (estimated),
@@ -568,7 +570,7 @@ class Job:
         for i, s in enumerate(self.steps):
             s["state"] = "done" if i < index else "running" if i == index else "pending"
         label = self.steps[index]["label"] if index < len(self.steps) else ""
-        self.update(done=index, live=None, message=message or label)
+        self.update(done=index, live=None, part=None, message=message or label)
 
     def model_progress(self, info: dict) -> None:
         """A streaming model call's progress; sent at most twice a second (and at each change of phase)."""

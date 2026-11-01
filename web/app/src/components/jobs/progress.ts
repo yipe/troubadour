@@ -18,6 +18,8 @@ export function jobCount(job: CampaignJob): string {
  * so the live call's fraction wins over the job's done/total.
  */
 export function jobFraction(job: CampaignJob): number | null {
+  // A refresh: finished steps plus how far the running one is ("Line 523 of 2022").
+  if (job.part != null && job.total > 0) return Math.min(1, (job.done + job.part) / job.total)
   if (job.live?.fraction !== undefined) return job.live.fraction
   return job.total > 0 ? job.done / job.total : null
 }
