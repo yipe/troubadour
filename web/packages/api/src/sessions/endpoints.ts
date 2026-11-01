@@ -14,6 +14,9 @@ export const editSessionNotes = (id: string, notes: NotesSessionInput) =>
 export const reorderUnknownSessions = (ids: string[]) =>
   req<SavedSession[]>("PUT", "/api/sessions/order", { ids })
 
+/** Name a notes-only session from its notes (a background job, kind "name"). */
+export const nameSession = (id: string) => req<CampaignJob>("POST", `/api/sessions/${segment(id)}/name`)
+
 export const sessions = () => req<SavedSession[]>("GET", "/api/sessions")
 
 /** Append the later saved session onto the earlier one. Returns the session that remains. */

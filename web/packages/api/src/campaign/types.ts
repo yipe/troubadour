@@ -42,6 +42,7 @@ export interface CampaignJob {
     | "incharacter" /* label a saved session's lines in character or table talk */
     | "recap" /* C10: a session recap */
     | "refresh" /* F32: re-run a saved session's processing steps */
+    | "name" /* name a notes session from its notes */
   title: string /* notes title; the session id for a write-up / improve / read; the player for clone / say / profile */
   state: "queued" | "running" | "done" | "error"
   done: number

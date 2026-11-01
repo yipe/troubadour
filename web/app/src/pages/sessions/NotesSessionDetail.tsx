@@ -14,6 +14,7 @@ import { notesStatus } from "./notesStatus.ts"
 import { NotesStatusBadge } from "./NotesStatusBadge.tsx"
 import { StatTile } from "./StatTile.tsx"
 import { sessionGains, sessionTitle } from "./stats.ts"
+import { GenerateName } from "./GenerateName.tsx"
 import { EditNotesDialog } from "./tools/index.ts"
 import { notesInput, type NotesValues } from "./tools/notesValues.ts"
 import { useRemoveSessions } from "./useRemoveSessions.ts"
@@ -48,6 +49,9 @@ export function NotesSessionDetail({ session, numbers }: NotesSessionDetailProps
           <div className="mt-0.5 flex items-center gap-2 text-13 text-ink-subtle">
             {session.n === null ? "Session" : `Session ${session.n}`} · {dateLong(session.started_at)}
             <NotesStatusBadge status={status} />
+          </div>
+          <div className="mt-2 empty:hidden">
+            <GenerateName session={session} disabled={waiting} />
           </div>
         </div>
         <Button

@@ -337,6 +337,16 @@ Answer with JSON only."""
 
 FACT_SCHEMA = _obj({"facts": STRS})
 
+TITLE_SCHEMA = _obj({"title": STR})
+
+TITLE_SYSTEM = """You name one session of a Dungeons & Dragons campaign from the notes about it.
+title: 2 to 6 words, like an episode title, about what mattered most in this session ("The Fall of
+the Rooster", "Lumberg's Job Board"). Use names from the notes. No session number, no date, no quotes."""
+TITLE_WORDS = 8
+NAMING_CHARS = 12000  # the start of the notes is enough to name them
+# A name that says nothing: what a session without a title is called.
+GENERIC_TITLE = re.compile(r"^(?:session\s*\d*|notes|untitled|part\s*\d+)$", re.I)
+
 FACT_SYSTEM = """You extract lasting facts about one named thing in a Dungeons & Dragons campaign.
 You get its name, the facts already known, and a passage from a transcript or from imported notes.
 facts: sentences that will still be true next session. Who they are, what they can do, what they own
@@ -875,6 +885,7 @@ class Memory:
                 self.bus.emit("campaign.updated", {})
             if sid:
                 self._mark_ingested(sid)
+                self._name_if_untitled(sid, text)
                 job.sessions = [s for s in job.sessions if s != sid]
             self.emit(job)
         job.message = f"{job.note} read; {len(job.created)} new, {len(job.updated)} updated"
@@ -882,6 +893,64 @@ class Memory:
             job.message += f"; {already} already imported"
         if job.skipped:
             job.message += f"; left alone (fix in Obsidian first): {', '.join(job.skipped)}"
+
+    def _name_if_untitled(self, sid: str, text: str) -> None:
+        """A session imported without a title gets one from its notes. A nicety: if the model can't name it,
+        it keeps "Session 3" and the import goes on."""
+        try:
+            meta = json.loads((self.sessions_dir() / sid / "meta.json").read_text(encoding="utf-8"))
+            if meta.get("title"):
+                return
+            if title := self.suggest_title(text):
+                self._set_title(sid, title)
+        except Exception:
+            log.exception("couldn't name notes session %s", sid)
+
+    def suggest_title(self, text: str) -> str | None:
+        """A short title for a session from its notes, or None when the model's answer isn't one."""
+        out = self.llm.json(TITLE_SYSTEM, f"Notes:\n{text[:NAMING_CHARS]}", TITLE_SCHEMA, max_tokens=200)
+        title = _text(out.get("title") if isinstance(out, dict) else None, NAME_MAX).strip(" .:;\"'“”‘’*#")
+        if not title or len(title.split()) > TITLE_WORDS or GENERIC_TITLE.match(title) or "\n" in title:
+            return None
+        try:
+            return safe_name(title)
+        except ValueError:
+            return None
+
+    def _set_title(self, sid: str, title: str) -> None:
+        """The notes session's title, in meta.json and as its notes page's heading (what the lists show). The
+        page keeps its file name: facts link to it."""
+        meta_path = self.sessions_dir() / sid / "meta.json"
+        with self._meta_lock:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            write_atomic(meta_path, json.dumps({**meta, "title": title}, ensure_ascii=False))
+        page = self.vault.root / str(meta["note"])
+        body = page.read_text(encoding="utf-8")
+        day = (
+            ""
+            if pages.is_past(float(meta.get("started_at") or 0))
+            else time.strftime("%Y-%m-%d ", time.localtime(meta["started_at"]))
+        )
+        write_atomic(page, re.sub(r"^# .*$", lambda _: f"# {day}{title}", body, count=1, flags=re.M))
+        self.bus.emit("campaign.updated", {})
+
+    def name_session(self, sid: str) -> Job:
+        """A job: name a notes session from its notes. FileNotFoundError: not a notes session."""
+        meta = json.loads((self.sessions_dir() / sid / "meta.json").read_text(encoding="utf-8"))
+        if meta.get("kind") != "notes":
+            raise FileNotFoundError(sid)
+
+        def work(job: Job) -> None:
+            body = (self.vault.root / str(meta["note"])).read_text(encoding="utf-8")
+            body = re.sub(r"\A---\n.*?\n---\n", "", body, count=1, flags=re.S)
+            text = re.sub(r"\A\s*# .*\n", "", body, count=1).strip()
+            title = self.suggest_title(text)
+            if title is None:
+                raise ValueError("The model didn't come up with a usable name. Try again, or type one in Edit.")
+            self._set_title(sid, title)
+            job.message = f"Named it “{title}”"
+
+        return self.submit("name", sid, work)
 
     def _mark_ingested(self, sid: str) -> None:
         """The session's notes are in the codex. A session deleted while its job ran has no folder to write to."""

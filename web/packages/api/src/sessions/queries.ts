@@ -10,6 +10,7 @@ import {
   fixSpellings,
   improveSession,
   markReviewed,
+  nameSession,
   mergeSessions,
   refreshSession,
   reorderUnknownSessions,
@@ -143,6 +144,7 @@ function useSessionJob(call: (id: string) => ReturnType<typeof improveSession>) 
 }
 
 export const useImproveSession = () => useSessionJob(improveSession)
+export const useNameSession = () => useSessionJob(nameSession)
 export const useRetranscribeSession = () => useSessionJob(retranscribeSession)
 export const useFixSpellings = () => useSessionJob(fixSpellings)
 export const useEstimateInCharacter = () => useSessionJob(estimateInCharacter)

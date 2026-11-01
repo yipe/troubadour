@@ -118,7 +118,7 @@ def _conflict(fn, *args):
 
 
 # Jobs whose title is a session id: they read the session's files and write them back when done.
-SESSION_JOBS = ("improve", "retranscribe", "spelling", "incharacter", "refresh", "writeup", "recap")
+SESSION_JOBS = ("improve", "retranscribe", "spelling", "incharacter", "refresh", "writeup", "recap", "name")
 
 
 def _recorded(sid: str) -> None:
@@ -383,6 +383,22 @@ def order_unknown_sessions(body: SessionOrderIn):
         except ValueError as e:
             raise HTTPException(409, str(e)) from None
     return _summaries(deps.engine.list_sessions())
+
+
+@router.post("/api/sessions/{sid}/name", response_model=CampaignJob)
+def name_session(sid: Annotated[str, Path(pattern=SESSION_PATTERN)]):
+    """Name a notes-only session from its notes (a background job). 409 for a recording: its write-up names it."""
+    if (problem := deps.memory.llm.problem()) is not None:
+        raise HTTPException(503, problem)
+    with deps.campaign_gate:
+        deps._require_open_campaign(sid)
+        if deps._call(deps.engine.session_kind, sid) != "notes":
+            raise HTTPException(409, "That session is a recording: its write-up names it.")
+        _not_busy(sid)
+        try:
+            return deps._call(deps.memory.name_session, sid).to_json()
+        except FileNotFoundError:
+            raise HTTPException(404, f"not found: {sid}") from None
 
 
 @router.put("/api/sessions/{sid}/notes", response_model=CampaignJob)

@@ -419,3 +419,48 @@ it("shows a dash, not 0, for what a queued notes session added", () => {
   expect(screen.getByText(/Waiting its turn/)).toBeInTheDocument()
   expect(screen.getAllByText("–")).toHaveLength(2)
 })
+
+it("offers to name a notes session whose title is generic, and starts the naming job", async () => {
+  const plain = savedSession({ id: "n4", kind: "notes", n: 4, started_at: 1_759_000_000, title: "Session 4" })
+  const api = mockFetch((c) =>
+    c.url === "/api/sessions/n4/name"
+      ? campaignJob({ id: "j4", kind: "name", title: "n4", state: "queued" })
+      : c.url === "/api/sessions/upgrades"
+        ? { sessions: [], current: {} }
+        : [],
+  )
+  renderWithProviders(
+    <Routes>
+      <Route path="/sessions/:id" element={<SessionsPage />} />
+    </Routes>,
+    {
+      route: "/sessions/n4",
+      queryData: [
+        [keys.sessions(), [plain, bells]],
+        [keys.campaign(), campaign()],
+        [["notes", "n4"], { text: "We rang them." }],
+      ],
+    },
+  )
+  await userEvent.click(await screen.findByRole("button", { name: "Generate a name" }))
+  await waitFor(() => expect(api.writes()).toHaveLength(1))
+  expect(api.writes()[0]).toMatchObject({ method: "POST", url: "/api/sessions/n4/name" })
+  expect(await screen.findByRole("button", { name: /Naming/ })).toBeDisabled()
+})
+
+it("doesn't offer a name for a session that has one", () => {
+  renderWithProviders(
+    <Routes>
+      <Route path="/sessions/:id" element={<SessionsPage />} />
+    </Routes>,
+    {
+      route: "/sessions/n1",
+      queryData: [
+        [keys.sessions(), [bells]],
+        [keys.campaign(), campaign()],
+        [["notes", "n1"], { text: "We rang them." }],
+      ],
+    },
+  )
+  expect(screen.queryByRole("button", { name: "Generate a name" })).not.toBeInTheDocument()
+})

@@ -54,9 +54,11 @@ export function bridgeSocket(socket: Socket, client: QueryClient, opts: BridgeOp
       if (CLONE_JOBS.has(job.kind) && endedNow) void client.invalidateQueries({ queryKey: keys.clones() })
       // A recap job's title is its session id.
       if (job.kind === "recap" && endedNow) void client.invalidateQueries({ queryKey: keys.recap(job.title) })
+      // A session named from its notes: the lists show the name.
+      const named = job.kind === "name" && endedNow
       // A notes session finished being read (or the whole import ended): its list row loses "reading".
       const finishedSession = (job.sessions?.length ?? 0) < (before?.sessions?.length ?? 0)
-      if (job.kind === "import" && (endedNow || finishedSession)) {
+      if (named || (job.kind === "import" && (endedNow || finishedSession))) {
         void client.invalidateQueries({ queryKey: keys.sessions() })
         void client.invalidateQueries({ queryKey: keys.timeline() })
       }

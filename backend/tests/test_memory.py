@@ -24,7 +24,8 @@ def lines(facts):
 class FakeLLM:
     """Answers by prompt, in order; records every call and whether it asked the model to think."""
 
-    def __init__(self, notes=(), facts=(), read=None, page=None, found=None):
+    def __init__(self, notes=(), facts=(), read=None, page=None, found=None, titles=()):
+        self.titles = list(titles)  # answers to "name this session", in order
         self.notes, self.facts = list(notes), list(facts)
         self.read = read if read is not None else {"beats": [{"at": "00:05", "text": "The party found a cave near Dallon."}]}
         self.page = page or {"title": "The Desert Road", "last_time": "Elara led the way.", "spotlight": [], "highlights": []}
@@ -37,6 +38,8 @@ class FakeLLM:
         self.calls.append(user)
         self.thought[system[:40]] = think
         self.progress.append(progress)
+        if system is mem.TITLE_SYSTEM:
+            return {"title": self.titles.pop(0)} if self.titles else {}
         if system is mem.NOTES_SYSTEM:
             return self.notes.pop(0) if self.notes else {}
         if system is mem.FACT_SYSTEM:
@@ -327,6 +330,43 @@ def test_reingest_notes_refuses_a_recording_and_empty_notes(setup):
         m.reingest_notes("2026-01-01_120000-aaaa", "2026-01-02", None, "text")
     with pytest.raises(ValueError, match="empty"):
         m.reingest_notes("2026-01-01_120000-aaaa", "2026-01-02", None, "  ")
+
+
+def test_import_names_the_sessions_that_have_no_title_and_keeps_their_pages(setup):
+    vault, sessions, make = setup
+    m = make(FakeLLM(titles=["The Rooster's Fall", "Session 4"]))
+    rows = [
+        {"n": 3, "date": None, "title": None, "text": "The rooster fell."},
+        {"n": 4, "date": "2026-09-21", "title": None, "text": "We rested."},  # the model says "Session 4": not a name
+        {"n": 5, "date": "2026-09-28", "title": "Given", "text": "Kept."},  # has one: not asked
+    ]
+    wait(m.import_sessions("main", "Notes", rows))
+    metas = sorted((json.loads(p.read_text()) for p in sessions.glob("*/meta.json")), key=lambda x: x["started_at"])
+    assert [x["title"] for x in metas] == ["The Rooster's Fall", None, "Given"]
+    page = vault.root / "Notes" / "Unknown date - Session 3.md"  # facts link to the page: its name stays
+    assert "\n# The Rooster's Fall\n" in page.read_text()
+    assert pages.session_page(vault.root, metas[0]["note"])["title"] == "The Rooster's Fall"
+
+
+def test_name_session_names_a_notes_session_and_refuses_a_recording(setup):
+    vault, sessions, make = setup
+    m = make(FakeLLM(titles=["Bells at Dawn", "Session 1"]))
+    wait(m.import_sessions("main", "Notes", [{"n": 1, "date": "2026-09-14", "title": "Given", "text": "Bells."}]))
+    (sid,) = [p.name for p in sessions.iterdir()]
+    wait(m.name_session(sid))
+    assert json.loads((sessions / sid / "meta.json").read_text())["title"] == "Bells at Dawn"
+    assert "\n# 2026-09-14 Bells at Dawn\n" in (vault.root / "Notes" / "2026-09-14 Given.md").read_text()
+    job = m.name_session(sid)  # the model answers "Session 1": the job fails and the name stays
+    deadline = time.monotonic() + 5
+    while job.state in ("queued", "running") and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert job.state == "error"
+    assert "usable name" in job.message
+    assert json.loads((sessions / sid / "meta.json").read_text())["title"] == "Bells at Dawn"
+    (sessions / "2026-01-01_120000-aaaa").mkdir()
+    (sessions / "2026-01-01_120000-aaaa" / "meta.json").write_text(json.dumps({"kind": "recording", "started_at": 1}))
+    with pytest.raises(FileNotFoundError):
+        m.name_session("2026-01-01_120000-aaaa")
 
 
 def test_import_refuses_empty_notes(setup):
