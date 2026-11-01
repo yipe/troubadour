@@ -955,24 +955,28 @@ Findings:
 - Fantasy names: the Whisper prompt doesn't fix them (Grukk → "drug"). Plan a
   glossary fix-up (fuzzy/phonetic match against setup names) and the LLM pass.
 
-## Cloud shows the app's pages (planned 2026-10-31)
+## Cloud shows the app's pages (built 2026-10-31)
 
-Troubadour Cloud gets the app's Sessions, Timeline, Recap, Codex and Facts pages, not just a file tree. The cloud
-still receives only the vault: Troubadour writes the missing structured data into it as **frontmatter**, the cloud
-indexes it at commit and renders it with the app's layouts.
+Troubadour Cloud shows the app's Home, Sessions, Timeline, Codex and Facts, not just a file tree. The cloud still
+receives only the vault: Troubadour writes what's missing into it as **front matter**, and the website reads it.
 
-Decisions: frontmatter (not a JSON sidecar), so Obsidian sees it and history and share links work unchanged.
+Decisions: front matter (not a JSON sidecar), so Obsidian sees it and history and share links work unchanged.
 Recaps go up. Share-link readers see everything the owner sees. No Ask tab (no LLM in the cloud).
 
-1. **Vault format v1** (`shared/test-vectors/vault-format/`): fixed keys per `type` plus `troubadour_format: 1`;
-   Troubadour's writer and the cloud's parser both pass the vectors.
-2. **Session write-ups** gain `n`, `kind`, `places`, `players` (talk share), `new_entities`, `facts_accepted`
-   (today's timeline row, now persisted).
-3. **Recaps** become `Sessions/Recaps/<date Title>.md` (`type: recap`: title, body, moments, questions). The
-   verbatim quote is written only when the campaign backs up transcripts.
-4. **Cloud index**: `note_meta (user_id, sha256, type, date, frontmatter jsonb)`, filled at commit beside
-   `note_index`, backfilled the same way; timeline, sessions and codex are one query each, `?at=` keeps working.
-5. **Cloud tabs**: Home, Sessions, Timeline, Codex, Facts, History (owner); search stays in the rail; the raw tree
-   moves to Files. Per-tab rails as in the app; notes render by `type` (session, entity), others stay plain.
-6. **Shared code**: `@troubadour/views`, display-only domain components (no api), used by the app and copied by
-   the cloud's `sync:ui` on their second use.
+1. **Vault format v1** (`troubadour.cloud.vault_format`, pinned by `shared/test-vectors/vault-format.json`, which
+   the website syncs and tests too). Rebuilt before every backup, beside the other `_Overview/` pages:
+   - `_Overview/Timeline.md` (`type: timeline`, `troubadour_format: 1`): the players (name, character, GM, class,
+     colour) and one row per session (number, date, title, write-up page, places, talk seconds per player, new
+     entries, facts accepted): the app's timeline row, persisted. Values are JSON flow, one session per line.
+   - `_Overview/Recaps/<session page>.md` (`type: recap`): title, body, moments, questions. The verbatim quote is
+     written only when the campaign backs up its transcripts. A recap whose session is gone is removed.
+   Generated, not written into the session pages: the timeline numbers change as later sessions arrive.
+2. **Website reads** (`src/lib/vault-format.ts`, `src/server/campaign.ts`): from `note_index.body` (the markdown
+   indexed at commit), so no page reads storage and no migration was needed. All of it is untrusted: every
+   value is checked and capped, bad rows are dropped, and player colours are hex only.
+3. **Website tabs**: Home (last session and its recap), Sessions, Timeline, Codex, Facts (the generated
+   `Facts by session` page), Files, History (owner). Search stays in the rail. The rail follows the tab:
+   sessions beside Sessions and Timeline, entries beside the Codex and Facts, files elsewhere. A session
+   write-up shows its number, who talked, its recap, where it went and its new faces.
+4. **Shared code**: `@troubadour/views` (display-only: timeline row cells, travel line, talk segments) used by the
+   app's Timeline and copied by the website's `sync:ui` with `@troubadour/ui`.
