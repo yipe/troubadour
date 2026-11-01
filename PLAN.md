@@ -954,3 +954,25 @@ Findings:
 - Crosstalk, laughter, dice noise → VAD/ASR junk.
 - Fantasy names: the Whisper prompt doesn't fix them (Grukk → "drug"). Plan a
   glossary fix-up (fuzzy/phonetic match against setup names) and the LLM pass.
+
+## Cloud shows the app's pages (planned 2026-10-31)
+
+Troubadour Cloud gets the app's Sessions, Timeline, Recap, Codex and Facts pages, not just a file tree. The cloud
+still receives only the vault: Troubadour writes the missing structured data into it as **frontmatter**, the cloud
+indexes it at commit and renders it with the app's layouts.
+
+Decisions: frontmatter (not a JSON sidecar), so Obsidian sees it and history and share links work unchanged.
+Recaps go up. Share-link readers see everything the owner sees. No Ask tab (no LLM in the cloud).
+
+1. **Vault format v1** (`shared/test-vectors/vault-format/`): fixed keys per `type` plus `troubadour_format: 1`;
+   Troubadour's writer and the cloud's parser both pass the vectors.
+2. **Session write-ups** gain `n`, `kind`, `places`, `players` (talk share), `new_entities`, `facts_accepted`
+   (today's timeline row, now persisted).
+3. **Recaps** become `Sessions/Recaps/<date Title>.md` (`type: recap`: title, body, moments, questions). The
+   verbatim quote is written only when the campaign backs up transcripts.
+4. **Cloud index**: `note_meta (user_id, sha256, type, date, frontmatter jsonb)`, filled at commit beside
+   `note_index`, backfilled the same way; timeline, sessions and codex are one query each, `?at=` keeps working.
+5. **Cloud tabs**: Home, Sessions, Timeline, Codex, Facts, History (owner); search stays in the rail; the raw tree
+   moves to Files. Per-tab rails as in the app; notes render by `type` (session, entity), others stay plain.
+6. **Shared code**: `@troubadour/views`, display-only domain components (no api), used by the app and copied by
+   the cloud's `sync:ui` on their second use.
